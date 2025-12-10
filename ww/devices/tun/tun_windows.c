@@ -269,6 +269,10 @@ static WTHREAD_ROUTINE(routineReadFromTun)
             DWORD last_error = GetLastError();
             switch (last_error)
             {
+            // i dont know why it can happen when debugging with gdb
+            case ERROR_ENVVAR_NOT_FOUND:
+                continue;
+            break;
             // case ERROR_NO_MORE_ITEMS:
             case ERROR_NO_MORE_ITEMS:
                 if (queued_count > 0)
