@@ -24,6 +24,8 @@ typedef struct ipmanipulator_tstate_s
     uint64_t trick_tcp_bit_changes : 1;
 
     int trick_proto_swap_tcp_number;
+    int trick_proto_swap_tcp_number_2;
+
     int trick_proto_swap_udp_number;
 
     int trick_sni_blender_packets_count;
@@ -46,6 +48,7 @@ typedef struct ipmanipulator_tstate_s
     enum tcp_bit_action_dynamic_value down_tcp_bit_rst_action;
     enum tcp_bit_action_dynamic_value down_tcp_bit_syn_action;
     enum tcp_bit_action_dynamic_value down_tcp_bit_fin_action;
+
 
 } ipmanipulator_tstate_t;
 

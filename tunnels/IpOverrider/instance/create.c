@@ -15,6 +15,19 @@ tunnel_t *ipoverriderCreate(node_t *node)
     ipoverrider_tstate_t *state = tunnelGetState(t);
 
     const cJSON *settings = node->node_settings_json;
+    if (getIntFromJsonObjectOrDefault(&state->skip_chance, settings, "chance", -1))
+    {
+
+        if (state->skip_chance < 0 || state->skip_chance > 100)
+        {
+            LOGF("JSON Error: IpOverrider->settings->chance (int field) : chance is less than 0 or more than 100");
+            return NULL;
+        }
+
+        state->skip_chance = 100 - state->skip_chance;
+    }
+
+    getBoolFromJsonObjectOrDefault(&state->only120, settings, "only120", false);
 
     if (! (cJSON_IsObject(settings) && settings->child != NULL))
     {

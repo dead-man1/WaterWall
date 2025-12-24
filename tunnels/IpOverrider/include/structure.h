@@ -18,6 +18,8 @@ typedef struct ipoverrider_tstate_s
 {
     struct in6_addr ov_6;
     uint32_t        ov_4;
+    int             skip_chance;
+    bool            only120;
     bool            support4;
     bool            support6;
 } ipoverrider_tstate_t;
@@ -58,7 +60,6 @@ void ipoverriderDownStreamResume(tunnel_t *t, line_t *l);
 
 void ipoverriderLinestateInitialize(ipoverrider_lstate_t *ls);
 void ipoverriderLinestateDestroy(ipoverrider_lstate_t *ls);
-
 
 void ipoverriderReplacerDestModeUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
 void ipoverriderReplacerSrcModeUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);

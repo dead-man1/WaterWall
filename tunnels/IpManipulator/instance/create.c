@@ -24,9 +24,12 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
 
     const cJSON *settings = node->node_settings_json;
 
+    getIntFromJsonObjectOrDefault(&state->trick_proto_swap_tcp_number_2, settings, "protoswap-tcp-2",-1);
+
     state->trick_proto_swap |= getIntFromJsonObject(&state->trick_proto_swap_tcp_number, settings, "protoswap");
     state->trick_proto_swap |= getIntFromJsonObject(&state->trick_proto_swap_tcp_number, settings, "protoswap-tcp");
     state->trick_proto_swap |= getIntFromJsonObject(&state->trick_proto_swap_udp_number, settings, "protoswap-udp");
+
 
     if (state->trick_proto_swap)
     {
