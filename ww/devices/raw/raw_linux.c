@@ -12,19 +12,26 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <poll.h>
 
 enum
 {
     kReadPacketSize                       = 1500,
     kMasterMessagePoolsbufGetLeftCapacity = 64,
-    kRawWriteChannelQueueMax              = 256
+    kRawWriteChannelQueueMax              = 8192
 };
+#define BATCH_SIZE 32
+#define MAX_DRAIN  (BATCH_SIZE - 1)
 
 static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
 {
     raw_device_t *rdev = userdata;
     sbuf_t       *buf;
-    ssize_t       nwrite;
+
+    struct mmsghdr     msgs[BATCH_SIZE];
+    struct iovec       iovs[BATCH_SIZE];
+    struct sockaddr_in addrs[BATCH_SIZE];
+    sbuf_t            *bufs[BATCH_SIZE];
 
     while (atomicLoadExplicit(&(rdev->running), memory_order_relaxed))
     {
@@ -34,52 +41,121 @@ static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
             return 0;
         }
 
-        if (UNLIKELY(GLOBAL_MTU_SIZE < sbufGetLength(buf)))
+        int cnt  = 0;
+        int len0 = sbufGetLength(buf);
+        if (UNLIKELY(GLOBAL_MTU_SIZE < len0))
         {
-            LOGE("RawDevice: WriteThread: Packet size %d exceeds GLOBAL_MTU_SIZE %d", sbufGetLength(buf),
-                 GLOBAL_MTU_SIZE);
-            LOGF("RawDevice: This is related to the MTU size, (core.json) please set a correct value for 'mtu' in "
-                 "the "
+            LOGE("RawDevice: WriteThread: Packet size %d exceeds GLOBAL_MTU_SIZE %d", len0, GLOBAL_MTU_SIZE);
+            LOGF("RawDevice: This is related to the MTU size, (core.json) please set a correct value for 'mtu' in the "
                  "'misc' section");
             bufferpoolReuseBuffer(rdev->writer_buffer_pool, buf);
             terminateProgram(1);
         }
 
+        struct iphdr *ip_header0 = (struct iphdr *) sbufGetRawPtr(buf);
 
-        struct iphdr *ip_header = (struct iphdr *) sbufGetRawPtr(buf);
+        addrs[0].sin_family      = AF_INET;
+        addrs[0].sin_addr.s_addr = ip_header0->daddr;
 
-        volatile struct sockaddr_in to_addr = {.sin_family = AF_INET, .sin_addr.s_addr = ip_header->daddr};
+        iovs[0].iov_base = (void *) ip_header0;
+        iovs[0].iov_len  = len0;
 
-        nwrite =
-            sendto(rdev->socket, ip_header, sbufGetLength(buf), 0, (struct sockaddr *) (&to_addr), sizeof(to_addr));
+        memorySet(&msgs[0], 0, sizeof(msgs[0]));
+        msgs[0].msg_hdr.msg_name    = &addrs[0];
+        msgs[0].msg_hdr.msg_namelen = sizeof(addrs[0]);
+        msgs[0].msg_hdr.msg_iov     = &iovs[0];
+        msgs[0].msg_hdr.msg_iovlen  = 1;
 
-        bufferpoolReuseBuffer(rdev->writer_buffer_pool, buf);
+        bufs[0] = buf;
+        cnt     = 1;
 
-        if (nwrite == 0)
+
+        for (int i = 1; i < BATCH_SIZE; ++i)
         {
-            LOGW("RawDevice: Exit write routine due to End Of File");
-            return 0;
+            sbuf_t *b2     = NULL;
+            bool    closed = false;
+            if (! chanTryRecv(rdev->writer_buffer_channel, (void **) &b2, &closed))
+            {
+                if (closed)
+                {
+                    break;
+                }
+                break;
+            }
+
+            if (UNLIKELY(GLOBAL_MTU_SIZE < sbufGetLength(b2)))
+            {
+                LOGE("RawDevice: WriteThread: Packet size %d exceeds GLOBAL_MTU_SIZE %d", sbufGetLength(b2),
+                     GLOBAL_MTU_SIZE);
+                bufferpoolReuseBuffer(rdev->writer_buffer_pool, b2);
+                terminateProgram(1);
+            }
+
+            struct iphdr *ip_header  = (struct iphdr *) sbufGetRawPtr(b2);
+            addrs[i].sin_family      = AF_INET;
+            addrs[i].sin_addr.s_addr = ip_header->daddr;
+            iovs[i].iov_base         = (void *) ip_header;
+            iovs[i].iov_len          = sbufGetLength(b2);
+            memorySet(&msgs[i], 0, sizeof(msgs[i]));
+            msgs[i].msg_hdr.msg_name    = &addrs[i];
+            msgs[i].msg_hdr.msg_namelen = sizeof(addrs[i]);
+            msgs[i].msg_hdr.msg_iov     = &iovs[i];
+            msgs[i].msg_hdr.msg_iovlen  = 1;
+
+            bufs[i] = b2;
+            cnt++;
         }
 
-        if (nwrite < 0)
+        int sent = 0;
+        while (sent < cnt)
         {
-            int err = errno;
-            if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK)
+            int res = sendmmsg(rdev->socket, &msgs[sent], cnt - sent, 0);
+            if (res > 0)
             {
+                // res messages were consumed
+                for (int k = 0; k < res; ++k)
+                {
+                    bufferpoolReuseBuffer(rdev->writer_buffer_pool, bufs[sent + k]);
+                }
+                sent += res;
                 continue;
             }
 
-            LOGW("RawDevice: sendto() failed with error: %s", strerror(err));
+            int err = errno;
+            if (res == -1 && (err == EINTR))
+            {
+                continue;
+            }
+            if (res == -1 && (err == EAGAIN || err == EWOULDBLOCK))
+            {
+                
+                struct pollfd pfd = {.fd = rdev->socket, .events = POLLOUT};
+                int           pr  = poll(&pfd, 1, 50 /*ms timeout*/);
+                if (pr <= 0)
+                {
+                    // either timeout, error, or still not writable; continue loop to retry 
+                    continue;
+                }
+                continue; // socket writable — try sendmmsg again 
+            }
 
+            // Fatal
+            LOGW("RawDevice: sendmmsg() failed with error: %s", strerror(err));
             if (err == EMSGSIZE)
             {
                 LOGF("RawDevice: This is related to the MTU size, (core.json) please set a correct value for 'mtu' in "
-                     "the "
-                     "'misc' section");
+                     "the 'misc' section");
                 terminateProgram(1);
             }
-            continue;
+
+            // On other errors: reuse/free remaining buffers and break out
+            for (int k = sent; k < cnt; ++k)
+            {
+                bufferpoolReuseBuffer(rdev->writer_buffer_pool, bufs[k]);
+            }
+            break;
         }
+
     }
     return 0;
 }
@@ -176,6 +252,9 @@ raw_device_t *rawdeviceCreate(const char *name, uint32_t mark, void *userdata)
         terminateProgram(1);
     }
     fcntl(rsocket, F_SETFL, O_NONBLOCK);
+
+    int sndbuf = 4 * 1024 * 1024; /* 4MB */
+    setsockopt(rsocket, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
     raw_device_t *rdev = memoryAllocate(sizeof(raw_device_t));
 
