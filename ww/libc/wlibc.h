@@ -1,7 +1,7 @@
 #pragma once
 
 #include "wplatform.h"
-
+#include "wmem.h"
 #include "wdef.h"
 
 #include "wexport.h"
@@ -18,22 +18,12 @@
 
 void initWLibc(void);
 
-//--------------------Memory-------------------------------
 
-struct dedicated_memory_s;
-typedef struct dedicated_memory_s dedicated_memory_t;
 
 _Noreturn void terminateProgram(int exit_code); // in signal_manager.c
 
-void *memoryAllocate(size_t size);
-void *memoryAllocateZero(size_t size);
-void *memoryReAllocate(void *ptr, size_t size);
-void *memoryCalloc(size_t n,size_t size);
-void  memoryFree(void *ptr);
 
-void *memoryDedicatedAllocate(dedicated_memory_t *dm, size_t size);
-void *memoryDedicatedReallocate(dedicated_memory_t *dm, void *ptr, size_t size);
-void  memoryDedicatedFree(dedicated_memory_t *dm, void *ptr);
+//--------------------Memory-------------------------------
 
 /* STC lib will use our custom allocators (since we used custom fork (radkesvat/stc)) */
 #define c_malloc(sz)               memoryAllocate((size_t) (sz))

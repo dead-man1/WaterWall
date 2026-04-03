@@ -324,14 +324,8 @@ void lwip_example_app_platform_assert(const char *msg, int line, const char *fil
 #endif
 
 
-#include <stddef.h> /* for size_t */
-
-void *memoryAllocate(size_t size);
-void *memoryAllocateZero(size_t size);
-void *memoryReAllocate(void *ptr, size_t size);
-void  memoryFree(void *ptr);
-
-/* lwip will use our custom allocators*/
+// #include "../libc/wmem.h"
+// /* lwip will use our custom allocators*/
 // #define MEM_CUSTOM_FREE(ptr)     memoryFree(ptr)
 // #define MEM_CUSTOM_MALLOC(sz)    memoryAllocate((size_t) (sz))
 // #define MEM_CUSTOM_CALLOC(n, sz) memoryAllocateZero((size_t) ((n) * (sz)))
