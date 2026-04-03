@@ -13,7 +13,7 @@ static struct
 {
     const char     *search_path;
     vec_static_libs slibs;
-} *state;
+} *nodelib_state;
 
 // #ifdef OS_WIN
 // #include <windows.h> // for Windows LoadLibrary/GetProcAddress
@@ -65,9 +65,9 @@ static node_t dynLoadNodeLib(hash_t htype)
 node_t nodelibraryLoadByTypeHash(hash_t htype)
 {
 
-    if (state != NULL)
+    if (nodelib_state != NULL)
     {
-        c_foreach(k, vec_static_libs, state->slibs)
+        c_foreach(k, vec_static_libs, nodelib_state->slibs)
         {
             if ((k.ref)->hash_type == htype)
             {
@@ -86,14 +86,14 @@ node_t nodelibraryLoadByTypeName(const char *name)
 
 void nodelibraryRegister(node_t lib)
 {
-    if (state == NULL)
+    if (nodelib_state == NULL)
     {
-        state = memoryAllocate(sizeof(*state));
-        memorySet(state, 0, sizeof(*state));
-        state->slibs = vec_static_libs_init();
+        nodelib_state = memoryAllocate(sizeof(*nodelib_state));
+        memorySet(nodelib_state, 0, sizeof(*nodelib_state));
+        nodelib_state->slibs = vec_static_libs_init();
     }
 
-    vec_static_libs_push(&(state->slibs), lib);
+    vec_static_libs_push(&(nodelib_state->slibs), lib);
 }
 
 bool nodeHasFlagChainHead(node_t *node)
@@ -103,14 +103,14 @@ bool nodeHasFlagChainHead(node_t *node)
 
 void nodelibraryCleanup(void)
 {
-    if (state != NULL)
+    if (nodelib_state != NULL)
     {
-        c_foreach(k, vec_static_libs, state->slibs)
+        c_foreach(k, vec_static_libs, nodelib_state->slibs)
         {
             memoryFree((k.ref)->type);
         }
-        vec_static_libs_drop(&(state->slibs));
+        vec_static_libs_drop(&(nodelib_state->slibs));
     }
-    memoryFree(state);
-    state = NULL;
+    memoryFree(nodelib_state);
+    nodelib_state = NULL;
 }
