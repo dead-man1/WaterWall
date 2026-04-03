@@ -16,7 +16,8 @@ struct sbuf_s
     uint32_t curpos;
     uint32_t len;
     uint32_t capacity;
-    uint16_t l_pad;
+    uint16_t l_pad;        // constant when created, indicates how much bytes are available for switching left at the beginning
+                           // something like leave-room in lwip pbuf
     bool     is_temporary; // if true, this buffer will not be freed or reused in pools (like stack buffer)
     uint8_t  _padding1;    // padding to align to 8 bytes
     void    *original_ptr; // store original malloc pointer for proper freeing
@@ -87,6 +88,12 @@ sbuf_t *sbufSlice(sbuf_t *b, uint32_t bytes);
 sbuf_t *sbufDuplicate(sbuf_t *b);
 
 /**
+ * Copy the full content of the buffer to a new buffer with exact capacity (no padding).
+ */
+void sbufDuplicateTo(sbuf_t *b, sbuf_t *dest);
+
+
+/**
  * Gets total capacity of the buffer. (Total capacity is a constant value that will not change)
  */
 static inline uint32_t sbufGetTotalCapacity(sbuf_t *const b)
@@ -119,11 +126,11 @@ static inline uint32_t sbufGetLeftCapacityNoPadding(const sbuf_t *const b)
 }
 
 /**
- * Gets right capacity of the buffer. (This means how much space is left, it gets reduced if you shift right)
+ *  Get maximum writeable size of the buffer 
  */
-static inline uint32_t sbufGetRightCapacity(const sbuf_t *const b)
+static inline uint32_t sbufGetMaximumWriteableSize(const sbuf_t *const b)
 {
-    return (b->capacity - b->curpos - b->len);
+    return (b->capacity - b->curpos);
 }
 
 /**
@@ -233,7 +240,7 @@ static inline void sbufWriteZeros(sbuf_t *restrict const b, const uint32_t len)
  */
 static inline void sbufWriteBuf(sbuf_t *restrict const to, sbuf_t *restrict const from, uint32_t length)
 {
-    assert(sbufGetRightCapacity(to) >= length);
+    assert(sbufGetMaximumWriteableSize(to) >= length);
     memoryCopyLarge(sbufGetMutablePtr(to), sbufGetRawPtr(from), length);
 }
 
@@ -242,7 +249,7 @@ static inline void sbufWriteBuf(sbuf_t *restrict const to, sbuf_t *restrict cons
  */
 static inline sbuf_t *sbufReserveSpace(sbuf_t *const b, const uint32_t bytes)
 {
-    if (sbufGetRightCapacity(b) < bytes)
+    if (sbufGetMaximumWriteableSize(b) < bytes)
     {
         uint32_t needed_capacity = sbufGetLength(b) + bytes;
         sbuf_t  *bigger_buf      = sbufCreateWithPadding(needed_capacity, b->l_pad);

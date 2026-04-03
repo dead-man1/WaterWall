@@ -11,7 +11,6 @@ void sbufDestroy(sbuf_t *b)
     memoryFree(b->original_ptr);
 }
 
-
 sbuf_t *sbufCreateWithPadding(uint32_t minimum_capacity, uint16_t pad_left)
 {
     // Ensure pad_left is always a multiple of 32 for optimal alignment
@@ -45,25 +44,33 @@ sbuf_t *sbufCreateWithPadding(uint32_t minimum_capacity, uint16_t pad_left)
     return b;
 }
 
-
 sbuf_t *sbufCreate(uint32_t minimum_capacity)
 {
     return sbufCreateWithPadding(minimum_capacity, 0);
 }
 
+void sbufDuplicateTo(sbuf_t *b, sbuf_t *dest)
+{
+
+    if (b->curpos >= sbufGetTotalCapacity(dest))
+    {
+        return;
+    }
+
+    dest->curpos = b->curpos;
+
+    uint32_t copy_length = min(sbufGetLength(b), sbufGetMaximumWriteableSize(dest));
+    sbufSetLength(dest, copy_length);
+    memoryCopyLarge(sbufGetMutablePtr(dest), sbufGetRawPtr(b), copy_length);
+}
 
 sbuf_t *sbufDuplicate(sbuf_t *b)
 {
     sbuf_t *newbuf = sbufCreateWithPadding(sbufGetTotalCapacityNoPadding(b), b->l_pad);
-    
-    newbuf->curpos = b->curpos;
 
-    sbufSetLength(newbuf, sbufGetLength(b));
-    memoryCopyLarge(sbufGetMutablePtr(newbuf), sbufGetRawPtr(b), sbufGetLength(b));
-
+    sbufDuplicateTo(b, newbuf);
     return newbuf;
 }
-
 
 sbuf_t *sbufConcat(sbuf_t *restrict root, const sbuf_t *restrict const buf)
 {
@@ -77,11 +84,10 @@ sbuf_t *sbufConcat(sbuf_t *restrict root, const sbuf_t *restrict const buf)
     return root;
 }
 
-
 sbuf_t *sbufMoveTo(sbuf_t *restrict dest, sbuf_t *restrict source, const uint32_t bytes)
 {
     assert(bytes <= sbufGetLength(source));
-    assert(bytes <= sbufGetRightCapacity(dest));
+    assert(bytes <= sbufGetMaximumWriteableSize(dest));
 
     // dest = sbufReserveSpace(dest, bytes);
 
@@ -92,7 +98,6 @@ sbuf_t *sbufMoveTo(sbuf_t *restrict dest, sbuf_t *restrict source, const uint32_
 
     return dest;
 }
-
 
 sbuf_t *sbufSlice(sbuf_t *const b, const uint32_t bytes)
 {
