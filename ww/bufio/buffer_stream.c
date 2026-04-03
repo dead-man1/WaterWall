@@ -53,7 +53,7 @@ void bufferstreamPush(buffer_stream_t *self, sbuf_t *buf)
     // if (self->size > 0 && bs_doublequeue_t_size(&self->q) == 1)
     // {
     //     sbuf_t  *last       = *bs_doublequeue_t_front(&self->q);
-    //     uint32_t write_size = min(sbufGetRightCapacity(last), sbufGetLength(buf));
+    //     uint32_t write_size = min(sbufGetMaximumWriteableSize(last), sbufGetLength(buf));
 
     //     if (write_size > 0)
     //     {

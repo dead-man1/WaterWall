@@ -36,7 +36,7 @@ void tlsclientTunnelUpStreamInit(tunnel_t *t, line_t *l)
     if (status == kSslstatusWantIo)
     {
         sbuf_t *buf   = bufferpoolGetLargeBuffer(lineGetBufferPool(l));
-        int     avail = (int) sbufGetRightCapacity(buf);
+        int     avail = (int) sbufGetMaximumWriteableSize(buf);
 
         while (true)
         {

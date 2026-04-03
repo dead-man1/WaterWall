@@ -101,7 +101,7 @@ int tcpoverudpserverKUdpOutput(const char *data, int len, ikcpcb *kcp, void *use
     sbuf_t *buf = bufferpoolGetSmallBuffer(lineGetBufferPool(l));
 
 #ifdef DEBUG
-    if (sbufGetRightCapacity(buf) < (uint32_t) KCP_MTU || (uint32_t) len > (uint32_t) KCP_MTU)
+    if (sbufGetMaximumWriteableSize(buf) < (uint32_t) KCP_MTU || (uint32_t) len > (uint32_t) KCP_MTU)
     {
         LOGF("tcpoverudpserverKUdpOutput: logical bug detected, buffer is too small, cannot send %d bytes", len);
 

@@ -33,7 +33,7 @@ void tlsclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             do
             {
                 sbuf_t *ssl_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(l));
-                int     avail   = (int) sbufGetRightCapacity(ssl_buf);
+                int     avail   = (int) sbufGetMaximumWriteableSize(ssl_buf);
                 n               = BIO_read(ls->wbio, sbufGetMutablePtr(ssl_buf), avail);
 
                 if (n > 0)

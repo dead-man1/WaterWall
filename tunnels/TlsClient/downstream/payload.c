@@ -25,7 +25,7 @@ static inline bool flushSSLOutput(tunnel_t *t, line_t *l, tlsclient_lstate_t *ls
     do
     {
         sbuf_t *ssl_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(l));
-        int     avail   = (int) sbufGetRightCapacity(ssl_buf);
+        int     avail   = (int) sbufGetMaximumWriteableSize(ssl_buf);
         r               = BIO_read(ls->wbio, sbufGetMutablePtr(ssl_buf), avail);
         if (r > 0)
         {
@@ -103,7 +103,7 @@ static inline bool processEncryptedData(tunnel_t *t, line_t *l, tlsclient_lstate
     do
     {
         sbuf_t *ssl_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(l));
-        int     avail   = (int) sbufGetRightCapacity(ssl_buf);
+        int     avail   = (int) sbufGetMaximumWriteableSize(ssl_buf);
         n               = BIO_read(ls->wbio, sbufGetMutablePtr(ssl_buf), avail);
 
         if (n > 0)
@@ -140,8 +140,7 @@ static inline bool readDecryptedData(tunnel_t *t, line_t *l, tlsclient_lstate_t 
     {
         sbuf_t *data_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(l));
 
-        sbufSetLength(data_buf, 0);
-        int avail = (int) sbufGetRightCapacity(data_buf);
+        int avail = (int) sbufGetMaximumWriteableSize(data_buf);
         n         = SSL_read(ls->ssl, sbufGetMutablePtr(data_buf), avail);
 
         if (n > 0)

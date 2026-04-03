@@ -26,7 +26,7 @@ void tcpoverudpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
         sbuf_t *large_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(l));
 
         int read =
-            ikcp_recv(ls->k_handle, (void *) sbufGetMutablePtr(large_buf), (int) sbufGetRightCapacity(large_buf));
+            ikcp_recv(ls->k_handle, (void *) sbufGetMutablePtr(large_buf), (int) sbufGetMaximumWriteableSize(large_buf));
 
         if (read <= 0)
         {

@@ -261,7 +261,7 @@ static void nio_read(wio_t *io)
         break;
     }
 
-    unsigned int available = sbufGetRightCapacity(buf);
+    unsigned int available = sbufGetMaximumWriteableSize(buf);
     assert(available >= 1024);
 
     nread = __nio_read(io, sbufGetMutablePtr(buf), available);
