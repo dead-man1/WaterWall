@@ -216,14 +216,16 @@ if(HAVE_X86INTRIN_H OR HAVE_IMMINTRIN_H AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT 
     set(WW_HAVE_ADVANCED_CPU_INSTRUCTIONS 1)
 
     if (MSVC)
-        # MSVC: enable Haswell's AVX2
+        # MSVC dosent have a specific flag for haswell, but we can enable AVX2 which includes all the instructions we need,
+        # and MSVC will automatically enable the necessary instruction sets for AVX2
         # target_compile_options(ww PUBLIC /arch:AVX2)
     else()
         # GCC/Clang: target Haswell microarchitecture
         target_compile_options(ww PUBLIC -march=haswell)
     endif()
+    # with "haswell" target, we already have AVX
     
-    # Check compiler support for instruction sets
+
     if(MSVC)
         # For MSVC x64: SSE/SSE2/SSE3 are enabled by default, no /arch flag needed
         # x64 build - SSE3 is always available
@@ -235,6 +237,7 @@ if(HAVE_X86INTRIN_H OR HAVE_IMMINTRIN_H AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT 
         check_c_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
         check_c_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
     endif()
+
 
     # SSE3 Configuration
     if(COMPILER_SUPPORTS_SSE3)
@@ -253,16 +256,27 @@ if(HAVE_X86INTRIN_H OR HAVE_IMMINTRIN_H AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT 
 
     # AVX2 Configuration
     if(COMPILER_SUPPORTS_AVX2)
-        message(STATUS "Using AVX2")
-        if(MSVC)
-            target_compile_options(ww PUBLIC /arch:AVX2)
+        if(NOT DEV_DISABLE_AVX)
+            message(STATUS "Using AVX2")
+            if(MSVC)
+                #/arch:AVX2    # enables AVX2 (+ AVX)
+                target_compile_options(ww PUBLIC /arch:AVX2)
+            else()
+                target_compile_options(ww PUBLIC -mavx2)
+            endif()
+            set(WW_HAVE_AVX2 1)
+            set(WW_SUPPORTED_MEMCOPY_AVX2 1)
+            set(WW_CHECKSUM_AVX2 1)
+            target_sources(ww PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/net/wchecksum_avx2.c")
         else()
-            target_compile_options(ww PUBLIC -mavx2)
+            message(STATUS "AVX is disabled by a dev flag")
+            if(NOT MSVC)
+                target_compile_options(ww PUBLIC -mno-avx2 -mno-avx -mno-fma)
+            endif()
+            # for MSVC, there's no specific flag to disable AVX2, when we dont specify /arch:AVX2,
+            # it will not use AVX2 and AVX instructions, so we can just avoid adding that flag
         endif()
-        set(WW_HAVE_AVX2 1)
-        set(WW_SUPPORTED_MEMCOPY_AVX2 1)
-        set(WW_CHECKSUM_AVX2 1)
-        target_sources(ww PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/net/wchecksum_avx2.c")
+
     else()
         message(STATUS "AVX2 not supported by compiler")
     endif()
@@ -574,8 +588,13 @@ set(MI_USE_CXX OFF)
 set(MI_NO_USE_CXX ON)
 set(MI_OVERRIDE OFF)
 set(MI_XMALLOC ON)
-set(MI_OPT_ARCH ${WW_HAVE_ADVANCED_CPU_INSTRUCTIONS})
-set(MI_OPT_SIMD ${WW_HAVE_ADVANCED_CPU_INSTRUCTIONS})
+if(WW_HAVE_ADVANCED_CPU_INSTRUCTIONS AND WW_HAVE_AVX2)
+    set(MI_OPT_ARCH 1)
+    set(MI_OPT_SIMD 1)
+else()
+    set(MI_OPT_ARCH 0)
+    set(MI_OPT_SIMD 0)
+endif()
 set(MI_BUILD_SHARED OFF)
 set(MI_BUILD_OBJECT OFF)
 set(MI_BUILD_TESTS OFF)
