@@ -3,10 +3,6 @@
 #include "wlibc.h"
 
 #include "buffer_pool.h"
-#include "master_pool.h"
-#include "wloop.h"
-#include "worker.h"
-#include "wplatform.h"
 #include "wthread.h"
 
 struct raw_device_s;

@@ -9,29 +9,28 @@
 #include <linux/if.h>
 #include <linux/ipv6.h>
 #include <netinet/ip.h>
+#include <poll.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
-#include <poll.h>
 
 enum
 {
-    kReadPacketSize                       = 1500,
-    kMasterMessagePoolsbufGetLeftCapacity = 64,
-    kRawWriteChannelQueueMax              = 8192
+    kMaxWriteablePacketSize  = 1500,
+    kRawWriteChannelQueueMax = 8192,
+    kBatchSize               = 32,
+    kMaxDrain                = 31 //(kBatchSize - 1)
 };
-#define BATCH_SIZE 32
-#define MAX_DRAIN  (BATCH_SIZE - 1)
 
 static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
 {
     raw_device_t *rdev = userdata;
     sbuf_t       *buf;
 
-    struct mmsghdr     msgs[BATCH_SIZE];
-    struct iovec       iovs[BATCH_SIZE];
-    struct sockaddr_in addrs[BATCH_SIZE];
-    sbuf_t            *bufs[BATCH_SIZE];
+    struct mmsghdr     msgs[kBatchSize];
+    struct iovec       iovs[kBatchSize];
+    struct sockaddr_in addrs[kBatchSize];
+    sbuf_t            *bufs[kBatchSize];
 
     while (atomicLoadExplicit(&(rdev->running), memory_order_relaxed))
     {
@@ -69,8 +68,7 @@ static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
         bufs[0] = buf;
         cnt     = 1;
 
-
-        for (int i = 1; i < BATCH_SIZE; ++i)
+        for (int i = 1; i < kBatchSize; ++i)
         {
             sbuf_t *b2     = NULL;
             bool    closed = false;
@@ -83,10 +81,10 @@ static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
                 break;
             }
 
-            if (UNLIKELY(GLOBAL_MTU_SIZE < sbufGetLength(b2)))
+            if (UNLIKELY(kMaxWriteablePacketSize < sbufGetLength(b2)))
             {
-                LOGE("RawDevice: WriteThread: Packet size %d exceeds GLOBAL_MTU_SIZE %d", sbufGetLength(b2),
-                     GLOBAL_MTU_SIZE);
+                LOGE("RawDevice: WriteThread: Packet size %d exceeds kMaxWriteablePacketSize %d", sbufGetLength(b2),
+                     kMaxWriteablePacketSize);
                 bufferpoolReuseBuffer(rdev->writer_buffer_pool, b2);
                 terminateProgram(1);
             }
@@ -128,15 +126,15 @@ static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
             }
             if (res == -1 && (err == EAGAIN || err == EWOULDBLOCK))
             {
-                
+
                 struct pollfd pfd = {.fd = rdev->socket, .events = POLLOUT};
                 int           pr  = poll(&pfd, 1, 50 /*ms timeout*/);
                 if (pr <= 0)
                 {
-                    // either timeout, error, or still not writable; continue loop to retry 
+                    // either timeout, error, or still not writable; continue loop to retry
                     continue;
                 }
-                continue; // socket writable — try sendmmsg again 
+                continue; // socket writable — try sendmmsg again
             }
 
             // Fatal
@@ -155,7 +153,6 @@ static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
             }
             break;
         }
-
     }
     return 0;
 }
@@ -265,15 +262,15 @@ raw_device_t *rawdeviceCreate(const char *name, uint32_t mark, void *userdata)
 
         );
 
-    *rdev = (raw_device_t){.name                  = stringDuplicate(name),
-                           .running               = false,
-                           .up                    = false,
-                           .routine_writer        = routineWriteToRaw,
-                           .socket                = rsocket,
-                           .mark                  = mark,
-                           .userdata              = userdata,
-                           .writer_buffer_channel = NULL,
-                           .writer_buffer_pool    = writer_bpool};
+    *rdev = (raw_device_t) {.name                  = stringDuplicate(name),
+                            .running               = false,
+                            .up                    = false,
+                            .routine_writer        = routineWriteToRaw,
+                            .socket                = rsocket,
+                            .mark                  = mark,
+                            .userdata              = userdata,
+                            .writer_buffer_channel = NULL,
+                            .writer_buffer_pool    = writer_bpool};
 
     return rdev;
 }

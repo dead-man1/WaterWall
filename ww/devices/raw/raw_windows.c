@@ -20,7 +20,7 @@ extern unsigned int  windivert_sys_len;
 
 enum
 {
-    kReadPacketSize                       = 1500,
+    kMaxWriteablePacketSize               = 1500,
     kMasterMessagePoolsbufGetLeftCapacity = 64,
     kRawWriteChannelQueueMax              = 256
 };
@@ -318,13 +318,11 @@ static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
             return 0;
         }
 
-        if (UNLIKELY(GLOBAL_MTU_SIZE < sbufGetLength(buf)))
+        if (UNLIKELY(kMaxWriteablePacketSize < sbufGetLength(buf)))
         {
-            LOGE("RawDevice: WriteThread: Packet size %d exceeds GLOBAL_MTU_SIZE %d", sbufGetLength(buf),
-                 GLOBAL_MTU_SIZE);
-            LOGF("RawDevice: This is related to the MTU size, (core.json) please set a correct value for 'mtu' in "
-                 "the "
-                 "'misc' section");
+            LOGE("RawDevice: WriteThread: Packet size %d exceeds kMaxWriteablePacketSize %d", sbufGetLength(buf),
+                 kMaxWriteablePacketSize);
+           
             bufferpoolReuseBuffer(rdev->writer_buffer_pool, buf);
             terminateProgram(1);
         }
