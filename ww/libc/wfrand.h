@@ -109,3 +109,13 @@ static inline void frandInit(void)
         fastRand64();
     }
 }
+
+
+
+static inline bool roll100(int chance_percent)
+{
+    if (chance_percent <= 0) return false;
+    if (chance_percent >= 100) return true;
+    uint32_t r = fastRand() % 100;
+    return r < (uint32_t) chance_percent;
+}
