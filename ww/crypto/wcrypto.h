@@ -17,9 +17,14 @@
 #pragma once
 #include "wlibc.h"
 
-#if defined (WCRYPTO_BACKEND_SODIUM) || defined (WCRYPTO_BACKEND_SOFTWARE)
+#if defined (WCRYPTO_BACKEND_SODIUM) 
 
 #include "sodium.h"
+#endif
+
+#if defined (WCRYPTO_BACKEND_SODIUM) || defined (WCRYPTO_BACKEND_SOFTWARE)
+
+
 
 /**
  * @brief Context for BLAKE2s hash computations.
