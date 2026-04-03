@@ -4,21 +4,14 @@
 
 #include "buffer_pool.h"
 #include "master_pool.h"
-#include "wloop.h"
 #include "worker.h"
-#include "wplatform.h"
 #include "wthread.h"
 
 struct capture_device_s;
 
 typedef void (*CaptureReadEventHandle)(struct capture_device_s *cdev, void *userdata, sbuf_t *buf, wid_t tid);
 
-enum
-{
-    kReadPacketSize             = 1500, // its ok to be >= mtu
-    kMaxReadDistributeQueueSize = 128,
-    kCaptureWriteChannelQueueMax = 128
-};
+
 
 typedef struct capture_device_s
 {

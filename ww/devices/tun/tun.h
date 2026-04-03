@@ -4,9 +4,7 @@
 
 #include "buffer_pool.h"
 #include "master_pool.h"
-#include "wloop.h"
 #include "worker.h"
-#include "wplatform.h"
 #include "wthread.h"
 
 #ifdef OS_WIN
@@ -14,7 +12,6 @@
 #include <mstcpip.h>
 #include <winternl.h>
 #include <ws2ipdef.h>
-
 #endif
 
 #define TUN_LOG_EVERYTHING false
@@ -23,12 +20,7 @@ struct tun_device_s;
 
 typedef void (*TunReadEventHandle)(struct tun_device_s *tdev, void *userdata, sbuf_t *buf, wid_t tid);
 
-enum
-{
-    kReadPacketSize             = 1500, // its ok to be >= mtu
-    kTunWriteChannelQueueMax    = 1024,
-    kMaxReadDistributeQueueSize = 128
-};
+
 
 typedef struct tun_device_s
 {

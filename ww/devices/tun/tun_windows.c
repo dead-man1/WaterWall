@@ -14,6 +14,14 @@
 
 #include "loggers/internal_logger.h"
 
+
+enum
+{
+    kReadPacketSize             = 1500, // its ok to be >= mtu
+    kTunWriteChannelQueueMax    = 1024,
+    kMaxReadDistributeQueueSize = 128
+};
+
 // External variables
 extern unsigned char wintun_dll[];
 extern unsigned int  wintun_dll_len;
@@ -333,13 +341,11 @@ static WTHREAD_ROUTINE(routineWriteToTun)
 
         if (UNLIKELY(GLOBAL_MTU_SIZE < sbufGetLength(buf)))
         {
-            LOGE("TunDevice: WriteThread: Packet size %d exceeds GLOBAL_MTU_SIZE %d", sbufGetLength(buf),
+            LOGW("TunDevice: WriteThread: discarded a packet -> size %d exceeds GLOBAL_MTU_SIZE %d", sbufGetLength(buf),
                  GLOBAL_MTU_SIZE);
-            LOGF("TunDevice: This is related to the MTU size, (core.json) please set a correct value for 'mtu' in "
-                 "the "
-                 "'misc' section");
+
             bufferpoolReuseBuffer(tdev->writer_buffer_pool, buf);
-            terminateProgram(1);
+            continue;
         }
 
         BYTE *Packet = WintunAllocateSendPacket(Session, sbufGetLength(buf));

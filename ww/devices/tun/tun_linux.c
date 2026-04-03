@@ -24,6 +24,14 @@
 #error "Unsupported OS"
 #endif
 
+enum
+{
+    kReadPacketSize             = 1500, // its ok to be >= mtu
+    kTunWriteChannelQueueMax    = 1024,
+    kMaxReadDistributeQueueSize = 128
+};
+
+
 /**
  * Event message structure for TUN device communication
  */
@@ -267,6 +275,17 @@ static WTHREAD_ROUTINE(routineWriteToTun)
             LOGD("TunDevice: routine write will exit due to channel closed");
             return 0;
         }
+
+        
+        if (UNLIKELY(GLOBAL_MTU_SIZE < sbufGetLength(buf)))
+        {
+            LOGW("TunDevice: WriteThread: discarded a packet -> size %d exceeds GLOBAL_MTU_SIZE %d", sbufGetLength(buf),
+                 GLOBAL_MTU_SIZE);
+
+            bufferpoolReuseBuffer(tdev->writer_buffer_pool, buf);
+            continue;
+        }
+
 
         nwrite = write(tdev->handle, sbufGetRawPtr(buf), sbufGetLength(buf));
         bufferpoolReuseBuffer(tdev->writer_buffer_pool, buf);

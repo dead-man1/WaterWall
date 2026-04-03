@@ -2,7 +2,6 @@
 #include "generic_pool.h"
 #include "global_state.h"
 #include "loggers/internal_logger.h"
-#include "wchan.h"
 #include "worker.h"
 #include "wproc.h"
 #include <arpa/inet.h>
@@ -21,8 +20,10 @@
 
 enum
 {
-    kEthDataLen        = 1500,
-    kNetfilterQueueLen = 16384 * 32
+    kReadPacketSize             = 1500, // its ok to be >= mtu
+    kMaxReadDistributeQueueSize = 128,
+    kEthDataLen                 = 1500,
+    kNetfilterQueueLen          = 16384 * 32
 };
 
 static const char *ip_tables_enable_queue_mi  = "iptables -I INPUT -s %s -j NFQUEUE --queue-num %d";
@@ -426,7 +427,7 @@ static WTHREAD_ROUTINE(routineReadFromCapture) // NOLINT
                 if (UNLIKELY(sbufGetLength(bufs[queued_count]) > GLOBAL_MTU_SIZE))
                 {
                     // we are capturing packets and this can happen, so we just log it
-                    LOGW("CaptureDevice: ReadThread: read packet size %d exceeds GLOBAL_MTU_SIZE %d",
+                    LOGW("CaptureDevice: ReadThread: discarded a packet -> size %d exceeds GLOBAL_MTU_SIZE %d",
                          sbufGetLength(bufs[queued_count]), GLOBAL_MTU_SIZE);
                     bufferpoolReuseBuffer(cdev->reader_buffer_pool, bufs[queued_count]);
                     continue;
@@ -610,19 +611,19 @@ capture_device_t *caputredeviceCreate(const char *name, const char *capture_ip, 
 
     capture_device_t *cdev = memoryAllocate(sizeof(capture_device_t));
 
-    *cdev = (capture_device_t){.name                   = stringDuplicate(name),
-                               .running                = false,
-                               .up                     = false,
-                               .routine_reader         = routineReadFromCapture,
-                               .socket                 = socket_netfilter,
-                               .queue_number           = queue_number,
-                               .read_event_callback    = cb,
-                               .userdata               = userdata,
-                               .reader_message_pool    = masterpoolCreateWithCapacity(RAM_PROFILE * 2),
-                               .netfilter_queue_number = queue_number,
-                               .bringup_command        = bringup_cmd,
-                               .bringdown_command      = bringdown_cmd,
-                               .reader_buffer_pool     = reader_bpool};
+    *cdev = (capture_device_t) {.name                   = stringDuplicate(name),
+                                .running                = false,
+                                .up                     = false,
+                                .routine_reader         = routineReadFromCapture,
+                                .socket                 = socket_netfilter,
+                                .queue_number           = queue_number,
+                                .read_event_callback    = cb,
+                                .userdata               = userdata,
+                                .reader_message_pool    = masterpoolCreateWithCapacity(RAM_PROFILE * 2),
+                                .netfilter_queue_number = queue_number,
+                                .bringup_command        = bringup_cmd,
+                                .bringdown_command      = bringdown_cmd,
+                                .reader_buffer_pool     = reader_bpool};
     if (pipe(cdev->linux_pipe_fds) != 0)
     {
         LOGE("CaptureDevice: failed to create pipe for linux_pipe_fds");
