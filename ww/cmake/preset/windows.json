@@ -171,6 +171,14 @@
             ]
         },
         {
+            "name": "windows-msys-clang-debug",
+            "configurePreset": "windows-msys-clang",
+            "configuration": "Debug",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
             "name": "windows-mingw",
             "configurePreset": "windows-mingw",
             "inherits": [

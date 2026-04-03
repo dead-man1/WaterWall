@@ -210,13 +210,34 @@
     #define R_OK            (1<<2)  /* test for read permission */
     #endif
 
-    // stat
+   
+
+    #if defined(__clang__)
+        #include <sys/stat.h>
+        #include <direct.h>
+
+        #define access    _access
+        #define stat      _stat64
+        #define unlink    _unlink
+        #define stricmp   _stricmp
+        #define strnicmp  _strnicmp
+        #define S_IFMT    _S_IFMT
+        #define S_IFREG   _S_IFREG
+        #define S_IFDIR   _S_IFDIR
+        #define write     _write
+        #define fileno    _fileno
+        #define read      _read
+        #define mkdir(p,m) _mkdir(p)
+    #endif
+
+     // stat
     #ifndef S_ISREG
     #define S_ISREG(st_mode) (((st_mode) & S_IFMT) == S_IFREG)
     #endif
     #ifndef S_ISDIR
     #define S_ISDIR(st_mode) (((st_mode) & S_IFMT) == S_IFDIR)
     #endif
+
 #else
     #include <unistd.h>
     #include <dirent.h>     // for mkdir,rmdir,chdir,getcwd
