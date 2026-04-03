@@ -33,7 +33,16 @@ endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE} (ignored on multi-config generators)")
 
 # Set static runtime library for MSVC - this is the modern CMake way (dont move this line)
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_definitions(
+    _ITERATOR_DEBUG_LEVEL=0
+    _HAS_ITERATOR_DEBUGGING=0
+  )
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+else()
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 
 #--------------------------------------------------------------------------------
 # Executable and C/CXX Standards

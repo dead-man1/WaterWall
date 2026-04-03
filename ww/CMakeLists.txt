@@ -813,7 +813,7 @@ if(NOT MSVC)
         # This prevents -D flags and -pedantic from causing errors when assembling .s files
         target_compile_options(ww PRIVATE $<$<AND:$<COMPILE_LANGUAGE:ASM>,$<C_COMPILER_ID:Clang>>:-Wno-unused-command-line-argument>)
         # prevent defining _MSC_VER
-        target_compile_options(ww PUBLIC -fno-ms-compatibility)
+        target_compile_options(ww PUBLIC -fno-ms-compatibility -Wno-shorten-64-to-32)
     endif()
 endif()
 
