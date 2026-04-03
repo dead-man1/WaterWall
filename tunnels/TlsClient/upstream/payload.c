@@ -44,7 +44,7 @@ void tlsclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
                     if (! lineIsAlive(l))
                     {
-                        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+                        lineReuseBuffer(l, buf);
                         lineUnlock(l);
                         return;
                     }
@@ -52,20 +52,20 @@ void tlsclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
                 else if (! BIO_should_retry(ls->wbio))
                 {
                     // If BIO_should_retry() is false then the cause is an error condition.
-                    bufferpoolReuseBuffer(lineGetBufferPool(l), ssl_buf);
-                    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+                    lineReuseBuffer(l, ssl_buf);
+                    lineReuseBuffer(l, buf);
                     goto failed;
                 }
                 else
                 {
-                    bufferpoolReuseBuffer(lineGetBufferPool(l), ssl_buf);
+                    lineReuseBuffer(l, ssl_buf);
                 }
             } while (n > 0);
         }
 
         if (status == kSslstatusFail)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
             goto failed;
         }
 
@@ -75,7 +75,7 @@ void tlsclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         }
     }
     lineUnlock(l);
-    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+    lineReuseBuffer(l, buf);
 
     return;
 

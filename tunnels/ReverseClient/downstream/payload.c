@@ -33,7 +33,7 @@ void reverseclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
         if (! lineIsAlive(dl))
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(dl), buf);
+            lineReuseBuffer(dl, buf);
             lineUnlock(dl);
             return;
         }

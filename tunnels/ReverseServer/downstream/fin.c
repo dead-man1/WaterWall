@@ -10,7 +10,7 @@ void reverseserverTunnelDownStreamFinish(tunnel_t *t, line_t *u)
 
     if (uls->buffering)
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(u), uls->buffering);
+        lineReuseBuffer(u, uls->buffering);
         uls->buffering = NULL;
     }
 

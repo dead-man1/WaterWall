@@ -19,7 +19,7 @@ void httpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         if (ret != (nghttp2_ssize) consumed)
         {
             // assert(false);
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
 
             httpserverV2LinestateDestroy(ls);
 
@@ -33,7 +33,7 @@ void httpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
         if (! httpserverV2PullAndSendNgHttp2SendableData(t, ls))
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
             lineUnlock(l);
             return;
         }
@@ -44,7 +44,7 @@ void httpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             contextApplyOnNextTunnelU(ctx, t);
             if (! lineIsAlive(l))
             {
-                bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+                lineReuseBuffer(l, buf);
                 lineUnlock(l);
                 return;
             }
@@ -52,7 +52,7 @@ void httpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
         if (! httpserverV2PullAndSendNgHttp2SendableData(t, ls))
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
             lineUnlock(l);
             return;
         }
@@ -60,7 +60,7 @@ void httpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
       
         if (nghttp2_session_want_read(ls->session) == 0 && nghttp2_session_want_write(ls->session) == 0)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
             httpserverV2LinestateDestroy(ls);
 
             tunnelNextUpStreamFinish(t, l);
@@ -73,5 +73,5 @@ void httpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         lineUnlock(l);
     }
 
-    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+    lineReuseBuffer(l, buf);
 }

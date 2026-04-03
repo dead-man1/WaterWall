@@ -36,7 +36,7 @@ void halfduplexserverTunnelUpStreamFinish(tunnel_t *t, line_t *l)
     case kCsUnkown: {
         if (ls->buffering)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), ls->buffering);
+            lineReuseBuffer(l, ls->buffering);
             ls->buffering = NULL;
         }
         halfduplexserverLinestateDestroy(ls);
@@ -59,7 +59,7 @@ void halfduplexserverTunnelUpStreamFinish(tunnel_t *t, line_t *l)
         mutexUnlock(&(ts->upload_line_map_mutex));
         if (ls->buffering)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), ls->buffering);
+            lineReuseBuffer(l, ls->buffering);
             ls->buffering = NULL;
         }
         halfduplexserverLinestateDestroy(ls);

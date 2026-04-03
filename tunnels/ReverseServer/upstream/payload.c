@@ -19,7 +19,7 @@ static bool checkBufferSizeLimitD(tunnel_t *t, line_t *d, reverseserver_lstate_t
     {
         LOGD("ReverseServer: Upstream payload is too large, dropping connection");
 
-        bufferpoolReuseBuffer(lineGetBufferPool(d), buf);
+        lineReuseBuffer(d, buf);
         if (dls->handshaked)
         {
             reverseserverRemoveConnectionD(this_tb, dls);
@@ -57,7 +57,7 @@ static bool processHandshakeD(tunnel_t *t, line_t *d, reverseserver_lstate_t *dl
         if (! validateHandshake(buf))
         {
             LOGD("ReverseServer: Handshake failed, dropping connection");
-            bufferpoolReuseBuffer(lineGetBufferPool(d), buf);
+            lineReuseBuffer(d, buf);
             reverseserverLinestateDestroy(dls);
             tunnelPrevDownStreamFinish(t, d);
             return false;
@@ -69,7 +69,7 @@ static bool processHandshakeD(tunnel_t *t, line_t *d, reverseserver_lstate_t *dl
 
         if (sbufGetLength(buf) <= 0)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(d), buf);
+            lineReuseBuffer(d, buf);
         }
         else
         {
@@ -119,7 +119,7 @@ static bool pairWithLocalUpstreamConnection(tunnel_t *t, line_t *d, reverseserve
     {
         if (dbuf)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(d), dbuf);
+            lineReuseBuffer(d, dbuf);
         }
         lineUnlock(d);
         return true;

@@ -10,7 +10,7 @@ void udpovertcpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     if(sbufGetLength(buf) <= 0)
     {
         LOGF("UdpOverTcpClient: Received empty payload, this is a bug, our eventloop logic dose not allow read of size 0");
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
         terminateProgram(1);
         return;
     }
@@ -19,7 +19,7 @@ void udpovertcpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     if(packet_length > kMaxAllowedPacketLength)
     {
         LOGW("UdpOverTcpClient: Packet length exceeds maximum allowed size: %u > %u , dropped", packet_length, kMaxAllowedPacketLength);
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
         return;
     }
     // safely cast to uint16_t, since kMaxAllowedPacketLength is lower than 65536

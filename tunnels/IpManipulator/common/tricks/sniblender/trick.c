@@ -157,11 +157,11 @@ void sniblendertrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
                 {
                     if (crafted_packets[j] != NULL)
                     {
-                        bufferpoolReuseBuffer(lineGetBufferPool(l), crafted_packets[j]);
+                        lineReuseBuffer(l, crafted_packets[j]);
                         crafted_packets[j] = NULL;
                     }
                 }
-                bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+                lineReuseBuffer(l, buf);
 
                 lineUnlock(l);
 
@@ -170,7 +170,7 @@ void sniblendertrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         }
 
         lineUnlock(l);
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
         return;
     }
 

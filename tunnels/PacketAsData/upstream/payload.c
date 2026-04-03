@@ -13,7 +13,7 @@ void packetasdataTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     }
     if (ls->paused)
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
         return;
     }
     tunnelNextUpStreamPayload(t, ls->line, buf);

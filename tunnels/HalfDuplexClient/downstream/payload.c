@@ -12,7 +12,7 @@ void halfduplexclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
     }
     else
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
 
     }
 }

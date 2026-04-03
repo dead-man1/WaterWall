@@ -51,7 +51,7 @@ void tlsclientTunnelUpStreamInit(tunnel_t *t, line_t *l)
             if (! BIO_should_retry(ls->wbio))
             {
                 // If BIO_should_retry() is false then the cause is an error condition.
-                bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+                lineReuseBuffer(l, buf);
                 goto failed;
             }
             else

@@ -66,7 +66,7 @@ static bool handleCloseFrame(tunnel_t *t, line_t *parent_l, mux_frame_t *frame, 
     wid_t   wid     = lineGetWID(parent_l);
 
     LOGD("MuxClient: DownStreamPayload: Close frame received, cid: %u", frame->cid);
-    bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+    lineReuseBuffer(parent_l, frame_buffer);
     muxclientLeaveConnection(child_ls);
     muxclientLinestateDestroy(child_ls);
     tunnelPrevDownStreamFinish(t, child_l);
@@ -96,7 +96,7 @@ static void processFrameForChild(tunnel_t *t, line_t *parent_l, mux_frame_t *fra
         LOGE("MuxClient: DownStreamPayload: Open frame received, cid: %u, but no Open flag should be sent to "
              "MuxClient node",
              frame->cid);
-        bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+        lineReuseBuffer(parent_l, frame_buffer);
         break;
 
     case kMuxFlagClose:
@@ -108,13 +108,13 @@ static void processFrameForChild(tunnel_t *t, line_t *parent_l, mux_frame_t *fra
 
     case kMuxFlagFlowPause:
         // LOGD("MuxClient: DownStreamPayload: FlowPause frame received, cid: %u", frame->cid);
-        bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+        lineReuseBuffer(parent_l, frame_buffer);
         tunnelPrevDownStreamPause(t, child_l);
         break;
 
     case kMuxFlagFlowResume:
         // LOGD("MuxClient: DownStreamPayload: FlowResume frame received, cid: %u", frame->cid);
-        bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+        lineReuseBuffer(parent_l, frame_buffer);
         tunnelPrevDownStreamResume(t, child_l);
         break;
 
@@ -126,7 +126,7 @@ static void processFrameForChild(tunnel_t *t, line_t *parent_l, mux_frame_t *fra
 
     default:
         LOGD("MuxClient: DownStreamPayload: Unknown frame type received, cid: %u", frame->cid);
-        bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+        lineReuseBuffer(parent_l, frame_buffer);
         break;
     }
 }
@@ -194,7 +194,7 @@ void muxclientTunnelDownStreamPayload(tunnel_t *t, line_t *parent_l, sbuf_t *buf
         if (! child_ls)
         {
             // LOGD("MuxClient: DownStreamPayload: No child line state found for cid: %u", frame.cid);
-            bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+            lineReuseBuffer(parent_l, frame_buffer);
             continue;
         }
 

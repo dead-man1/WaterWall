@@ -22,7 +22,7 @@ static void localAsyncCloseLineDownStream(worker_t *worker, void *arg1, void *ar
     assert(ls->upload_line != NULL);
     if (ls->buffering)
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(l), ls->buffering);
+        lineReuseBuffer(l, ls->buffering);
     }
     halfduplexserverLinestateDestroy(ls);
     tunnelPrevDownStreamFinish(t, l);

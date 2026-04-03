@@ -42,7 +42,7 @@ void tcpoverudpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         ikcp_send(ls->k_handle, (void *) sbufGetMutablePtr(buf), write_size + kFrameHeaderLength);
         sbufShiftRight(buf, write_size + kFrameHeaderLength);
     }
-    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+    lineReuseBuffer(l, buf);
 
     // Update KCP state after sending to trigger immediate transmission
     tcpoverudpclientUpdateKcp(ls, false);

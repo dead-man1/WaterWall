@@ -85,7 +85,7 @@ static bool handlePipeToWorker(tunnel_t *t, line_t *l, sbuf_t *buf, wid_t target
         return true;
     }
 
-    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+    lineReuseBuffer(l, buf);
     tunnelPrevDownStreamFinish(t, l);
     return true;
 }
@@ -117,7 +117,7 @@ static bool handleUploadConnectionFound(tunnel_t *t, line_t *l, sbuf_t *buf, hal
 
     if (! initializeMainLineConnection(t, main_line))
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
         return true;
     }
 
@@ -127,7 +127,7 @@ static bool handleUploadConnectionFound(tunnel_t *t, line_t *l, sbuf_t *buf, hal
         tunnelNextUpStreamPayload(t, main_line, buf);
         return true;
     }
-    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+    lineReuseBuffer(l, buf);
     return true;
 }
 
@@ -145,7 +145,7 @@ static bool handleUploadConnectionNotFound(tunnel_t *t, line_t *l, sbuf_t *buf, 
     if (! push_succeed)
     {
         LOGW("HalfDuplexServer: duplicate upload connection closed, hash:%lu", hash);
-        bufferpoolReuseBuffer(lineGetBufferPool(l), ls->buffering);
+        lineReuseBuffer(l, ls->buffering);
         ls->buffering = NULL;
         halfduplexserverLinestateDestroy(ls);
         tunnelPrevDownStreamFinish(t, l);
@@ -169,7 +169,7 @@ static bool handleDownloadConnectionFound(tunnel_t *t, line_t *l, sbuf_t *buf, h
     hmap_cons_t_erase_at(&(ts->upload_line_map), f_iter);
     mutexUnlock(&(ts->upload_line_map_mutex));
 
-    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+    lineReuseBuffer(l, buf);
 
     ls->state                     = kCsDownloadDirect;
     ls->upload_line               = upload_line_ls->upload_line;
@@ -184,7 +184,7 @@ static bool handleDownloadConnectionFound(tunnel_t *t, line_t *l, sbuf_t *buf, h
 
     if (! initializeMainLineConnection(t, main_line))
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf_upline);
+        lineReuseBuffer(l, buf_upline);
         return true;
     }
 
@@ -195,7 +195,7 @@ static bool handleDownloadConnectionFound(tunnel_t *t, line_t *l, sbuf_t *buf, h
     }
     else
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf_upline);
+        lineReuseBuffer(l, buf_upline);
     }
     return true;
 }
@@ -203,7 +203,7 @@ static bool handleDownloadConnectionNotFound(tunnel_t *t, line_t *l, sbuf_t *buf
                                              halfduplexserver_lstate_t *ls, hash_t hash)
 {
     mutexUnlock(&(ts->upload_line_map_mutex));
-    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+    lineReuseBuffer(l, buf);
 
     ls->state = kCsDownloadInTable;
 
@@ -282,7 +282,7 @@ static void handleUploadInTable(tunnel_t *t, line_t *l, sbuf_t *buf, halfduplexs
         hmap_cons_t_erase_at(&(ts->upload_line_map), f_iter);
         mutexUnlock(&(ts->upload_line_map_mutex));
 
-        bufferpoolReuseBuffer(lineGetBufferPool(l), ls->buffering);
+        lineReuseBuffer(l, ls->buffering);
         ls->buffering = NULL;
         halfduplexserverLinestateDestroy(ls);
         tunnelPrevDownStreamFinish(t, l);
@@ -324,13 +324,13 @@ void halfduplexserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         }
         else
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
         }
         break;
 
     case kCsDownloadDirect:
     case kCsDownloadInTable:
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
         break;
     }
 }

@@ -11,7 +11,7 @@ void tcpoverudpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     ls->ping_sent = false;
 
     ikcp_input(ls->k_handle, (void *) sbufGetMutablePtr(buf), (int) sbufGetLength(buf));
-    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+    lineReuseBuffer(l, buf);
 
     // Update KCP state after input to process received data
 
@@ -30,7 +30,7 @@ void tcpoverudpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
         if (read <= 0)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), large_buf);
+            lineReuseBuffer(l, large_buf);
             break; // No more data available
         }
 
@@ -40,7 +40,7 @@ void tcpoverudpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
         if (! ls->can_upstream)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), large_buf);
+            lineReuseBuffer(l, large_buf);
             break;
         }
 
@@ -50,7 +50,7 @@ void tcpoverudpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         }
         else if (frame_flag == kFrameFlagClose)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), large_buf);
+            lineReuseBuffer(l, large_buf);
 
             tcpoverudpserverLinestateDestroy(ls);
             tunnelNextUpStreamFinish(t, l);
@@ -60,12 +60,12 @@ void tcpoverudpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         else if (frame_flag == kFrameFlagPing)
         {
             // kcp it self will send ack
-            bufferpoolReuseBuffer(lineGetBufferPool(l), large_buf);
+            lineReuseBuffer(l, large_buf);
         }
         else
         {
             LOGE("TcpOverUdpServer: Unknown frame flag: %02X", frame_flag);
-            bufferpoolReuseBuffer(lineGetBufferPool(l), large_buf);
+            lineReuseBuffer(l, large_buf);
 
             break;
         }

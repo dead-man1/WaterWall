@@ -23,7 +23,7 @@ static sbuf_t *tryReadCompleteFrame(muxserver_lstate_t *parent_ls, mux_frame_t *
 static bool handleOpenFrame(tunnel_t *t, line_t *parent_l, muxserver_lstate_t *parent_ls, mux_frame_t *frame,
                             sbuf_t *frame_buffer)
 {
-    bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+    lineReuseBuffer(parent_l, frame_buffer);
     LOGD("MuxServer: UpStreamPayload: Open frame received, cid: %u", frame->cid);
 
     line_t             *child_l      = lineCreate(tunnelchainGetLinePools(tunnelGetChain(t)), lineGetWID(parent_l));
@@ -91,7 +91,7 @@ static void processFrameForChild(tunnel_t *t, line_t *parent_l, mux_frame_t *fra
     {
     case kMuxFlagClose:
         LOGD("MuxServer: UpStreamPayload: Close frame received, cid: %u", frame->cid);
-        bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+        lineReuseBuffer(parent_l, frame_buffer);
         muxserverLeaveConnection(child_ls);
         muxserverLinestateDestroy(child_ls);
         tunnelNextUpStreamFinish(t, child_l);
@@ -100,13 +100,13 @@ static void processFrameForChild(tunnel_t *t, line_t *parent_l, mux_frame_t *fra
 
     case kMuxFlagFlowPause:
         // LOGD("MuxServer: UpStreamPayload: FlowPause frame received, cid: %u", frame->cid);
-        bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+        lineReuseBuffer(parent_l, frame_buffer);
         tunnelNextUpStreamPause(t, child_l);
         break;
 
     case kMuxFlagFlowResume:
         // LOGD("MuxServer: UpStreamPayload: FlowResume frame received, cid: %u", frame->cid);
-        bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+        lineReuseBuffer(parent_l, frame_buffer);
         tunnelNextUpStreamResume(t, child_l);
         break;
 
@@ -118,7 +118,7 @@ static void processFrameForChild(tunnel_t *t, line_t *parent_l, mux_frame_t *fra
 
     default:
         // LOGD("MuxServer: UpStreamPayload: Unknown frame type received, cid: %u", frame->cid);
-        bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+        lineReuseBuffer(parent_l, frame_buffer);
         break;
     }
 }
@@ -190,7 +190,7 @@ void muxserverTunnelUpStreamPayload(tunnel_t *t, line_t *parent_l, sbuf_t *buf)
         if (! child_ls)
         {
             // LOGD("MuxServer: UpStreamPayload: No child line state found for cid: %u", frame.cid);
-            bufferpoolReuseBuffer(lineGetBufferPool(parent_l), frame_buffer);
+            lineReuseBuffer(parent_l, frame_buffer);
             continue;
         }
 

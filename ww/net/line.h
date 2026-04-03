@@ -123,9 +123,6 @@ static inline void lineUnRefInternal(line_t *const l)
 
     debugAssertZeroBuf(&l->tunnels_line_state[0], genericpoolGetItemSize(l->pools[wid]) - sizeof(line_t));
 
-
-
-
     if (l->routing_context.dest_ctx.domain != NULL && ! l->routing_context.dest_ctx.domain_constant)
     {
         memoryFree(l->routing_context.dest_ctx.domain);
@@ -231,6 +228,11 @@ static inline wid_t lineGetWID(const line_t *const line)
 static inline buffer_pool_t *lineGetBufferPool(const line_t *const line)
 {
     return getWorkerBufferPool(lineGetWID(line));
+}
+
+static inline void *lineReuseBuffer(const line_t *const line, sbuf_t *b)
+{
+    bufferpoolReuseBuffer(lineGetBufferPool(line), b);
 }
 
 static inline void lineMarkEstablished(line_t *const line)

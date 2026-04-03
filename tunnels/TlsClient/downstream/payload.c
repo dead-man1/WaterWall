@@ -38,7 +38,7 @@ static inline bool flushSSLOutput(tunnel_t *t, line_t *l, tlsclient_lstate_t *ls
         }
         else
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), ssl_buf);
+            lineReuseBuffer(l, ssl_buf);
             break;
         }
     } while (r > 0);
@@ -117,12 +117,12 @@ static inline bool processEncryptedData(tunnel_t *t, line_t *l, tlsclient_lstate
         }
         else if (! BIO_should_retry(ls->wbio))
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), ssl_buf);
+            lineReuseBuffer(l, ssl_buf);
             return false;
         }
         else
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), ssl_buf);
+            lineReuseBuffer(l, ssl_buf);
         }
     } while (n > 0);
 
@@ -155,7 +155,7 @@ static inline bool readDecryptedData(tunnel_t *t, line_t *l, tlsclient_lstate_t 
         }
         else
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), data_buf);
+            lineReuseBuffer(l, data_buf);
             status = getSslStatus(ls->ssl, n);
             if (status == kSslstatusFail)
             {
@@ -186,7 +186,7 @@ void tlsclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         if (n <= 0)
         {
             /* if BIO write fails, assume unrecoverable */
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
             goto failed;
         }
         sbufShiftRight(buf, n);
@@ -197,7 +197,7 @@ void tlsclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
             if (handshake_result == -1)
             {
-                bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+                lineReuseBuffer(l, buf);
                 goto failed;
             }
 
@@ -211,26 +211,26 @@ void tlsclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
         if (! processEncryptedData(t, l, ls))
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
             goto failed;
         }
 
         if (! readDecryptedData(t, l, ls))
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
             goto failed;
         }
 
         if (! flushSslProtocolMessages(t, l, ls))
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+            lineReuseBuffer(l, buf);
             lineUnlock(l);
             return;
         }
     }
 
     // done with socket data
-    bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+    lineReuseBuffer(l, buf);
     lineUnlock(l);
     return;
 

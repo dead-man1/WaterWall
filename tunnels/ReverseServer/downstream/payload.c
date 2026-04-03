@@ -19,7 +19,7 @@ static bool checkBufferSizeLimitU(tunnel_t *t, line_t *u, reverseserver_lstate_t
     {
         LOGD("ReverseServer: Downstream payload is too large, dropping connection");
 
-        bufferpoolReuseBuffer(lineGetBufferPool(u), buf);
+        lineReuseBuffer(u, buf);
         if (uls->handshaked)
         {
             reverseserverRemoveConnectionU(this_tb, uls);
@@ -67,7 +67,7 @@ static bool pairWithLocalDownstreamConnection(tunnel_t *t, line_t *u, reverseser
 
     if (! lineIsAlive(d))
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(d), dbuf);
+        lineReuseBuffer(d, dbuf);
         lineUnlock(d);
         return true;
     }

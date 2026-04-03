@@ -21,7 +21,7 @@ void reverseserverTunnelUpStreamFinish(tunnel_t *t, line_t *d)
     {
         if (dls->buffering != NULL)
         {
-            bufferpoolReuseBuffer(lineGetBufferPool(d), dls->buffering);
+            lineReuseBuffer(d, dls->buffering);
             dls->buffering = NULL;
         }
 
