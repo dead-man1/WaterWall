@@ -13,7 +13,7 @@ static void localThreadDataaspacketTunnelDownStreamPayload(worker_t *worker, voi
 
     if (ls->line == NULL || ls->paused)
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
         return;
     }
 
@@ -27,7 +27,7 @@ void dataaspacketTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     tunnelPrevDownStreamPayload(t, tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)), buf);
     if (ls->paused)
     {
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
         return;
     }
 
@@ -50,7 +50,7 @@ void dataaspacketTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
                 sendWorkerMessage(wi,localThreadDataaspacketTunnelDownStreamPayload,t,l,buf);
             }
         }
-        bufferpoolReuseBuffer(lineGetBufferPool(l), buf);
+        lineReuseBuffer(l, buf);
         return;
     }
     tunnelPrevDownStreamPayload(t, ls->line, buf);
