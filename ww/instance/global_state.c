@@ -368,6 +368,7 @@ static void runTimedTask(wtimer_t *timer)
     cb(getWorker(getWID()), msg->arg1, msg->arg2, msg->arg3);
 
     masterpoolReuseItems(GSTATE.masterpool_messages, (void **) &msg, 1, NULL);
+    wtimerDelete(timer);
 }
 
 static void setupTimedTask(worker_t *worker, void *arg1, void *arg2, void *arg3)
@@ -378,7 +379,7 @@ static void setupTimedTask(worker_t *worker, void *arg1, void *arg2, void *arg3)
     worker_msg_t *msg      = (worker_msg_t *) arg2;
     discard       arg3;
 
-    wtimer_t *k_timer = wtimerAdd(worker->loop, runTimedTask, delay_ms, INFINITE);
+    wtimer_t *k_timer = wtimerAdd(worker->loop, runTimedTask, delay_ms, 1);
 
     weventSetUserData(k_timer, msg);
 }
