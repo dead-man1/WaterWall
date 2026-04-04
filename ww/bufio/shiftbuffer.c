@@ -22,6 +22,12 @@ sbuf_t *sbufCreateWithPadding(uint32_t minimum_capacity, uint16_t pad_left)
             (max(kCpuLineCacheSize, minimum_capacity) + kCpuLineCacheSizeMin1) & (~kCpuLineCacheSizeMin1);
     }
 
+    if (minimum_capacity > UINT32_MAX - pad_left)
+    {
+        printError("sbuf: capacity overflow (minimum_capacity + pad_left)");
+        exit(1);
+    }
+
     uint32_t real_cap = minimum_capacity + pad_left;
 
     size_t total_size = real_cap + sizeof(sbuf_t) + 31;
@@ -54,6 +60,7 @@ void sbufDuplicateTo(sbuf_t *b, sbuf_t *dest)
 
     if (b->curpos >= sbufGetTotalCapacity(dest))
     {
+        printError("Buffer duplication failed: source buffer's current position exceeds destination buffer's total capacity.");
         return;
     }
 

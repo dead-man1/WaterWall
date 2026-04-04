@@ -5,9 +5,6 @@
 /*
     Buffer with length and capacity parameters.
     Designed for use with buffer_pool.h for efficient memory management.
-*/
-
-/*
     it will be aligned to 32 bytes boundary which will help memoryCopyAVX2 to use Aligned memory copy
 */
 
@@ -18,10 +15,14 @@ struct sbuf_s
     uint32_t capacity;
     uint16_t l_pad;        // constant when created, indicates how much bytes are available for switching left at the beginning
                            // something like leave-room in lwip pbuf
+
     bool     is_temporary; // if true, this buffer will not be freed or reused in pools (like stack buffer)
+    
     uint8_t  _padding1;    // padding to align to 8 bytes
+
     void    *original_ptr; // store original malloc pointer for proper freeing
     uint64_t _padding2;    // padding to make struct exactly 32 bytes
+
     MSVC_ATTR_ALIGNED_32 uint8_t buf[] GNU_ATTR_ALIGNED_32;
 };
 
