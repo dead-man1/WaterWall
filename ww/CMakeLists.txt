@@ -90,6 +90,7 @@ add_library(ww STATIC
     net/sync_dns.c
     net/adapter.c
     net/tunnel.c
+    net/line.c
     net/chain.c
     net/context.c
     net/socket_filter_option.c

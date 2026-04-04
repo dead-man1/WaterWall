@@ -268,3 +268,22 @@ static inline address_context_t *lineGetDestinationAddressContext(line_t *const 
 {
     return &line->routing_context.dest_ctx;
 }
+
+
+typedef void (*LineTaskFnWithBuf)(tunnel_t *t, line_t *l, sbuf_t *buf);
+typedef void (*LineTaskFnNoBuf)(tunnel_t *t, line_t *l);
+
+/*
+ *  Scheduling a task on line will be executed on next eventloop interation
+ */
+void lineScheduleTask(line_t *const line, LineTaskFnNoBuf task, tunnel_t *t, line_t *l);
+
+void lineScheduleTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, tunnel_t *t, line_t *l, sbuf_t *buf);
+
+/*
+ *  Scheduling a delayed task on line will be executed on the line's worker thread after at least delay_ms milliseconds
+ */
+void lineScheduleDelayedTask(line_t *const line, LineTaskFnNoBuf task, uint32_t delay_ms, tunnel_t *t, line_t *l);
+
+void lineScheduleDelayedTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, uint32_t delay_ms, tunnel_t *t,
+                                    line_t *l, sbuf_t *buf);
