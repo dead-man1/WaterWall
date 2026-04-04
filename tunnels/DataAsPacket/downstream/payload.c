@@ -47,7 +47,7 @@ void dataaspacketTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             dataaspacket_lstate_t *wls = lineGetState(line, t);
             if (! wls->paused)
             {
-                sendWorkerMessage(wi,localThreadDataaspacketTunnelDownStreamPayload,t,l,buf);
+                sendWorkerMessage(wi,(WorkerMessageCalback) localThreadDataaspacketTunnelDownStreamPayload,t,l,buf);
             }
         }
         lineReuseBuffer(l, buf);

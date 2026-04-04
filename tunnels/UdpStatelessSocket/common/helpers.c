@@ -50,7 +50,7 @@ void udpstatelesssocketOnRecvFrom(wio_t *io, sbuf_t *buf)
 #endif
 }
 
-void UdpStatelessLocalThreadSocketUpStream(struct worker_s *worker, void *arg1, void *arg2, void *arg3)
+void UdpStatelessLocalThreadSocketUpStream(worker_t *worker, void *arg1, void *arg2, void *arg3)
 {
     discard worker;
     tunnel_t *t   = arg1;

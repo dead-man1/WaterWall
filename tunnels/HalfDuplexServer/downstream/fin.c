@@ -53,6 +53,6 @@ void halfduplexserverTunnelDownStreamFinish(tunnel_t *t, line_t *l)
     halfduplexserverLinestateDestroy(ls_main_line);
 
     lineLock(upload_line);
-    sendWorkerMessageForceQueue(lineGetWID(l), localAsyncCloseLineDownStream, t, upload_line, NULL);
+    sendWorkerMessageForceQueue(lineGetWID(l), (WorkerMessageCalback) localAsyncCloseLineDownStream, t, upload_line, NULL);
     lineDestroy(l);
 }

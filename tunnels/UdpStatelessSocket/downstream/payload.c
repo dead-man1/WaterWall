@@ -8,7 +8,7 @@ void udpstatelesssocketTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *b
     udpstatelesssocket_tstate_t *state = tunnelGetState(t);
     if (lineGetWID(l) != state->io_wid)
     {
-        sendWorkerMessage(state->io_wid, UdpStatelessLocalThreadSocketUpStream, t, l, buf);
+        sendWorkerMessage(state->io_wid, (WorkerMessageCalback) UdpStatelessLocalThreadSocketUpStream, t, l, buf);
     }
     else
     {

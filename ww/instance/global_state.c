@@ -26,14 +26,6 @@
 
 #endif
 
-typedef struct worker_msg_s
-{
-    WorkerMessageCalback callback;
-    void                *arg1;
-    void                *arg2;
-    void                *arg3;
-} worker_msg_t;
-
 // Global instance of the ww_global_state_t structure.
 ww_global_state_t global_ww_state = {0};
 
@@ -210,7 +202,7 @@ void globalstateUpdateAllocationPadding(uint16_t padding)
  */
 void createGlobalState(const ww_construction_data_t init_data)
 {
-    GSTATE = (ww_global_state_t){0};
+    GSTATE = (ww_global_state_t) {0};
 
     GSTATE.flag_initialized = true;
     atomicStoreRelaxed(&GSTATE.application_stopping_flag, false);
@@ -356,7 +348,7 @@ void sendWorkerMessageForceQueue(wid_t wid, WorkerMessageCalback cb, void *arg1,
     assert(wid < getWorkersCount());
 
     masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(msg), 1, NULL);
-    *msg = (worker_msg_t){.callback = cb, .arg1 = arg1, .arg2 = arg2, .arg3 = arg3};
+    *msg = (worker_msg_t) {.callback = cb, .arg1 = arg1, .arg2 = arg2, .arg3 = arg3};
     wevent_t ev;
     memorySet(&ev, 0, sizeof(ev));
     ev.loop = getWorkerLoop(wid);
@@ -366,6 +358,42 @@ void sendWorkerMessageForceQueue(wid_t wid, WorkerMessageCalback cb, void *arg1,
     {
         masterpoolReuseItems(GSTATE.masterpool_messages, (void **) &msg, 1, NULL);
     }
+}
+
+static void runTimedTask(wtimer_t *timer)
+{
+    worker_msg_t *msg = weventGetUserdata(weventGetUserdata(timer));
+
+    WorkerMessageCalback cb = msg->callback;
+    cb(getWorker(getWID()), msg->arg1, msg->arg2, msg->arg3);
+
+    masterpoolReuseItems(GSTATE.masterpool_messages, (void **) &msg, 1, NULL);
+}
+
+static void setupTimedTask(worker_t *worker, void *arg1, void *arg2, void *arg3)
+{
+
+    
+    uint32_t      delay_ms = (uint32_t) (uintptr_t) arg1;
+    worker_msg_t *msg      = (worker_msg_t *) arg2;
+    discard       arg3;
+
+    wtimer_t *k_timer = wtimerAdd(worker->loop, runTimedTask, delay_ms, INFINITE);
+
+    weventSetUserData(k_timer, msg);
+}
+
+void sendWorkerMessageTimed(wid_t wid, WorkerMessageCalback cb, uint32_t delay_ms, void *arg1, void *arg2, void *arg3)
+{
+
+    uintptr_t delay_ms_uiptr = (uintptr_t) delay_ms;
+
+    worker_msg_t *msg;
+
+    masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(msg), 1, NULL);
+    *msg = (worker_msg_t) {.callback = cb, .arg1 = arg1, .arg2 = arg2, .arg3 = arg3};
+
+    sendWorkerMessage(wid, (WorkerMessageCalback) setupTimedTask, (void *) delay_ms_uiptr, msg, NULL);
 }
 
 /*!

@@ -27,7 +27,7 @@ void tcpoverudpserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
     {
         lineLock(l);
         ls->write_paused = true;
-        sendWorkerMessageForceQueue(lineGetWID(l), pauseDownSide, t, l, NULL);
+        sendWorkerMessageForceQueue(lineGetWID(l), (WorkerMessageCalback) pauseDownSide, t, l, NULL);
     }
 
     // Break buffer into chunks of less than 4096 bytes and send in order

@@ -111,7 +111,7 @@ void halfduplexserverTunnelUpStreamFinish(tunnel_t *t, line_t *l)
             ls_upload_line->download_line             = NULL;
 
             lineLock(upload_line);
-            sendWorkerMessageForceQueue(lineGetWID(upload_line), localAsyncCloseLineUpStream, t, upload_line, NULL);
+            sendWorkerMessageForceQueue(lineGetWID(upload_line), (WorkerMessageCalback) localAsyncCloseLineUpStream, t, upload_line, NULL);
         }
 
         halfduplexserverLinestateDestroy(ls_download_line);
@@ -144,7 +144,7 @@ void halfduplexserverTunnelUpStreamFinish(tunnel_t *t, line_t *l)
             ls_download_line->upload_line               = NULL;
 
             lineLock(download_line);
-            sendWorkerMessageForceQueue(lineGetWID(download_line), localAsyncCloseLineUpStream, t, download_line, NULL);
+            sendWorkerMessageForceQueue(lineGetWID(download_line), (WorkerMessageCalback) localAsyncCloseLineUpStream, t, download_line, NULL);
         }
 
         halfduplexserverLinestateDestroy(ls_upload_line);

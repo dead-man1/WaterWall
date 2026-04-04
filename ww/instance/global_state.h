@@ -24,7 +24,15 @@ typedef struct
 } logger_construction_data_t;
 
 typedef err_t (*LwipV4Hook)(struct pbuf *, struct netif *);
-typedef void (*WorkerMessageCalback)(worker_t *worker, void *arg1, void *arg2, void *arg3);
+typedef void (*WorkerMessageCalback)(void *, void *, void *, void *);
+
+typedef struct worker_msg_s
+{
+    WorkerMessageCalback callback;
+    void                 *arg1;
+    void                 *arg2;
+    void                 *arg3;
+} worker_msg_t;
 
 typedef struct ww_global_state_s
 {
@@ -95,7 +103,7 @@ extern ww_global_state_t global_ww_state;
  * @brief Get the number of total workers.
  *        This includes additional threads that is created during startup
  *        but they may not have an event loop instance!
- *        
+ *
  *        note that threads that tunnels may create are not counted as workers (eg TunDevice node)
  * @return The number of workers.
  */
@@ -136,7 +144,6 @@ static inline buffer_pool_t *getWorkerBufferPool(wid_t wid)
     return GSTATE.shortcut_buffer_pools[wid];
 }
 
-
 /*!
  * @brief Get the Wios pool for a worker.
  *
@@ -147,7 +154,6 @@ static inline generic_pool_t *getWorkerWiosPool(wid_t wid)
 {
     return GSTATE.shortcut_wios_pools[wid];
 }
-
 
 /*!
  * @brief Get the context pool for a worker.
@@ -209,6 +215,9 @@ void sendWorkerMessage(wid_t wid, WorkerMessageCalback cb, void *arg1, void *arg
 
 // same as above but dose not do a dircet call if the wid is the same as the current worker
 void sendWorkerMessageForceQueue(wid_t wid, WorkerMessageCalback cb, void *arg1, void *arg2, void *arg3);
+
+// same as above but with a delay in ms, this is useful for waiting some time before executing the task
+void sendWorkerMessageTimed(wid_t wid, WorkerMessageCalback cb, uint32_t delay_ms, void *arg1, void *arg2, void *arg3);
 
 /*!
  * @brief Runs the main thread.
