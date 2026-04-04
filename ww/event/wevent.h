@@ -83,12 +83,12 @@ struct wtimer_s {
     WTIMER_FIELDS
 };
 
-struct htimeout_s {
+struct wtimeout_s {
     WTIMER_FIELDS
     uint32_t    timeout;                \
 };
 
-struct hperiod_s {
+struct wperiod_s {
     WTIMER_FIELDS
     int8_t      minute;
     int8_t      hour;

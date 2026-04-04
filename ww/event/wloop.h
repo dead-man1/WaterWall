@@ -15,8 +15,8 @@ typedef struct wevent_s wevent_t;
 // inheriting wevent_t data members and function members.
 typedef struct widle_s widle_t;
 typedef struct wtimer_s wtimer_t;
-typedef struct htimeout_s htimeout_t;
-typedef struct hperiod_s hperiod_t;
+typedef struct wtimeout_s wtimeout_t;
+typedef struct wperiod_s wperiod_t;
 typedef struct wio_s wio_t;
 
 typedef void (*wevent_cb)(wevent_t* ev);

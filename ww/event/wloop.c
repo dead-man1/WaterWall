@@ -89,12 +89,12 @@ static int __wloop_process_timers(struct heap *timers, uint64_t timeout)
             {
                 while (timer->next_timeout <= timeout)
                 {
-                    timer->next_timeout += (uint64_t) ((htimeout_t *) timer)->timeout * 1000;
+                    timer->next_timeout += (uint64_t) ((wtimeout_t *) timer)->timeout * 1000;
                 }
             }
             else if (timer->event_type == WEVENT_TYPE_PERIOD)
             {
-                hperiod_t *period = (hperiod_t *) timer;
+                wperiod_t *period = (wperiod_t *) timer;
                 timer->next_timeout =
                     (uint64_t) cronNextTimeout(period->minute, period->hour, period->day, period->week, period->month) *
                     1000000;
@@ -745,7 +745,7 @@ wtimer_t *wtimerAdd(wloop_t *loop, wtimer_cb cb, uint32_t timeout_ms, uint32_t r
 {
     if (timeout_ms == 0)
         return NULL;
-    htimeout_t *timer;
+    wtimeout_t *timer;
     EVENTLOOP_ALLOC_SIZEOF(timer);
     timer->event_type = WEVENT_TYPE_TIMEOUT;
     timer->priority   = WEVENT_HIGHEST_PRIORITY;
@@ -771,7 +771,7 @@ void wtimerReset(wtimer_t *timer, uint32_t timeout_ms)
         return;
     }
     wloop_t    *loop    = timer->loop;
-    htimeout_t *timeout = (htimeout_t *) timer;
+    wtimeout_t *timeout = (wtimeout_t *) timer;
     if (timer->destroy)
     {
         loop->ntimers++;
@@ -805,7 +805,7 @@ wtimer_t *wtimerAddPeriod(wloop_t *loop, wtimer_cb cb, int8_t minute, int8_t hou
     {
         return NULL;
     }
-    hperiod_t *timer;
+    wperiod_t *timer;
     EVENTLOOP_ALLOC_SIZEOF(timer);
     timer->event_type   = WEVENT_TYPE_PERIOD;
     timer->priority     = WEVENT_HIGH_PRIORITY;
