@@ -55,4 +55,4 @@ void udpstatelesssocketLinestateInitialize(udpstatelesssocket_lstate_t *ls);
 void udpstatelesssocketLinestateDestroy(udpstatelesssocket_lstate_t *ls);
 
 void udpstatelesssocketOnRecvFrom(wio_t *io, sbuf_t *buf);
-void UdpStatelessLocalThreadSocketUpStream(worker_t *worker, void *arg1, void *arg2, void *arg3);
+void udpstatelesssocketLocalThreadSocketUpStream(tunnel_t *t ,line_t *l, sbuf_t *buf);

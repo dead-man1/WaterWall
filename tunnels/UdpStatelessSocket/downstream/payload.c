@@ -8,10 +8,10 @@ void udpstatelesssocketTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *b
     udpstatelesssocket_tstate_t *state = tunnelGetState(t);
     if (lineGetWID(l) != state->io_wid)
     {
-        sendWorkerMessage(state->io_wid, (WorkerMessageCalback) UdpStatelessLocalThreadSocketUpStream, t, l, buf);
+        lineScheduleTaskWithBuf(l, udpstatelesssocketLocalThreadSocketUpStream, t, buf);
     }
     else
     {
-        UdpStatelessLocalThreadSocketUpStream(NULL, t, l, buf);
+        udpstatelesssocketLocalThreadSocketUpStream(t, l, buf);
     }
 }

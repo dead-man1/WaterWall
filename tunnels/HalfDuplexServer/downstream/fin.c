@@ -2,20 +2,8 @@
 
 #include "loggers/network_logger.h"
 
-static void localAsyncCloseLineDownStream(worker_t *worker, void *arg1, void *arg2, void *arg3)
+static void localAsyncCloseLineDownStream(tunnel_t *t, line_t *l)
 {
-
-    discard worker;
-    discard arg3;
-
-    tunnel_t *t = arg1;
-    line_t   *l = arg2;
-
-    if (! lineIsAlive(l))
-    {
-        lineUnlock(l);
-        return;
-    }
 
     halfduplexserver_lstate_t *ls = lineGetState(l, t);
 
@@ -25,9 +13,7 @@ static void localAsyncCloseLineDownStream(worker_t *worker, void *arg1, void *ar
         lineReuseBuffer(l, ls->buffering);
     }
     halfduplexserverLinestateDestroy(ls);
-    tunnelPrevDownStreamFinish(t, l);
-
-    lineUnlock(l);
+    tunnelPrevDownStreamFinish(t, l);  
 }
 
 void halfduplexserverTunnelDownStreamFinish(tunnel_t *t, line_t *l)
@@ -52,7 +38,6 @@ void halfduplexserverTunnelDownStreamFinish(tunnel_t *t, line_t *l)
 
     halfduplexserverLinestateDestroy(ls_main_line);
 
-    lineLock(upload_line);
-    sendWorkerMessageForceQueue(lineGetWID(l), (WorkerMessageCalback) localAsyncCloseLineDownStream, t, upload_line, NULL);
+    lineScheduleTask(upload_line, localAsyncCloseLineDownStream, t);
     lineDestroy(l);
 }

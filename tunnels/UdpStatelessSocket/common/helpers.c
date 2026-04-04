@@ -50,12 +50,9 @@ void udpstatelesssocketOnRecvFrom(wio_t *io, sbuf_t *buf)
 #endif
 }
 
-void UdpStatelessLocalThreadSocketUpStream(worker_t *worker, void *arg1, void *arg2, void *arg3)
+void udpstatelesssocketLocalThreadSocketUpStream(tunnel_t *t ,line_t *l, sbuf_t *buf)
 {
-    discard worker;
-    tunnel_t *t   = arg1;
-    line_t   *l   = arg2;
-    sbuf_t   *buf = arg3;
+  
     udpstatelesssocket_tstate_t *state = tunnelGetState(t);
 
     if (addresscontextIsValid(&(l->routing_context.dest_ctx)) == false)

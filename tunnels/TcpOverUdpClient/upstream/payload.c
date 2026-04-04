@@ -2,21 +2,14 @@
 
 #include "loggers/network_logger.h"
 
-static void pauseDownSide(worker_t *worker, void *arg1, void *arg2, void *arg3)
+static void pauseDownSide(tunnel_t *t, line_t *l)
 {
-    discard worker;
-    discard arg3;
-
-    tunnel_t *t = (tunnel_t *) arg1;
-    line_t   *l = (line_t *) arg2;
-
     tcpoverudpclient_lstate_t *ls = lineGetState(l, t);
 
-    if (lineIsAlive(l) && ls->can_downstream)
+    if (ls->can_downstream)
     {
         tunnelPrevDownStreamPause(t, l);
     }
-    lineUnlock(l);
 }
 
 void tcpoverudpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
@@ -25,9 +18,8 @@ void tcpoverudpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
     if (ikcp_waitsnd(ls->k_handle) > KCP_SEND_WINDOW_LIMIT)
     {
-        lineLock(l);
         ls->write_paused = true;
-        sendWorkerMessageForceQueue(lineGetWID(l), (WorkerMessageCalback) pauseDownSide, t, l, NULL);
+        lineScheduleTask(l, pauseDownSide, t);
     }
 
     // Break buffer into chunks of less than 4096 bytes and send in order
