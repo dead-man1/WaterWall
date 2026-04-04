@@ -67,7 +67,7 @@ static void lineRunScheduledtaskWithBuf(worker_t *worker, void *arg1, void *arg2
     masterpoolReuseItems(GSTATE.masterpool_messages, (void **) &msg, 1, NULL);
 }
 
-void lineScheduleTask(line_t *const line, LineTaskFnNoBuf task, tunnel_t *t, line_t *l)
+void lineScheduleTask(line_t *const line, LineTaskFnNoBuf task, tunnel_t *t)
 {
     if (getWID() != lineGetWID(line))
     {
@@ -82,13 +82,14 @@ void lineScheduleTask(line_t *const line, LineTaskFnNoBuf task, tunnel_t *t, lin
 
     masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(msg), 1, NULL);
 
-    *msg = (line_task_msg_no_buf_t) {.callback = task, .arg1 = (void *) t, .arg2 = (void *) l, .arg3 = NULL};
+    *msg = (line_task_msg_no_buf_t) {.callback = task, .arg1 = (void *) t, .arg2 = (void *) line, .arg3 = NULL};
 
     sendWorkerMessageForceQueue(lineGetWID(line), (WorkerMessageCalback) lineRunScheduledtaskNoBuf, line, (void *) msg,
                                 NULL);
 }
 
-void lineScheduleTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, tunnel_t *t, line_t *l, sbuf_t *buf){
+void lineScheduleTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, tunnel_t *t, sbuf_t *buf)
+{
     if (getWID() != lineGetWID(line))
     {
         LOGF("Attempted to schedule a task on a line from a different worker thread");
@@ -102,13 +103,13 @@ void lineScheduleTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, tunnel_
 
     masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(msg), 1, NULL);
 
-    *msg = (line_task_msg_with_buf_t) {.callback = task, .arg1 = (void *) t, .arg2 = (void *) l, .arg3 = (void *) buf};
+    *msg = (line_task_msg_with_buf_t) {.callback = task, .arg1 = (void *) t, .arg2 = (void *) line, .arg3 = (void *) buf};
 
     sendWorkerMessageForceQueue(lineGetWID(line), (WorkerMessageCalback) lineRunScheduledtaskWithBuf, line,
                                 (void *) msg, NULL);
 }
 
-void lineScheduleDelayedTask(line_t *const line, LineTaskFnNoBuf task, uint32_t delay_ms, tunnel_t *t, line_t *l)
+void lineScheduleDelayedTask(line_t *const line, LineTaskFnNoBuf task, uint32_t delay_ms, tunnel_t *t)
 {
     if (getWID() != lineGetWID(line))
     {
@@ -123,14 +124,14 @@ void lineScheduleDelayedTask(line_t *const line, LineTaskFnNoBuf task, uint32_t 
 
     masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(msg), 1, NULL);
 
-    *msg = (line_task_msg_no_buf_t) {.callback = task, .arg1 = (void *) t, .arg2 = (void *) l, .arg3 = NULL};
+    *msg = (line_task_msg_no_buf_t) {.callback = task, .arg1 = (void *) t, .arg2 = (void *) line, .arg3 = NULL};
 
-    sendWorkerMessageTimed(lineGetWID(line), (WorkerMessageCalback) lineRunScheduledtaskNoBuf, delay_ms, line,
-                           (void *) msg, NULL);
+    sendWorkerMessageTimed(lineGetWID(line), (WorkerMessageCalback) lineRunScheduledtaskNoBuf, delay_ms, line,(void *) msg,
+                           NULL);
 }
 
 void lineScheduleDelayedTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, uint32_t delay_ms, tunnel_t *t,
-                                    line_t *l, sbuf_t *buf)
+                                    sbuf_t *buf)
 {
     if (getWID() != lineGetWID(line))
     {
@@ -145,7 +146,7 @@ void lineScheduleDelayedTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, 
 
     masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(msg), 1, NULL);
 
-    *msg = (line_task_msg_with_buf_t) {.callback = task, .arg1 = (void *) t, .arg2 = (void *) l, .arg3 = (void *) buf};
+    *msg = (line_task_msg_with_buf_t) {.callback = task, .arg1 = (void *) t, .arg2 = (void *) line, .arg3 = (void *) buf};
 
     sendWorkerMessageTimed(lineGetWID(line), (WorkerMessageCalback) lineRunScheduledtaskWithBuf, delay_ms, line,
                            (void *) msg, NULL);
