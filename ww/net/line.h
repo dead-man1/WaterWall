@@ -286,3 +286,33 @@ void lineScheduleDelayedTask(line_t *const line, LineTaskFnNoBuf task, uint32_t 
 
 void lineScheduleDelayedTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, uint32_t delay_ms, tunnel_t *t,
                                     sbuf_t *buf);
+
+
+static inline bool withLineLocked(line_t *const line,LineTaskFnNoBuf task, tunnel_t *t)
+{
+    lineLock(line);
+    task(t, line);
+
+    if (! lineIsAlive(line))
+    {
+        lineUnlock(line);
+        return false;
+    }
+    lineUnlock(line);
+    return true;
+}
+
+static inline bool withLineLockedWithBuf(line_t *const line,LineTaskFnWithBuf task, tunnel_t *t, sbuf_t *buf)
+{
+    lineLock(line);
+    task(t, line, buf);
+
+    if (! lineIsAlive(line))
+    {
+        lineUnlock(line);
+        return false;
+    }
+    lineUnlock(line);
+    return true;
+}
+
