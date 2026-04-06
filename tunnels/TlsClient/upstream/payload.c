@@ -40,7 +40,7 @@ void tlsclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
                     if (! withLineLockedWithBuf(l, tunnelNextUpStreamPayload, t, ssl_buf))
                     {
-                        bufferpoolRecycleBufferGeneric(buf);
+                        reuseBuffer(buf);
                     }
                 }
                 else if (! BIO_should_retry(ls->wbio))

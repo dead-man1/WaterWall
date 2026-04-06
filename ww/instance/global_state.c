@@ -480,3 +480,8 @@ WW_EXPORT void destroyGlobalState(void)
     call_freeres();
 #endif
 }
+
+void reuseBuffer(sbuf_t *b)
+{
+    bufferpoolReuseBuffer(getWorkerBufferPool(getWID()), b);
+}

@@ -265,3 +265,12 @@ WW_EXPORT void initTcpIpStack(void);
  * @brief Destroys global state, all threads must be stopped before doing this
  */
 WW_EXPORT void destroyGlobalState(void);
+
+
+
+/**
+ * Recycles a buffer by returning it to the appropriate pool based on its size, and worker id.
+ * @param b The buffer to recycle.
+ */
+WW_EXPORT void reuseBuffer(sbuf_t *b);
+

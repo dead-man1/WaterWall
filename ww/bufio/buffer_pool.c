@@ -260,7 +260,6 @@ sbuf_t *bufferpoolGetSmallBuffer(buffer_pool_t *pool)
     return pool->small_buffers[pool->small_buffers_container_len];
 }
 
-
 void bufferpoolReuseBuffer(buffer_pool_t *pool, sbuf_t *b)
 {
 
@@ -278,8 +277,11 @@ void bufferpoolReuseBuffer(buffer_pool_t *pool, sbuf_t *b)
     pool->in_use -= 1;
 #endif
     sbufReset(b);
-
-    if (sbufGetTotalCapacityNoPadding(b) == pool->large_buffers_size && sbufGetLeftPadding(b) == pool->large_buffer_left_padding)
+    // we dont compare total capacity because another buffer can have 0 padding and more capacity but still
+    // the sumation of capaicity and padding is the same, so we compare the capacity without padding and the padding
+    // itself
+    if (sbufGetTotalCapacityNoPadding(b) == pool->large_buffers_size &&
+        sbufGetLeftPadding(b) == pool->large_buffer_left_padding)
     {
         if (UNLIKELY(pool->large_buffers_container_len > pool->free_threshold))
         {
@@ -287,7 +289,8 @@ void bufferpoolReuseBuffer(buffer_pool_t *pool, sbuf_t *b)
         }
         pool->large_buffers[(pool->large_buffers_container_len)++] = b;
     }
-    else if (sbufGetTotalCapacityNoPadding(b) == pool->small_buffers_size && sbufGetLeftPadding(b) == pool->small_buffer_left_padding)
+    else if (sbufGetTotalCapacityNoPadding(b) == pool->small_buffers_size &&
+             sbufGetLeftPadding(b) == pool->small_buffer_left_padding)
     {
         if (UNLIKELY(pool->small_buffers_container_len > pool->free_threshold))
         {
@@ -335,8 +338,7 @@ void bufferpoolUpdateAllocationPaddings(buffer_pool_t *pool, uint16_t large_buff
     uint16_t l_new_max = max(pool->large_buffer_left_padding, large_buffer_left_padding);
     uint16_t s_new_max = max(pool->small_buffer_left_padding, small_buffer_left_padding);
 
-    if(l_new_max == pool->large_buffer_left_padding &&
-        s_new_max == pool->small_buffer_left_padding)
+    if (l_new_max == pool->large_buffer_left_padding && s_new_max == pool->small_buffer_left_padding)
     {
         return; // no change
     }
@@ -353,6 +355,27 @@ buffer_pool_t *bufferpoolCreate(master_pool_t *mp_large, master_pool_t *mp_small
     assert(bufcount >= 1);
 
     bufcount = 2 * bufcount;
+
+    if (large_buffer_size != 0 && large_buffer_size % kCpuLineCacheSize != 0)
+    {
+        large_buffer_size =
+            (max(kCpuLineCacheSize, large_buffer_size) + kCpuLineCacheSizeMin1) & (~kCpuLineCacheSizeMin1);
+    }
+
+    if (small_buffer_size != 0 && small_buffer_size % kCpuLineCacheSize != 0)
+    {
+        small_buffer_size =
+            (max(kCpuLineCacheSize, small_buffer_size) + kCpuLineCacheSizeMin1) & (~kCpuLineCacheSizeMin1);
+    }
+
+#ifdef DEBUG
+    sbuf_t *test_large_buf = sbufCreateWithPadding(large_buffer_size, 0);
+    sbuf_t *test_small_buf = sbufCreateWithPadding(small_buffer_size, 0);
+    assert(sbufGetTotalCapacityNoPadding(test_large_buf) == large_buffer_size);
+    assert(sbufGetLeftPadding(test_large_buf) == 0);
+    assert(sbufGetTotalCapacityNoPadding(test_small_buf) == small_buffer_size);
+    assert(sbufGetLeftPadding(test_small_buf) == 0);
+#endif
 
     const unsigned long container_len = bufcount * sizeof(sbuf_t *);
 

@@ -118,7 +118,7 @@ static bool pairWithLocalUpstreamConnection(tunnel_t *t, line_t *d, reverseserve
     {
         if (dbuf)
         {
-            bufferpoolRecycleBufferGeneric(dbuf);
+            reuseBuffer(dbuf);
         }
 
         return true;

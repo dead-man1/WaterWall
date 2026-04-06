@@ -95,7 +95,7 @@ uint16_t bufferpoolGetSmallBufferPadding(buffer_pool_t *pool);
  * @param buf The buffer to check.
  * @return True if the buffer is a large buffer, false otherwise.
  */
-bool bufferpoolCheckIskLargeBuffer(sbuf_t *buf);
+bool bufferpoolCheckIsLargeBuffer(sbuf_t *buf);
 
 /**
  * Appends and merges two buffers.

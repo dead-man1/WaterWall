@@ -31,7 +31,7 @@ void reverseclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
        
         if (! withLineLocked(dl, tunnelPrevDownStreamInit, t))
         {
-            bufferpoolRecycleBufferGeneric(buf);
+            reuseBuffer(buf);
             return;
         }
 

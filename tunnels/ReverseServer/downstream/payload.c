@@ -66,7 +66,7 @@ static bool pairWithLocalDownstreamConnection(tunnel_t *t, line_t *u, reverseser
 
     if (! withLineLockedWithBuf(d,tunnelPrevDownStreamPayload,t,buf))
     {
-        bufferpoolRecycleBufferGeneric(dbuf);
+        reuseBuffer(dbuf);
         return false;
     }
 
