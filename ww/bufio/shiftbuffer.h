@@ -135,7 +135,7 @@ static inline uint32_t sbufGetMaximumWriteableSize(const sbuf_t *const b)
 }
 
 /**
- * Gets left padding of the buffer.
+ * Gets original value of left padding of the buffer (unchanged, not aligned to 32).
  */
 static inline uint16_t sbufGetLeftPadding(const sbuf_t *const b)
 {
