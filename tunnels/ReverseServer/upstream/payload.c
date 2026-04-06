@@ -13,7 +13,7 @@ static void reverseclienthandleBufferMerging(line_t *d, reverseserver_lstate_t *
 }
 
 static bool checkBufferSizeLimitD(tunnel_t *t, line_t *d, reverseserver_lstate_t *dls,
-                                 reverseserver_thread_box_t *this_tb, sbuf_t *buf)
+                                  reverseserver_thread_box_t *this_tb, sbuf_t *buf)
 {
     if (sbufGetLength(buf) > kMaxBuffering)
     {
@@ -44,7 +44,7 @@ static bool validateHandshake(sbuf_t *buf)
 }
 
 static bool processHandshakeD(tunnel_t *t, line_t *d, reverseserver_lstate_t *dls, reverseserver_thread_box_t *this_tb,
-                             sbuf_t *buf)
+                              sbuf_t *buf)
 {
     if (dls->handshaked)
     {
@@ -107,7 +107,6 @@ static bool pairWithLocalUpstreamConnection(tunnel_t *t, line_t *d, reverseserve
     dls->buffering = NULL;
 
     assert(uls->buffering);
-    lineLock(d);
 
     sbuf_t *ubuf   = uls->buffering;
     uls->buffering = NULL;
@@ -115,17 +114,16 @@ static bool pairWithLocalUpstreamConnection(tunnel_t *t, line_t *d, reverseserve
     //  lineGetWID(u), lineGetWID(d), sbufGetLength(ubuf));
     tunnelPrevDownStreamPayload(t, d, ubuf);
 
-    if (! lineIsAlive(d))
+    if (! withLineLockedWithBuf(d, tunnelPrevDownStreamPayload, t, ubuf))
     {
         if (dbuf)
         {
-            lineReuseBuffer(d, dbuf);
+            bufferpoolRecycleBufferGeneric(dbuf);
         }
-        lineUnlock(d);
+
         return true;
     }
 
-    lineUnlock(d);
     if (dbuf)
     {
         tunnelNextUpStreamPayload(t, u, dbuf);
@@ -187,7 +185,7 @@ static bool tryPairWithRemoteUpstreamConnection(tunnel_t *t, line_t *d, reverses
 }
 
 static void handleUnpairedConnectionD(tunnel_t *t, line_t *d, reverseserver_lstate_t *dls, reverseserver_tstate_t *ts,
-                                     reverseserver_thread_box_t *this_tb, sbuf_t *buf)
+                                      reverseserver_thread_box_t *this_tb, sbuf_t *buf)
 {
     reverseclienthandleBufferMerging(d, dls, &buf);
 

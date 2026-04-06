@@ -14,19 +14,15 @@ void muxserverTunnelDownStreamPause(tunnel_t *t, line_t *child_l)
     line_t             *parent_line = child_ls->parent->l;
     muxserver_lstate_t *parent_ls   = lineGetState(parent_line, t);
 
-    lineLock(parent_line);
     parent_ls->last_writer = child_l; // update the last writer to the current child
 
-    tunnelPrevDownStreamPayload(t, parent_line, pausepacket_buf);
 
-    if (! lineIsAlive(parent_line))
+    if (! withLineLockedWithBuf(parent_line, tunnelPrevDownStreamPayload, t, pausepacket_buf))
     {
-        lineUnlock(parent_line);
         return;
     }
     parent_ls->last_writer = NULL; // reset the last writer after sending the payload
     // parent_ls->paused      = true;
-    lineUnlock(parent_line);
 
     // tunnelPrevDownStreamPause(t, parent_line);
 }

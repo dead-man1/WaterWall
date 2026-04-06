@@ -61,14 +61,12 @@ void muxclientTunnelUpStreamFinish(tunnel_t *t, line_t *child_l)
     sbuf_t *finishpacket_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(child_l));
     muxclientMakeMuxFrame(finishpacket_buf, child_ls->connection_id, kMuxFlagClose);
     muxclientLinestateDestroy(child_ls);
-    lineLock(parent_l);
-    tunnelNextUpStreamPayload(t, parent_l, finishpacket_buf);
-    if (! lineIsAlive(parent_l))
+
+
+    if (! withLineLockedWithBuf(parent_l, tunnelNextUpStreamPayload, t, finishpacket_buf))
     {
-        lineUnlock(parent_l);
         return;
     }
-    lineUnlock(parent_l);
 
     if (muxclientCheckConnectionIsExhausted(ts, parent_ls) && parent_ls->children_count == 0)
     {

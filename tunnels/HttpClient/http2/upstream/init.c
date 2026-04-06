@@ -9,16 +9,12 @@ void httpclientV2TunnelUpStreamInit(tunnel_t *t, line_t *l)
 
     httpclientV2LinestateInitialize(ls, t, lineGetWID(l));
 
-    lineLock(l);
 
-    tunnelNextUpStreamInit(t, l);
-
-    if (! lineIsAlive(l))
+    if(! withLineLocked(l, tunnelNextUpStreamInit, t))
     {
-        lineUnlock(l);
         return;
     }
-    lineUnlock(l);
+
 
     httpclientV2PullAndSendNgHttp2SendableData(t, ls);
 }

@@ -28,16 +28,15 @@ void reverseclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
         line_t *dl = uls->d;
 
-        lineLock(dl);
-        tunnelPrevDownStreamInit(t, dl);
-
-        if (! lineIsAlive(dl))
+       
+        if (! withLineLocked(dl, tunnelPrevDownStreamInit, t))
         {
-            lineReuseBuffer(dl, buf);
-            lineUnlock(dl);
+            bufferpoolRecycleBufferGeneric(buf);
             return;
         }
-        lineUnlock(dl);
+
+        
+
         tunnelPrevDownStreamPayload(t, dl, buf);
     }
 }

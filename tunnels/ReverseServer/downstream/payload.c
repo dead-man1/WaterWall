@@ -58,21 +58,18 @@ static bool pairWithLocalDownstreamConnection(tunnel_t *t, line_t *u, reverseser
     uls->paired = true;
     uls->d      = d;
 
-    lineLock(d);
 
     sbuf_t *dbuf   = dls->buffering;
     dls->buffering = NULL;
 
     tunnelPrevDownStreamPayload(t, d, buf);
 
-    if (! lineIsAlive(d))
+    if (! withLineLockedWithBuf(d,tunnelPrevDownStreamPayload,t,buf))
     {
-        lineReuseBuffer(d, dbuf);
-        lineUnlock(d);
-        return true;
+        bufferpoolRecycleBufferGeneric(dbuf);
+        return false;
     }
 
-    lineUnlock(d);
 
     if (dbuf)
     {

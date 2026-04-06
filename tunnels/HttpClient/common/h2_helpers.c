@@ -63,23 +63,18 @@ static sbuf_t *httpclientV2GetNgHttp2SendableData(httpclient_lstate_t *ls)
 }
 bool httpclientV2PullAndSendNgHttp2SendableData(tunnel_t *t, httpclient_lstate_t *ls)
 {
-    lineLock(ls->line);
 
     sbuf_t *send_buf = httpclientV2GetNgHttp2SendableData(ls);
 
     while (send_buf != NULL)
     {
-        tunnelNextUpStreamPayload(t, ls->line, send_buf);
-
-        if (! lineIsAlive(ls->line))
+        if (! withLineLockedWithBuf(ls->line, tunnelNextUpStreamPayload, t, send_buf))
         {
-            lineUnlock(ls->line);
             return false;
         }
 
         send_buf = httpclientV2GetNgHttp2SendableData(ls);
     }
-    lineUnlock(ls->line);
     return true;
 }
 

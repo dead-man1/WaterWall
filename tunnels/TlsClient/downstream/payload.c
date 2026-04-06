@@ -4,18 +4,14 @@
 
 static inline bool flushWriteQueue(tunnel_t *t, line_t *l, tlsclient_lstate_t *ls)
 {
-    lineLock(l);
     while (bufferqueueGetBufCount(&(ls->bq)) > 0)
     {
         sbuf_t *buf = bufferqueuePopFront(&(ls->bq));
-        tunnelUpStreamPayload(t, l, buf);
-        if (! lineIsAlive(l))
+        if (! withLineLockedWithBuf(l, tunnelUpStreamPayload, t, buf))
         {
-            lineUnlock(l);
             return false;
         }
     }
-    lineUnlock(l);
     return true;
 }
 

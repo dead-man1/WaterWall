@@ -16,8 +16,6 @@ void tlsclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
     int len = (int) sbufGetLength(buf);
 
-    lineLock(l);
-
     // Write data to SSL, handle output, and propagate upstream until all data is sent or an error occurs.
     while (len > 0)
     {
@@ -40,13 +38,9 @@ void tlsclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
                 {
                     sbufSetLength(ssl_buf, n);
 
-                    tunnelNextUpStreamPayload(t, l, ssl_buf);
-
-                    if (! lineIsAlive(l))
+                    if (! withLineLockedWithBuf(l, tunnelNextUpStreamPayload, t, ssl_buf))
                     {
-                        lineReuseBuffer(l, buf);
-                        lineUnlock(l);
-                        return;
+                        bufferpoolRecycleBufferGeneric(buf);
                     }
                 }
                 else if (! BIO_should_retry(ls->wbio))
@@ -74,13 +68,11 @@ void tlsclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             break;
         }
     }
-    lineUnlock(l);
     lineReuseBuffer(l, buf);
 
     return;
 
 failed:
-    lineUnlock(l);
 
     LOGW("TlsClient: upstream Payload failed: boringssl state is printed below");
     tlsclientPrintSSLState(ls->ssl);

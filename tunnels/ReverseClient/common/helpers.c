@@ -24,19 +24,14 @@ static void reverseclientBeginConnectMessageReceived(worker_t *worker, void *arg
 
     uls->idle_handle = idletableCreateItem(ts->starved_connections, (hash_t) (uintptr_t) (uls), uls,
                                            reverseclientOnStarvedConnectionExpire, wid,
-                                           ((uint64_t) (kConnectionStarvationTimeOutSec) *1000));
+                                           ((uint64_t) (kConnectionStarvationTimeOutSec) * 1000));
 
-    lineLock(ul);
-
-    tunnelNextUpStreamInit(t, ul);
-
-    if (! lineIsAlive(ul))
+    if (! withLineLocked(ul, tunnelNextUpStreamInit, t))
     {
         ts->threadlocal_pool[wid].connecting_cons_count -= 1;
-        lineUnlock(ul);
         return;
     }
-    lineUnlock(ul);
+
 
     sbuf_t *handshakebuf = bufferpoolGetLargeBuffer(lineGetBufferPool(ul));
     sbufReserveSpace(handshakebuf, kHandShakeLength);

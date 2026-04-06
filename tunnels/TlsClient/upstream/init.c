@@ -13,16 +13,10 @@ void tlsclientTunnelUpStreamInit(tunnel_t *t, line_t *l)
     SSL_set_bio(ls->ssl, ls->rbio, ls->wbio);
     SSL_set_tlsext_host_name(ls->ssl, ts->sni);
 
-    lineLock(l);
-
-    tunnelNextUpStreamInit(t, l);
-
-    if (! lineIsAlive(l))
+    if (! withLineLocked(l, tunnelNextUpStreamInit, t))
     {
-        lineUnlock(l);
         return;
     }
-    lineUnlock(l);
 
     tlsclientPrintSSLState(ls->ssl);
 

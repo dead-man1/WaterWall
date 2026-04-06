@@ -63,15 +63,11 @@ static line_t *createAndInitializeMainLine(tunnel_t *t, line_t *upload_line, lin
 
 static bool initializeMainLineConnection(tunnel_t *t, line_t *main_line)
 {
-    lineLock(main_line);
-    tunnelNextUpStreamInit(t, main_line);
 
-    if (! lineIsAlive(main_line))
+    if (! withLineLocked(main_line, tunnelNextUpStreamInit, t))
     {
-        lineUnlock(main_line);
         return false;
     }
-    lineUnlock(main_line);
     return true;
 }
 
@@ -295,9 +291,9 @@ void halfduplexserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     halfduplexserver_lstate_t *ls = lineGetState(l, t);
 
     // #ifdef DEBUG
-    // This bug is fixed in my event loop code, i also report this to libhv and merged pull request 
+    // This bug is fixed in my event loop code, i also report this to libhv and merged pull request
     // checking no longer required, alreday proven with test tools that this will not happen again
-    
+
     // if (getWID() != lineGetWID(l))
     // {
     //     LOGF("HalfDuplexServer: WID mismatch detected, getWID: %d, line WID: %d", getWID(), lineGetWID(l));

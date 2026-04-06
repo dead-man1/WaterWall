@@ -100,11 +100,8 @@ static void localThreadPtcTcpRecvCallback(struct worker_s *worker, void *arg1, v
 
     uint32_t len = sbufGetLength(buf);
 
-    lineLock(l);
-    tunnelNextUpStreamPayload(lstate->tunnel, lstate->line, buf);
-    if (! lineIsAlive(l))
+    if (! withLineLockedWithBuf(l, tunnelNextUpStreamPayload, lstate->tunnel, buf))
     {
-        lineUnlock(l);
         return;
     }
 
@@ -121,8 +118,6 @@ static void localThreadPtcTcpRecvCallback(struct worker_s *worker, void *arg1, v
         }
         UNLOCK_TCPIP_CORE();
     }
-
-    lineUnlock(l);
 }
 
 err_t lwipThreadPtcTcpRecvCallback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
@@ -220,19 +215,13 @@ static void localThreadPtcAcceptCallBack(struct worker_s *worker, void *arg1, vo
              newpcb->remote_port);
     }
 
-    lineLock(l);
-
-    tunnelNextUpStreamInit(t, l);
-    if (! lineIsAlive(l))
+    if (! withLineLocked(l, tunnelNextUpStreamInit, t))
     {
 #if SHOW_ALL_LOGS
         LOGD("PacketToConnection: tcp socket just got closed by upstream before anything happend");
 #endif
-        lineUnlock(l);
         return;
     }
-
-    lineUnlock(l);
 }
 
 err_t lwipThreadPtcTcpAccptCallback(void *arg, struct tcp_pcb *newpcb, err_t err)
@@ -266,7 +255,7 @@ err_t lwipThreadPtcTcpAccptCallback(void *arg, struct tcp_pcb *newpcb, err_t err
     addresscontextSetIpPort(&l->routing_context.dest_ctx, &newpcb->local_ip, newpcb->local_port);
 
     newpcb->callback_arg = lstate;
-    newpcb->sent = ptcTcpSendCompleteCallback;
+    newpcb->sent         = ptcTcpSendCompleteCallback;
     tcp_nagle_disable(newpcb);
 
     // Set the receive callback for the new connection.

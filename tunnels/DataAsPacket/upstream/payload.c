@@ -44,8 +44,8 @@ static bool isOverFlow(buffer_stream_t *read_stream)
 {
     if (bufferstreamGetBufLen(read_stream) > kMaxBufferSize)
     {
-        LOGW("DataAsPacket: UpStreamPayload: Read stream overflow, size: %zu, limit: %zu", bufferstreamGetBufLen(read_stream),
-             kMaxBufferSize);
+        LOGW("DataAsPacket: UpStreamPayload: Read stream overflow, size: %zu, limit: %zu",
+             bufferstreamGetBufLen(read_stream), kMaxBufferSize);
         return true; // Return true when overflow IS detected
     }
     return false; // Return false when no overflow
@@ -63,7 +63,6 @@ void dataaspacketTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         return;
     }
 
-    lineLock(l);
     while (true)
     {
         sbuf_t *packet_buffer = tryReadCompletePacket(&(ls->read_stream));
@@ -73,11 +72,10 @@ void dataaspacketTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             break; // No complete packet available, exit the loop
         }
 
-        tunnelNextUpStreamPayload(t, tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)), packet_buffer);
-        if (! lineIsAlive(l))
+        if (! withLineLockedWithBuf(tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)),
+                                    tunnelNextUpStreamPayload, t, packet_buffer))
         {
             break; // Exit if the line is no longer alive
         }
     }
-    lineUnlock(l);
 }

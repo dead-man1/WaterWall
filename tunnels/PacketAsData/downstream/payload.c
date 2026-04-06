@@ -64,7 +64,6 @@ void packetasdataTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         return;
     }
 
-    lineLock(l);
     while (true)
     {
         sbuf_t *packet_buffer = tryReadCompletePacket(&(ls->read_stream));
@@ -74,11 +73,9 @@ void packetasdataTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             break; // No complete packet available, exit the loop
         }
 
-        tunnelPrevDownStreamPayload(t, tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)), packet_buffer);
-        if (! lineIsAlive(l))
+        if (! withLineLockedWithBuf(tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)), tunnelPrevDownStreamPayload, t, packet_buffer))
         {
             break; // Exit if the line is no longer alive
         }
     }
-    lineUnlock(l);
 }

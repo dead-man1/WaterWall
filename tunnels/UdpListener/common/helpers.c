@@ -22,11 +22,11 @@ void onUdpListenerFilteredPayloadReceived(wevent_t *ev)
     udp_payload_t *data = (udp_payload_t *) weventGetUserdata(ev);
 
     idle_table_t *table          = data->sock->table;
-    udpsock_t     *sock           = data->sock;
-    tunnel_t      *t              = data->tunnel;
-    wid_t          wid            = data->wid;
-    sbuf_t        *buf            = data->buf;
-    uint16_t       real_localport = data->real_localport;
+    udpsock_t    *sock           = data->sock;
+    tunnel_t     *t              = data->tunnel;
+    wid_t         wid            = data->wid;
+    sbuf_t       *buf            = data->buf;
+    uint16_t      real_localport = data->real_localport;
 
     hash_t peeraddr_hash = sockaddrCalcHashWithPort((sockaddr_u *) wioGetPeerAddr(sock->io));
 
@@ -35,7 +35,8 @@ void onUdpListenerFilteredPayloadReceived(wevent_t *ev)
     // and add it to the idle table
     if (idle == NULL)
     {
-        idle = idletableCreateItem(table, peeraddr_hash, NULL, onUdpConnectonExpire, wid, (uint64_t) kUdpInitExpireTime);
+        idle =
+            idletableCreateItem(table, peeraddr_hash, NULL, onUdpConnectonExpire, wid, (uint64_t) kUdpInitExpireTime);
         // if idle is NULL, it means we failed to create a new idle item (duplicate hash, etc)
         if (! idle)
         {
@@ -49,26 +50,14 @@ void onUdpListenerFilteredPayloadReceived(wevent_t *ev)
 
         udplistenerLinestateInitialize(ls, l, t, sock, real_localport);
 
-        lineLock(l);
+        if (! withLineLocked(l, tunnelNextUpStreamInit, t))
         {
-            tunnelNextUpStreamInit(t, l);
-            if (! lineIsAlive(l))
-            {
-                LOGW("UdpListener: socket just got closed by upstream before anything happend");
-                bool removed = idletableRemoveIdleItemByHash(wid, table, peeraddr_hash);
-                if (! removed)
-                {
-                    LOGF("UdpListener: failed to remove idle item for hash %x, how?", peeraddr_hash);
-                    terminateProgram(1);
-                }
-                udplistenerLinestateDestroy(ls);
-                bufferpoolReuseBuffer(getWorkerBufferPool(wid), buf);
-                udppayloadDestroy(data);
-                lineUnlock(l);
-                return;
-            }
+            LOGW("UdpListener: socket just got closed by upstream before anything happend");
+
+            bufferpoolReuseBuffer(getWorkerBufferPool(wid), buf);
+            udppayloadDestroy(data);
+            return;
         }
-        lineUnlock(l);
 
         idle->userdata  = ls;
         ls->idle_handle = idle;

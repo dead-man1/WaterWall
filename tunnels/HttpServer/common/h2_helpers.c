@@ -52,23 +52,19 @@ static sbuf_t *httpserverV2GetNgHttp2SendableData(httpserver_lstate_t *ls)
 }
 bool httpserverV2PullAndSendNgHttp2SendableData(tunnel_t *t, httpserver_lstate_t *ls)
 {
-    lineLock(ls->line);
 
     sbuf_t *send_buf = httpserverV2GetNgHttp2SendableData(ls);
 
     while (send_buf != NULL)
     {
-        tunnelPrevDownStreamPayload(t, ls->line, send_buf);
 
-        if (! lineIsAlive(ls->line))
+        if (! withLineLockedWithBuf(ls->line, tunnelPrevDownStreamPayload, t, send_buf))
         {
-            lineUnlock(ls->line);
             return false;
         }
 
         send_buf = httpserverV2GetNgHttp2SendableData(ls);
     }
-    lineUnlock(ls->line);
     return true;
 }
 

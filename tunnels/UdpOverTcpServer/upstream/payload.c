@@ -2,7 +2,6 @@
 
 #include "loggers/network_logger.h"
 
-
 static sbuf_t *tryReadCompletePacket(buffer_stream_t *stream)
 {
     if (bufferstreamGetBufLen(stream) < kHeaderSize + 1)
@@ -32,8 +31,8 @@ static bool isOverFlow(buffer_stream_t *read_stream)
 {
     if (bufferstreamGetBufLen(read_stream) > (uint32_t) (kMaxAllowedPacketLength * 2))
     {
-        LOGW("UdpOverTcpServer: UpStreamPayload: Read stream overflow, size: %zu, limit: %zu", bufferstreamGetBufLen(read_stream),
-             (uint32_t) (kMaxAllowedPacketLength * 2));
+        LOGW("UdpOverTcpServer: UpStreamPayload: Read stream overflow, size: %zu, limit: %zu",
+             bufferstreamGetBufLen(read_stream), (uint32_t) (kMaxAllowedPacketLength * 2));
         return true; // Return true when overflow IS detected
     }
     return false; // Return false when no overflow
@@ -51,7 +50,6 @@ void udpovertcpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         return;
     }
 
-    lineLock(l);
     while (true)
     {
         sbuf_t *packet_buffer = tryReadCompletePacket(&(ls->read_stream));
@@ -61,12 +59,9 @@ void udpovertcpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             break; // No complete packet available, exit the loop
         }
 
-        tunnelNextUpStreamPayload(t, l, packet_buffer);
-
-        if (! lineIsAlive(l))
+        if (! withLineLockedWithBuf(l, tunnelNextUpStreamPayload, t, packet_buffer))
         {
             break; // Exit if the line is no longer alive
         }
     }
-    lineUnlock(l);
 }

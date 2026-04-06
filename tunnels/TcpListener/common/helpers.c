@@ -101,16 +101,11 @@ void tcplistenerOnInboundConnected(wevent_t *ev)
     }
 
     // send the init packet
-
-    lineLock(l);
-    tunnelNextUpStreamInit(t, l);
-    if (! lineIsAlive(l))
+    if (! withLineLocked(l, tunnelNextUpStreamInit, t))
     {
         LOGW("TcpListener: socket just got closed by upstream before anything happend");
-        lineUnlock(l);
         return;
     }
-    lineUnlock(l);
 
     wioRead(io);
 }

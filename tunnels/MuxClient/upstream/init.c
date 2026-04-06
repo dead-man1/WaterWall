@@ -15,20 +15,14 @@ void muxclientTunnelUpStreamInit(tunnel_t *t, line_t *child_l)
         muxclient_lstate_t *parent_ls = lineGetState(parent_l, t);
 
         muxclientLinestateInitialize(parent_ls, parent_l, false,0);
-
-        lineLock(parent_l);
+       
         tunnelNextUpStreamInit(t, parent_l);
 
-        if (! lineIsAlive(parent_l))
+        if (! withLineLocked(parent_l, tunnelNextUpStreamInit, t))
         {
-            lineUnlock(parent_l);
-            muxclientLinestateDestroy(parent_ls);
-            lineDestroy(parent_l);
-
             tunnelPrevDownStreamFinish(t, child_l);
             return;
         }
-        lineUnlock(parent_l);
 
         ts->unsatisfied_lines[wid] = parent_l;
     }
