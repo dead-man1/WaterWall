@@ -29,6 +29,12 @@ void reverseclientTunnelDownStreamFinish(tunnel_t *t, line_t *l)
     }
     else
     {
+        if (uls->idle_handle == NULL)
+        {
+            LOGF("ReverseClient: finishing a non-paired line with NULL idle_handle, wid: %d", wid);
+            terminateProgram(1);
+        }
+
         if (lineIsEstablished(l))
         {
             ts->threadlocal_pool[wid].unused_cons_count -= 1;
@@ -39,8 +45,14 @@ void reverseclientTunnelDownStreamFinish(tunnel_t *t, line_t *l)
         {
             ts->threadlocal_pool[wid].connecting_cons_count -= 1;
         }
-        assert(uls->idle_handle != NULL);
-        idletableRemoveIdleItemByHash(uls->u->wid, ts->starved_connections, (hash_t) (uintptr_t) (uls));
+
+        bool removed = idletableRemoveIdleItemByHash(uls->u->wid, ts->starved_connections, (hash_t) (uintptr_t) (uls));
+        if (! removed)
+        {
+            LOGF("ReverseClient: failed to remove idle item while closing unpaired connection");
+            terminateProgram(1);
+            return;
+        }
         uls->idle_handle = NULL;
 
         reverseclientInitiateConnectOnWorker(t, wid, false);

@@ -28,7 +28,8 @@ static void reverseclientBeginConnectMessageReceived(worker_t *worker, void *arg
 
     if (! withLineLocked(ul, tunnelNextUpStreamInit, t))
     {
-        ts->threadlocal_pool[wid].connecting_cons_count -= 1;
+        // decrement in finish path for non-established lines
+        // ts->threadlocal_pool[wid].connecting_cons_count -= 1; 
         return;
     }
 

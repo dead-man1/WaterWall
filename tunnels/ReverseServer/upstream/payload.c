@@ -110,9 +110,6 @@ static bool pairWithLocalUpstreamConnection(tunnel_t *t, line_t *d, reverseserve
 
     sbuf_t *ubuf   = uls->buffering;
     uls->buffering = NULL;
-    // LOGD("ReverseServer: Pairing upstream connection %u with downstream connection %u, buf has %zu bytes",
-    //  lineGetWID(u), lineGetWID(d), sbufGetLength(ubuf));
-    tunnelPrevDownStreamPayload(t, d, ubuf);
 
     if (! withLineLockedWithBuf(d, tunnelPrevDownStreamPayload, t, ubuf))
     {

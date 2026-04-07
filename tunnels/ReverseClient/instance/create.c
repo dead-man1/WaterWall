@@ -30,9 +30,20 @@ tunnel_t *reverseclientTunnelCreate(node_t *node)
     const cJSON            *settings = node->node_settings_json;
     reverseclient_tstate_t *ts       = tunnelGetState(t);
 
-    if (! getIntFromJsonObject((int *) &(ts->min_unused_cons), settings, "minimum-unused"))
+    int min_unused = 0;
+    if (! getIntFromJsonObject(&min_unused, settings, "minimum-unused"))
     {
-        ts->min_unused_cons = (uint32_t) getWorkersCount() * (ssize_t) 4;
+        ts->min_unused_cons = (uint32_t) getWorkersCount() * 4U;
+    }
+    else
+    {
+        if (min_unused <= 0)
+        {
+            LOGF("ReverseClient: minimum-unused must be greater than 0, got %d", min_unused);
+            tunnelDestroy(t);
+            return NULL;
+        }
+        ts->min_unused_cons = (uint32_t) min_unused;
     }
 
     // ts->min_unused_cons     = 1;
