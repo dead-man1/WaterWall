@@ -14,9 +14,7 @@ void muxclientTunnelUpStreamInit(tunnel_t *t, line_t *child_l)
         line_t             *parent_l  = lineCreate(tunnelchainGetLinePools(tunnelGetChain(t)), wid);
         muxclient_lstate_t *parent_ls = lineGetState(parent_l, t);
 
-        muxclientLinestateInitialize(parent_ls, parent_l, false,0);
-       
-        tunnelNextUpStreamInit(t, parent_l);
+        muxclientLinestateInitialize(parent_ls, parent_l, false, 0);
 
         if (! withLineLocked(parent_l, tunnelNextUpStreamInit, t))
         {
@@ -26,18 +24,25 @@ void muxclientTunnelUpStreamInit(tunnel_t *t, line_t *child_l)
 
         ts->unsatisfied_lines[wid] = parent_l;
     }
-    tunnelPrevDownStreamEst(t, child_l);
 
     line_t             *parent_l  = ts->unsatisfied_lines[wid];
     muxclient_lstate_t *parent_ls = lineGetState(parent_l, t);
     assert(parent_ls->connection_id < CID_MAX);
 
-    muxclientLinestateInitialize(child_ls, child_l, true,++parent_ls->connection_id);
-    muxclientJoinConnection(parent_ls, child_ls);
-    
+    cid_t new_cid = parent_ls->connection_id + 1;
 
     sbuf_t *initpacket_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(parent_l));
-    muxclientMakeMuxFrame(initpacket_buf, child_ls->connection_id, kMuxFlagOpen);
+    muxclientMakeMuxFrame(initpacket_buf, new_cid, kMuxFlagOpen);
 
-    tunnelNextUpStreamPayload(t, parent_l, initpacket_buf);
+    if (! withLineLockedWithBuf(parent_l, tunnelNextUpStreamPayload, t, initpacket_buf))
+    {
+        tunnelPrevDownStreamFinish(t, child_l);
+        return;
+    }
+
+    parent_ls->connection_id = new_cid;
+    muxclientLinestateInitialize(child_ls, child_l, true, new_cid);
+    muxclientJoinConnection(parent_ls, child_ls);
+
+    tunnelPrevDownStreamEst(t, child_l);
 }

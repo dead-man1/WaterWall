@@ -16,8 +16,6 @@ void muxserverTunnelDownStreamResume(tunnel_t *t, line_t *child_l)
 
     parent_ls->last_writer = child_l; // update the last writer to the current child
 
-    tunnelPrevDownStreamPayload(t, parent_line, resumepacket_buf);
-
     if (! withLineLockedWithBuf(parent_line, tunnelPrevDownStreamPayload, t, resumepacket_buf))
     {
         return;

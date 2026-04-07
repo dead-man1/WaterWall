@@ -11,11 +11,17 @@ static sbuf_t *tryReadCompleteFrame(muxclient_lstate_t *parent_ls, mux_frame_t *
 
     bufferstreamViewBytesAt(&(parent_ls->read_stream), 0, (uint8_t *) frame, kMuxFrameLength);
 
-    size_t total_frame_size = (size_t) frame->length + (size_t) kMuxFrameLength;
+    mux_length_t payload_length = be16toh(frame->length);
+    cid_t        cid            = be32toh(frame->cid);
+
+    size_t total_frame_size = (size_t) payload_length + (size_t) kMuxFrameLength;
     if (total_frame_size > bufferstreamGetBufLen(&(parent_ls->read_stream)))
     {
         return NULL;
     }
+
+    frame->length = payload_length;
+    frame->cid    = cid;
 
     return bufferstreamReadExact(&(parent_ls->read_stream), total_frame_size);
 }

@@ -94,6 +94,8 @@ void muxclientMakeMuxFrame(sbuf_t *buf, cid_t cid, uint8_t flag)
                          .cid    = cid, // will be set later
                          .flags  = flag,
                          ._pad1  = 0};
+    frame.length = htobe16(frame.length);
+    frame.cid    = htobe32(frame.cid);
     sbufShiftLeft(buf, kMuxFrameLength);
     sbufWrite(buf, &frame, kMuxFrameLength);
 }

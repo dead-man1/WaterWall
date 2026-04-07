@@ -2,6 +2,8 @@
 
 #include "loggers/network_logger.h"
 
+static muxserver_lstate_t *findChildByConnectionId(muxserver_lstate_t *parent_ls, uint32_t cid);
+
 static sbuf_t *tryReadCompleteFrame(muxserver_lstate_t *parent_ls, mux_frame_t *frame)
 {
     if (bufferstreamGetBufLen(&(parent_ls->read_stream)) < kMuxFrameLength)
@@ -11,11 +13,17 @@ static sbuf_t *tryReadCompleteFrame(muxserver_lstate_t *parent_ls, mux_frame_t *
 
     bufferstreamViewBytesAt(&(parent_ls->read_stream), 0, (uint8_t *) frame, kMuxFrameLength);
 
-    size_t total_frame_size = (size_t) frame->length + (size_t) kMuxFrameLength;
+    mux_length_t payload_length = be16toh(frame->length);
+    cid_t        cid            = be32toh(frame->cid);
+
+    size_t total_frame_size = (size_t) payload_length + (size_t) kMuxFrameLength;
     if (total_frame_size > bufferstreamGetBufLen(&(parent_ls->read_stream)))
     {
         return NULL;
     }
+
+    frame->length = payload_length;
+    frame->cid    = cid;
 
     return bufferstreamReadExact(&(parent_ls->read_stream), total_frame_size);
 }
@@ -25,6 +33,12 @@ static bool handleOpenFrame(tunnel_t *t, line_t *parent_l, muxserver_lstate_t *p
 {
     lineReuseBuffer(parent_l, frame_buffer);
     LOGD("MuxServer: UpStreamPayload: Open frame received, cid: %u", frame->cid);
+
+    if (findChildByConnectionId(parent_ls, frame->cid) != NULL)
+    {
+        LOGW("MuxServer: UpStreamPayload: Duplicate Open frame ignored, cid: %u", frame->cid);
+        return true;
+    }
 
     line_t             *child_l      = lineCreate(tunnelchainGetLinePools(tunnelGetChain(t)), lineGetWID(parent_l));
     muxserver_lstate_t *new_child_ls = lineGetState(child_l, t);
