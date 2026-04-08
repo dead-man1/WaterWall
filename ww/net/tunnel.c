@@ -182,9 +182,17 @@ tunnel_t *tunnelCreate(node_t *node, uint32_t tstate_size, uint32_t lstate_size)
     tstate_size = tunnelGetCorrectAlignedStateSize(tstate_size);
     lstate_size = tunnelGetCorrectAlignedLineStateSize(lstate_size);
 
-    size_t tsize = sizeof(tunnel_t) + tstate_size;
-    // ensure we have enough space to offset the allocation by line cache (for alignment)
-    tsize = ALIGN2(tsize + ((kCpuLineCacheSize + 1) / 2), kCpuLineCacheSize);
+    const size_t required_size = sizeof(tunnel_t) + (size_t) tstate_size;
+    if (required_size < sizeof(tunnel_t))
+    {
+        return NULL;
+    }
+    // Keep full alignment slack so ALIGN2(ptr, kCpuLineCacheSize) always has enough trailing bytes.
+    if (required_size > (SIZE_MAX - kCpuLineCacheSizeMin1))
+    {
+        return NULL;
+    }
+    const size_t tsize = required_size + kCpuLineCacheSizeMin1;
 
     // allocate memory, placing tunnel_t at a line cache address boundary
     uintptr_t ptr = (uintptr_t) memoryAllocate(tsize);

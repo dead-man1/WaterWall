@@ -83,7 +83,8 @@ sbuf_t *sbufConcat(sbuf_t *restrict root, const sbuf_t *restrict const buf)
 {
     uint32_t root_length   = sbufGetLength(root);
     uint32_t append_length = sbufGetLength(buf);
-    root                   = sbufReserveSpace(root, root_length + append_length);
+    // sbufReserveSpace expects additional writable bytes, not final total length.
+    root                   = sbufReserveSpace(root, append_length);
     sbufSetLength(root, root_length + append_length);
 
     memoryCopyLarge(sbufGetMutablePtr(root) + root_length, sbufGetRawPtr(buf), append_length);

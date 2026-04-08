@@ -114,7 +114,12 @@ static inline size_t bufferstreamGetBufLen(buffer_stream_t *self)
 static inline sbuf_t *bufferstreamFullRead(buffer_stream_t *self)
 {
     assert(self != NULL);
-    return bufferstreamReadExact(self, bufferstreamGetBufLen(self));
+    size_t bytes = bufferstreamGetBufLen(self);
+    if (bytes == 0)
+    {
+        return NULL;
+    }
+    return bufferstreamReadExact(self, bytes);
 }
 
 /**

@@ -37,18 +37,29 @@ master_pool_t *masterpoolCreateWithCapacity(uint32_t pool_width)
     // half of the pool is used, other half is free at startup
     pool_width = 2 * pool_width;
 
-    const unsigned long container_len = pool_width * sizeof(master_pool_item_t *);
-
-    size_t memsize = (sizeof(master_pool_t) + container_len);
-    // ensure we have enough space to offset the allocation by line cache (for alignment)
-    memsize = ALIGN2(memsize + ((kCpuLineCacheSize + 1) / 2), kCpuLineCacheSize);
-
-    // check for overflow
-    if (memsize < sizeof(master_pool_t))
+    // Calculate all sizes in size_t and keep full alignment slack (kCpuLineCacheSize - 1),
+    // so an aligned pointer always has enough trailing bytes for the full object payload.
+    const uint64_t container_len64 = ((uint64_t) pool_width) * ((uint64_t) sizeof(master_pool_item_t *));
+    if (container_len64 > ((uint64_t) SIZE_MAX))
     {
         printError("buffer size out of range");
         terminateProgram(1);
     }
+    const size_t container_len = (size_t) container_len64;
+
+    if (container_len > (SIZE_MAX - sizeof(master_pool_t)))
+    {
+        printError("buffer size out of range");
+        terminateProgram(1);
+    }
+    const size_t required_size = sizeof(master_pool_t) + container_len;
+
+    if (required_size > (SIZE_MAX - kCpuLineCacheSizeMin1))
+    {
+        printError("buffer size out of range");
+        terminateProgram(1);
+    }
+    const size_t memsize = required_size + kCpuLineCacheSizeMin1;
 
     // allocate memory, placing master_pool_t at a line cache address boundary
     uintptr_t ptr = (uintptr_t) memoryAllocate(memsize);
@@ -58,7 +69,7 @@ master_pool_t *masterpoolCreateWithCapacity(uint32_t pool_width)
     master_pool_t *pool_ptr = (master_pool_t *) ALIGN2(ptr, kCpuLineCacheSize); // NOLINT
 
 #ifdef DEBUG
-    memorySet(pool_ptr, 0xEB, sizeof(master_pool_t) + container_len);
+    memorySet(pool_ptr, 0xEB, required_size);
 #endif
 
     master_pool_t pool = {.memptr              = (void *) ptr,

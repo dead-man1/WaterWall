@@ -56,6 +56,10 @@ void bufferqueuePushFront(buffer_queue_t *self, sbuf_t *b)
 
 sbuf_t *bufferqueuePopFront(buffer_queue_t *self)
 {
+    if (UNLIKELY(ww_sbuffer_queue_t_size(&self->q) == 0))
+    {
+        return NULL;
+    }
     sbuf_t *b = ww_sbuffer_queue_t_pull_front(&self->q);
     self->total_len -= sbufGetLength(b);
     return b;
@@ -63,6 +67,10 @@ sbuf_t *bufferqueuePopFront(buffer_queue_t *self)
 
 const sbuf_t *bufferqueueFront(buffer_queue_t *self)
 {
+    if (UNLIKELY(ww_sbuffer_queue_t_size(&self->q) == 0))
+    {
+        return NULL;
+    }
     return *ww_sbuffer_queue_t_front(&self->q);
 }
 

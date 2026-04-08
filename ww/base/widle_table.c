@@ -52,16 +52,14 @@ idle_table_t *idleTableCreate(wloop_t *loop)
 {
     wloopUpdateTime(loop);
     // assert(sizeof(idle_table_t) <= kCpuLineCacheSize); promotion to 128 bytes
-    size_t memsize = sizeof(idle_table_t);
-    // ensure we have enough space to offset the allocation by line cache (for alignment)
-    memsize = ALIGN2(memsize + ((kCpuLineCacheSize + 1) / 2), kCpuLineCacheSize);
-
-    // check for overflow
-    if (memsize < sizeof(idle_table_t))
+    const size_t required_size = sizeof(idle_table_t);
+    // Keep full alignment slack so ALIGN2(ptr, kCpuLineCacheSize) always has enough trailing bytes.
+    if (required_size > (SIZE_MAX - kCpuLineCacheSizeMin1))
     {
         printError("buffer size out of range");
         terminateProgram(1);
     }
+    const size_t memsize = required_size + kCpuLineCacheSizeMin1;
 
     // allocate memory, placing idle_table_t at a line cache address boundary
     uintptr_t ptr = (uintptr_t) memoryAllocate(memsize);

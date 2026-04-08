@@ -6,8 +6,8 @@
 struct buffer_pool_s
 {
 
-    uint16_t cap;
-    uint16_t free_threshold;
+    uint32_t cap;
+    uint32_t free_threshold;
     uint32_t large_buffers_container_len;
     uint32_t large_buffers_size;
     uint16_t large_buffer_left_padding;
@@ -263,6 +263,9 @@ sbuf_t *bufferpoolGetSmallBuffer(buffer_pool_t *pool)
 void bufferpoolReuseBuffer(buffer_pool_t *pool, sbuf_t *b)
 {
 
+    assert(pool != NULL && b != NULL);
+    bufferpoolDebugCheckThreadAccess(pool);
+
     if (UNLIKELY(b->is_temporary))
     {
         return;
@@ -353,6 +356,7 @@ buffer_pool_t *bufferpoolCreate(master_pool_t *mp_large, master_pool_t *mp_small
 {
     // stop using pool if you want less, simply uncomment lines in popbuffer and bufferpoolReuseBuffer
     assert(bufcount >= 1);
+    assert(bufcount <= (UINT32_MAX / 2));
 
     bufcount = 2 * bufcount;
 
@@ -375,6 +379,8 @@ buffer_pool_t *bufferpoolCreate(master_pool_t *mp_large, master_pool_t *mp_small
     assert(sbufGetLeftPadding(test_large_buf) == 0);
     assert(sbufGetTotalCapacityNoPadding(test_small_buf) == small_buffer_size);
     assert(sbufGetLeftPadding(test_small_buf) == 0);
+    sbufDestroy(test_large_buf);
+    sbufDestroy(test_small_buf);
 #endif
 
     const unsigned long container_len = bufcount * sizeof(sbuf_t *);
@@ -382,10 +388,10 @@ buffer_pool_t *bufferpoolCreate(master_pool_t *mp_large, master_pool_t *mp_small
     buffer_pool_t *ptr_pool = memoryAllocate(sizeof(buffer_pool_t));
 
     *ptr_pool = (buffer_pool_t) {
-        .cap                = (uint16_t) bufcount,
+        .cap                = bufcount,
         .large_buffers_size = large_buffer_size,
         .small_buffers_size = small_buffer_size,
-        .free_threshold     = (uint16_t) max(bufcount / 2, (bufcount * 2) / 3),
+        .free_threshold     = max(bufcount / 2, (bufcount * 2) / 3),
 
 #if BUFFER_POOL_DEBUG == 1
         .in_use = 0,

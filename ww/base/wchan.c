@@ -626,17 +626,27 @@ static bool chan_recv_direct(wchan_t *c, void *dstelemptr, Thr *sendert)
 
 wchan_t *chanOpen(size_t elemsize, uint32_t cap)
 {
-    size_t memsize = sizeof(wchan_t) + (cap * elemsize);
-
-    // ensure we have enough space to offset the allocation by line cache (for alignment)
-    memsize = ALIGN2(memsize + ((kCpuLineCacheSize + 1) / 2), kCpuLineCacheSize);
-
-    // check for overflow
-    if (memsize < sizeof(wchan_t))
+    if (elemsize != 0 && (size_t) cap > (SIZE_MAX / elemsize))
     {
         printError("buffer size out of range");
         terminateProgram(1);
     }
+    const size_t buffer_size = ((size_t) cap) * elemsize;
+
+    if (buffer_size > (SIZE_MAX - sizeof(wchan_t)))
+    {
+        printError("buffer size out of range");
+        terminateProgram(1);
+    }
+    const size_t required_size = sizeof(wchan_t) + buffer_size;
+
+    // Keep full alignment slack so ALIGN2(ptr, kCpuLineCacheSize) always has enough trailing bytes.
+    if (required_size > (SIZE_MAX - kCpuLineCacheSizeMin1))
+    {
+        printError("buffer size out of range");
+        terminateProgram(1);
+    }
+    const size_t memsize = required_size + kCpuLineCacheSizeMin1;
 
     // allocate memory, placing wchan_t at a line cache address boundary
     uintptr_t ptr = (uintptr_t) memoryAllocate(memsize);

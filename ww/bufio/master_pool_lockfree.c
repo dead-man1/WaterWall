@@ -43,21 +43,38 @@ static void defaultDestroyHandle(master_pool_t *pool, master_pool_item_t *item, 
 master_pool_t *masterpoolCreateWithCapacity(uint32_t capacity)
 {
     capacity = max((uint32_t)1, capacity);
-    
-    // Calculate required memory size
-    size_t items_size = capacity * sizeof(void*);
-    size_t next_size = capacity * sizeof(atomic_uint);
-    size_t total_size = sizeof(master_pool_t) + items_size + next_size;
-    
-    // Ensure alignment
-    total_size = ALIGN2(total_size + ((kCpuLineCacheSize + 1) / 2), kCpuLineCacheSize);
 
-    // Check for overflow
-    if (total_size < sizeof(master_pool_t))
+    // Calculate all sizes safely and keep full alignment slack.
+    const uint64_t items_size64 = ((uint64_t) capacity) * ((uint64_t) sizeof(void *));
+    const uint64_t next_size64  = ((uint64_t) capacity) * ((uint64_t) sizeof(atomic_uint));
+    if (items_size64 > ((uint64_t) SIZE_MAX) || next_size64 > ((uint64_t) SIZE_MAX))
     {
         printError("buffer size out of range");
         terminateProgram(1);
     }
+    const size_t items_size = (size_t) items_size64;
+    const size_t next_size  = (size_t) next_size64;
+
+    if (items_size > (SIZE_MAX - sizeof(master_pool_t)))
+    {
+        printError("buffer size out of range");
+        terminateProgram(1);
+    }
+    const size_t first_sum = sizeof(master_pool_t) + items_size;
+
+    if (next_size > (SIZE_MAX - first_sum))
+    {
+        printError("buffer size out of range");
+        terminateProgram(1);
+    }
+    const size_t required_size = first_sum + next_size;
+
+    if (required_size > (SIZE_MAX - kCpuLineCacheSizeMin1))
+    {
+        printError("buffer size out of range");
+        terminateProgram(1);
+    }
+    const size_t total_size = required_size + kCpuLineCacheSizeMin1;
 
     // Allocate memory
     uintptr_t ptr = (uintptr_t)memoryAllocate(total_size);

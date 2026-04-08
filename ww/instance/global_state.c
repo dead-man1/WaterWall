@@ -483,5 +483,7 @@ WW_EXPORT void destroyGlobalState(void)
 
 void reuseBuffer(sbuf_t *b)
 {
+    assert(b != NULL);
+
     bufferpoolReuseBuffer(getWorkerBufferPool(getWID()), b);
 }

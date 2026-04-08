@@ -180,7 +180,8 @@ uint8_t bufferstreamViewByteAt(buffer_stream_t *self, size_t at)
 void bufferstreamViewBytesAt(buffer_stream_t *self, size_t at, uint8_t *buf, size_t len)
 {
 
-    assert(self && buf && len > 0 && self->size >= (at + len) && self->size != 0);
+    // Use subtraction-based bounds checks to avoid overflow in (at + len).
+    assert(self && buf && len > 0 && self->size != 0 && at <= self->size && len <= (self->size - at));
 
     size_t remaining_offset = at;
     size_t buf_i            = 0;
