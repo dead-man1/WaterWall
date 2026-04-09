@@ -107,7 +107,7 @@ static void multiplexedSignalHandler(int signum)
     int     written = write(STDOUT_FILENO, message, length);
     discard written;
 
-    if (signalmanager_gstate->raise_defaults)
+    if (signalmanager_gstate == NULL || signalmanager_gstate->raise_defaults)
     {
         signal(signum, SIG_DFL);
     }
@@ -125,12 +125,9 @@ static void multiplexedSignalHandler(int signum)
     if (signalmanager_gstate->raise_defaults)
     {
         raise(signum);
-
-        // written = write(STDOUT_FILENO,
-        //                 "SignalManager: The program should have been terminated before this, exiting...\n", 75);
-        // discard written;
-        // _Exit(1);
     }
+
+    _Exit(128 + signum);
 }
 
 void signalmanagerStart(void)
@@ -301,6 +298,7 @@ void signalmanagerDestroy(void)
     assert(signalmanager_gstate != NULL);
     mutexDestroy(&(signalmanager_gstate->mutex));
     memoryFree(signalmanager_gstate);
+    signalmanager_gstate = NULL;
 }
 
 _Noreturn void terminateProgram(int exit_code)
