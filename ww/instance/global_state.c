@@ -95,10 +95,13 @@ static void exitHandle(void *userdata, int signum)
     discard userdata;
     atomicStoreExplicit(&GSTATE.application_stopping_flag, true, memory_order_release);
 
-    for (unsigned int wid = 1; wid < WORKERS_COUNT; ++wid)
+    // join only worker threads that were spawned via workerSpawn()
+    for (unsigned int wid = 1; wid < WORKERS_COUNT - WORKER_ADDITIONS; ++wid)
     {
         workerExitJoin(getWorker(wid));
     }
+    // lwip pseudo-worker has no spawned OS thread, but it still owns pools
+    workerFinish(getWorker(getTotalWorkersCount() - 1));
 
     if (getTID() == getWorker(0)->tid)
     {
@@ -362,7 +365,7 @@ void sendWorkerMessageForceQueue(wid_t wid, WorkerMessageCalback cb, void *arg1,
 
 static void runTimedTask(wtimer_t *timer)
 {
-    worker_msg_t *msg = weventGetUserdata(weventGetUserdata(timer));
+    worker_msg_t *msg = weventGetUserdata(timer);
 
     WorkerMessageCalback cb = msg->callback;
     cb(getWorker(getWID()), msg->arg1, msg->arg2, msg->arg3);
@@ -374,18 +377,34 @@ static void runTimedTask(wtimer_t *timer)
 static void setupTimedTask(worker_t *worker, void *arg1, void *arg2, void *arg3)
 {
 
-    
     uint32_t      delay_ms = (uint32_t) (uintptr_t) arg1;
     worker_msg_t *msg      = (worker_msg_t *) arg2;
     discard       arg3;
 
     wtimer_t *k_timer = wtimerAdd(worker->loop, runTimedTask, delay_ms, 1);
+    if (UNLIKELY(k_timer == NULL))
+    {
+        // fallback to immediate execution if timer creation fails
+        WorkerMessageCalback cb = msg->callback;
+        cb(worker, msg->arg1, msg->arg2, msg->arg3);
+        masterpoolReuseItems(GSTATE.masterpool_messages, (void **) &msg, 1, NULL);
+        return;
+    }
 
     weventSetUserData(k_timer, msg);
 }
 
 void sendWorkerMessageTimed(wid_t wid, WorkerMessageCalback cb, uint32_t delay_ms, void *arg1, void *arg2, void *arg3)
 {
+
+    assert(wid < getWorkersCount());
+
+    // delay=0 means "run on next event-loop iteration", not immediate inline execution
+    if (delay_ms == 0)
+    {
+        sendWorkerMessageForceQueue(wid, cb, arg1, arg2, arg3);
+        return;
+    }
 
     uintptr_t delay_ms_uiptr = (uintptr_t) delay_ms;
 
@@ -394,7 +413,27 @@ void sendWorkerMessageTimed(wid_t wid, WorkerMessageCalback cb, uint32_t delay_m
     masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(msg), 1, NULL);
     *msg = (worker_msg_t) {.callback = cb, .arg1 = arg1, .arg2 = arg2, .arg3 = arg3};
 
-    sendWorkerMessage(wid, (WorkerMessageCalback) setupTimedTask, (void *) delay_ms_uiptr, msg, NULL);
+    // queue setupTimedTask manually so both wrapper and payload are reclaimed on post failure
+    worker_msg_t *queue_msg;
+    masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(queue_msg), 1, NULL);
+    *queue_msg = (worker_msg_t) {
+        .callback = (WorkerMessageCalback) setupTimedTask,
+        .arg1     = (void *) delay_ms_uiptr,
+        .arg2     = msg,
+        .arg3     = NULL
+    };
+
+    wevent_t ev;
+    memorySet(&ev, 0, sizeof(ev));
+    ev.loop = getWorkerLoop(wid);
+    ev.cb   = workerMessageReceived;
+    weventSetUserData(&ev, queue_msg);
+
+    if (UNLIKELY(false == wloopPostEvent(getWorkerLoop(wid), &ev)))
+    {
+        masterpoolReuseItems(GSTATE.masterpool_messages, (void **) &queue_msg, 1, NULL);
+        masterpoolReuseItems(GSTATE.masterpool_messages, (void **) &msg, 1, NULL);
+    }
 }
 
 /*!
