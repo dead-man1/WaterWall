@@ -46,17 +46,18 @@ static int createTunnelInstances(node_manager_config_t *cfg, tunnel_t **t_array,
     {
         node_t *n1 = p1.ref->second;
         assert(n1 != NULL && n1->instance == NULL);
+
+        if (index >= max_size)
+        {
+            LOGF("NodeManager: too many nodes in config");
+            terminateProgram(1);
+        }
+
         t_array[index++] = n1->instance = n1->createHandle(n1);
 
         if (n1->instance == NULL)
         {
             LOGF("NodeManager: node startup failure: node (\"%s\") create() returned NULL handle", n1->name);
-            terminateProgram(1);
-        }
-
-        if (index == max_size + 1)
-        {
-            LOGF("NodeManager: too many nodes in config");
             terminateProgram(1);
         }
     }
