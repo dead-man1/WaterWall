@@ -239,6 +239,7 @@ raw_device_t *rawdeviceCreate(const char *name, uint32_t mark, void *userdata)
         if (setsockopt(rsocket, SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) != 0)
         {
             LOGE("RawDevice:  unable to set raw socket mark to %u", mark);
+            close(rsocket);
             return NULL;
         }
     }
