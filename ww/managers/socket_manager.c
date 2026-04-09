@@ -152,17 +152,20 @@ static bool executeIptablesRule(const char *protocol, unsigned int port_min, uns
     result = execCmd(command).exit_code == 0;
 
 #if SUPPORT_V6
-    if (port_min == port_max)
+    if (socketmanager_gstate->ip6tables_installed)
     {
-        sprintf(command, "ip6tables -t nat -A PREROUTING -p %s --dport %u -j REDIRECT --to-port %u", protocol, port_min,
-                to_port);
+        if (port_min == port_max)
+        {
+            sprintf(command, "ip6tables -t nat -A PREROUTING -p %s --dport %u -j REDIRECT --to-port %u", protocol,
+                    port_min, to_port);
+        }
+        else
+        {
+            sprintf(command, "ip6tables -t nat -A PREROUTING -p %s --dport %u:%u -j REDIRECT --to-port %u", protocol,
+                    port_min, port_max, to_port);
+        }
+        result = result && execCmd(command).exit_code == 0;
     }
-    else
-    {
-        sprintf(command, "ip6tables -t nat -A PREROUTING -p %s --dport %u:%u -j REDIRECT --to-port %u", protocol,
-                port_min, port_max, to_port);
-    }
-    result = result && execCmd(command).exit_code == 0;
 #endif
     return result;
 }
@@ -205,8 +208,11 @@ static bool resetIptables(bool safe_mode)
     result      = result && execCmd("iptables -t nat -F").exit_code == 0;
     result      = result && execCmd("iptables -t nat -X").exit_code == 0;
 #if SUPPORT_V6
-    result = result && execCmd("ip6tables -t nat -F").exit_code == 0;
-    result = result && execCmd("ip6tables -t nat -X").exit_code == 0;
+    if (socketmanager_gstate->ip6tables_installed)
+    {
+        result = result && execCmd("ip6tables -t nat -F").exit_code == 0;
+        result = result && execCmd("ip6tables -t nat -X").exit_code == 0;
+    }
 #endif
 
     return result;
@@ -315,7 +321,11 @@ static void distributeSocket(void *io, socket_filter_t *filter, uint16_t local_p
     }
     else
     {
-        wloopPostEvent(worker_loop, &ev);
+        if (UNLIKELY(! wloopPostEvent(worker_loop, &ev)))
+        {
+            wioClose(io);
+            socketacceptresultDestroy(result);
+        }
     }
 }
 
@@ -355,6 +365,32 @@ static bool checkIpv6WhiteList(const ip6_addr_t ipv6_addr, const socket_filter_o
     return false;
 }
 
+static bool checkIpv4BlackList(const ip4_addr_t ipv4_addr, const socket_filter_option_t option)
+{
+    for (int i = 0; i < vec_ipmask_t_size(&option.black_list); i++)
+    {
+        if (checkIPRange4(ipv4_addr, vec_ipmask_t_at(&option.black_list, i)->ip.u_addr.ip4,
+                          vec_ipmask_t_at(&option.black_list, i)->mask.u_addr.ip4))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool checkIpv6BlackList(const ip6_addr_t ipv6_addr, const socket_filter_option_t option)
+{
+    for (int i = 0; i < vec_ipmask_t_size(&option.black_list); i++)
+    {
+        if (checkIPRange6(ipv6_addr, vec_ipmask_t_at(&option.black_list, i)->ip.u_addr.ip6,
+                          vec_ipmask_t_at(&option.black_list, i)->mask.u_addr.ip6))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool checkIpIsWhiteList(const ip_addr_t addr, const socket_filter_option_t option)
 {
     const bool is_v4 = addr.type == IPADDR_TYPE_V4;
@@ -372,6 +408,25 @@ static bool checkIpIsWhiteList(const ip_addr_t addr, const socket_filter_option_
         return checkIpv4WhiteList(ipv4_addr, option);
     }
     return checkIpv6WhiteList(addr.u_addr.ip6, option);
+}
+
+static bool checkIpIsBlackList(const ip_addr_t addr, const socket_filter_option_t option)
+{
+    const bool is_v4 = addr.type == IPADDR_TYPE_V4;
+    ip4_addr_t ipv4_addr;
+
+    if (is_v4)
+    {
+        ip4_addr_copy(ipv4_addr, addr.u_addr.ip4);
+        return checkIpv4BlackList(ipv4_addr, option);
+    }
+
+    if (needsV4SocketStrategy(addr.u_addr.ip6))
+    {
+        memoryCopy(&ipv4_addr, &(addr.u_addr.ip6.addr[3]), sizeof(ipv4_addr.addr));
+        return checkIpv4BlackList(ipv4_addr, option);
+    }
+    return checkIpv6BlackList(addr.u_addr.ip6, option);
 }
 
 static bool handleBalancedFilter(socket_filter_t *filter, const socket_filter_option_t option, wio_t *io,
@@ -450,6 +505,13 @@ static bool processFilterMatch(const socket_filter_option_t option, uint16_t loc
     if (vec_ipmask_t_size(&option.white_list) > 0)
     {
         if (! checkIpIsWhiteList(paddr, option))
+        {
+            return false;
+        }
+    }
+    if (vec_ipmask_t_size(&option.black_list) > 0)
+    {
+        if (checkIpIsBlackList(paddr, option))
         {
             return false;
         }
@@ -579,31 +641,27 @@ static wio_t *createTcpServerWithInterface(wloop_t *loop, socket_filter_t *filte
 static uint16_t selectMainPortForIptables(socket_filter_t *filter, wloop_t *loop, char *host, uint16_t port_min,
                                           uint16_t port_max, uint8_t *ports_overlapped)
 {
-    uint16_t main_port = port_max;
-
-    do
+    for (int main_port = (int) port_max; main_port >= (int) port_min; --main_port)
     {
-        if (ports_overlapped[main_port] != 1)
+        if (ports_overlapped[(uint16_t) main_port] == 1)
         {
-            filter->listen_io = createTcpServerWithInterface(loop, filter, host, main_port, onAcceptTcpMultiPort);
-            ports_overlapped[main_port] = 1;
-
-            if (filter->listen_io != NULL)
-            {
-                filter->v6_dualstack = wioGetLocaladdr(filter->listen_io)->sa_family == AF_INET6;
-                break;
-            }
-            main_port--;
+            continue;
         }
-    } while (main_port >= port_min);
 
-    if (filter->listen_io == NULL)
-    {
-        LOGF("SocketManager: stopping due to null socket handle");
-        terminateProgram(1);
+        filter->listen_io = createTcpServerWithInterface(loop, filter, host, (uint16_t) main_port, onAcceptTcpMultiPort);
+        if (filter->listen_io == NULL)
+        {
+            continue;
+        }
+
+        ports_overlapped[(uint16_t) main_port] = 1;
+        filter->v6_dualstack                   = wioGetLocaladdr(filter->listen_io)->sa_family == AF_INET6;
+        return (uint16_t) main_port;
     }
 
-    return main_port;
+    LOGF("SocketManager: stopping due to null socket handle");
+    terminateProgram(1);
+    return 0;
 }
 
 static void initializeIptablesIfNeeded(void)
@@ -613,6 +671,12 @@ static void initializeIptablesIfNeeded(void)
         LOGF("SocketManager: multi port backend \"iptables\" colud not start, error: not installed");
         terminateProgram(1);
     }
+#if SUPPORT_V6
+    if (! socketmanager_gstate->ip6tables_installed)
+    {
+        LOGW("SocketManager: ip6tables is not installed, ipv6 nat redirect rules will be skipped");
+    }
+#endif
 
     socketmanager_gstate->iptables_used = true;
     if (! socketmanager_gstate->iptable_cleaned)
@@ -633,19 +697,23 @@ static void listenTcpMultiPortIptables(wloop_t *loop, socket_filter_t *filter, c
 
     uint16_t main_port = selectMainPortForIptables(filter, loop, host, port_min, port_max, ports_overlapped);
 
-    redirectPortRangeTcp(port_min, port_max, main_port);
+    if (! redirectPortRangeTcp(port_min, port_max, main_port))
+    {
+        LOGF("SocketManager: failed to add iptables rules for tcp range %u-%u", port_min, port_max);
+        terminateProgram(1);
+    }
     LOGI("SocketManager: listening on %s:[%u - %u] >> %d (%s)", host, port_min, port_max, main_port, "TCP");
 }
 
 static void listenTcpMultiPortSockets(wloop_t *loop, socket_filter_t *filter, char *host, uint16_t port_min,
                                       uint8_t *ports_overlapped, uint16_t port_max)
 {
-    const int length           = (port_max - port_min);
-    filter->listen_ios         = (wio_t **) memoryAllocate(sizeof(wio_t *) * ((size_t) length + 1));
-    filter->listen_ios[length] = 0x0;
-    int i                      = 0;
+    const int length = (int) (port_max - port_min + 1);
+    filter->listen_ios = (wio_t **) memoryAllocate(sizeof(wio_t *) * ((size_t) length + 1));
+    memorySet(filter->listen_ios, 0, sizeof(wio_t *) * ((size_t) length + 1));
+    int i = 0;
 
-    for (uint16_t p = port_min; p < port_max; p++)
+    for (uint16_t p = port_min; p <= port_max; p++)
     {
         if (ports_overlapped[p] == 1)
         {
@@ -759,7 +827,11 @@ static void postUdpPayload(udp_payload_t post_pl, socket_filter_t *filter)
         filter->cb(&ev);
         return;
     }
-    wloopPostEvent(worker_loop, &ev);
+    if (UNLIKELY(! wloopPostEvent(worker_loop, &ev)))
+    {
+        sbufDestroy(pl->buf);
+        udppayloadDestroy(pl);
+    }
 }
 
 static bool processUdpFilterMatch(const socket_filter_option_t option, uint16_t local_port, const ip_addr_t paddr)
@@ -772,6 +844,13 @@ static bool processUdpFilterMatch(const socket_filter_option_t option, uint16_t 
     if (vec_ipmask_t_size(&option.white_list) > 0)
     {
         if (! checkIpIsWhiteList(paddr, option))
+        {
+            return false;
+        }
+    }
+    if (vec_ipmask_t_size(&option.black_list) > 0)
+    {
+        if (checkIpIsBlackList(paddr, option))
         {
             return false;
         }
@@ -976,26 +1055,22 @@ static void listenUdpMultiPortIptables(wloop_t *loop, socket_filter_t *filter, c
     initializeIptablesIfNeeded();
 
     // Find an available port for the main UDP socket
-    uint16_t main_port = port_max;
-    
-    do
+    int main_port = -1;
+    for (int p = (int) port_max; p >= (int) port_min; --p)
     {
-        if (ports_overlapped[main_port] != 1)
+        if (ports_overlapped[(uint16_t) p] == 1)
         {
-            filter->listen_io = wloopCreateUdpServer(loop, host, main_port);
-            ports_overlapped[main_port] = 1;
+            continue;
+        }
 
-            if (filter->listen_io != NULL)
-            {
-                break;
-            }
-            main_port--;
-        }
-        else
+        filter->listen_io = wloopCreateUdpServer(loop, host, (uint16_t) p);
+        if (filter->listen_io != NULL)
         {
-            main_port--;
+            ports_overlapped[(uint16_t) p] = 1;
+            main_port                      = p;
+            break;
         }
-    } while (main_port >= port_min);
+    }
 
     if (filter->listen_io == NULL)
     {
@@ -1013,19 +1088,23 @@ static void listenUdpMultiPortIptables(wloop_t *loop, socket_filter_t *filter, c
     wioRead(filter->listen_io);
 
     // Set up iptables redirection for the port range
-    redirectPortRangeUdp(port_min, port_max, main_port);
+    if (! redirectPortRangeUdp(port_min, port_max, (uint16_t) main_port))
+    {
+        LOGF("SocketManager: failed to add iptables rules for udp range %u-%u", port_min, port_max);
+        terminateProgram(1);
+    }
     LOGI("SocketManager: listening on %s:[%u - %u] >> %d (%s)", host, port_min, port_max, main_port, "UDP");
 }
 
 static void listenUdpMultiPortSockets(wloop_t *loop, socket_filter_t *filter, char *host, uint16_t port_min,
                                       uint8_t *ports_overlapped, uint16_t port_max)
 {
-    const int length           = (port_max - port_min);
-    filter->listen_ios         = (wio_t **) memoryAllocate(sizeof(wio_t *) * ((size_t) length + 1));
-    filter->listen_ios[length] = 0x0;
-    int i                      = 0;
+    const int length = (int) (port_max - port_min + 1);
+    filter->listen_ios = (wio_t **) memoryAllocate(sizeof(wio_t *) * ((size_t) length + 1));
+    memorySet(filter->listen_ios, 0, sizeof(wio_t *) * ((size_t) length + 1));
+    int i = 0;
 
-    for (uint16_t p = port_min; p < port_max; p++)
+    for (uint16_t p = port_min; p <= port_max; p++)
     {
         if (ports_overlapped[p] == 1)
         {
@@ -1216,6 +1295,7 @@ socket_manager_state_t *socketmanagerCreate(void)
     {
         socketmanager_gstate->filters[i] = filters_t_init();
     }
+    socketmanager_gstate->balance_groups = balancegroup_registry_t_with_capacity(8);
 
     mutexInit(&socketmanager_gstate->mutex);
     initializeSocketManagerPools();
@@ -1224,32 +1304,72 @@ socket_manager_state_t *socketmanagerCreate(void)
     return socketmanager_gstate;
 }
 
+static void cleanupOneListenerIo(wio_t *io, uint8_t protocol)
+{
+    if (io == NULL)
+    {
+        return;
+    }
+
+    if (protocol == IPPROTO_UDP)
+    {
+        udpsock_t *socket = weventGetUserdata(io);
+        if (socket != NULL)
+        {
+            if (socket->table != NULL)
+            {
+                idletableDestroy(socket->table);
+                socket->table = NULL;
+            }
+            memoryFree(socket);
+            weventSetUserData(io, NULL);
+        }
+    }
+
+    wioClose(io);
+}
+
 static void cleanupFilters(void)
 {
     for (size_t i = 0; i < kFilterLevels; i++)
     {
-        // c_foreach(filter, filters_t, socketmanager_gstate->filters[i])
-        // {
-        //     if ((*filter.ref)->listen_ios != NULL)
-        //     {
-        //         int    ios_i = 0;
-        //         wio_t *io    = (*filter.ref)->listen_ios[ios_i++];
-        //         while (io != NULL)
-        //         {
-        //             wioClose(io);
-        //             io = (*filter.ref)->listen_ios[ios_i++];
-        //         }
-        //         memoryFree((void *) (*filter.ref)->listen_ios);
-        //     }
-        //     else
-        //     {
-        //         wioClose((*filter.ref)->listen_io);
-        //     }
-        //     socketfilteroptionDeInit(&((*filter.ref)->option));
-        //     memoryFree(*filter.ref);
-        // }
+        c_foreach(filter, filters_t, socketmanager_gstate->filters[i])
+        {
+            socket_filter_t *f = *filter.ref;
+
+            if (f->listen_ios != NULL)
+            {
+                int ios_i = 0;
+                for (;;)
+                {
+                    wio_t *io = f->listen_ios[ios_i++];
+                    if (io == NULL)
+                    {
+                        break;
+                    }
+                    cleanupOneListenerIo(io, f->option.protocol);
+                }
+                memoryFree((void *) f->listen_ios);
+            }
+            else
+            {
+                cleanupOneListenerIo(f->listen_io, f->option.protocol);
+            }
+
+            socketfilteroptionDeInit(&(f->option));
+            memoryFree(f);
+        }
         filters_t_drop(&(socketmanager_gstate->filters[i]));
     }
+}
+
+static void destroyBalanceGroups(void)
+{
+    c_foreach(bg, balancegroup_registry_t, socketmanager_gstate->balance_groups)
+    {
+        idletableDestroy(bg.ref->second);
+    }
+    balancegroup_registry_t_drop(&socketmanager_gstate->balance_groups);
 }
 
 static void destroyPools(void)
@@ -1278,6 +1398,7 @@ void socketmanagerDestroy(void)
     }
 
     cleanupFilters();
+    destroyBalanceGroups();
     destroyPools();
     memoryFree(socketmanager_gstate);
     socketmanager_gstate = NULL;
