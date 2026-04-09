@@ -228,7 +228,6 @@ static TCHAR *writeDllToTempFile(const unsigned char *dllBytes, size_t dllSize)
 static TCHAR *writeSYSToTempFile(const unsigned char *sysBytes, size_t sysSize)
 {
     TCHAR tempPath[MAX_PATH];
-    TCHAR tempFileName[MAX_PATH];
 
     // Get the system's temporary directory
     if (GetTempPath(MAX_PATH, tempPath) == 0)
@@ -253,8 +252,14 @@ static TCHAR *writeSYSToTempFile(const unsigned char *sysBytes, size_t sysSize)
     if (hFile == INVALID_HANDLE_VALUE)
     {
         // maybe already exsits
-        LOGD("CaptureDevice: the sys file may already exists");
-        return _tcsdup(tempFileName);
+        DWORD last_error = GetLastError();
+        if (last_error == ERROR_FILE_EXISTS || last_error == ERROR_ALREADY_EXISTS)
+        {
+            LOGD("CaptureDevice: the sys file may already exists");
+            return _tcsdup(tempPath);
+        }
+        LOGE("CaptureDevice: Failed to create sys file, error %lu", last_error);
+        return NULL;
     }
 
     // Write the DLL bytes to the file
@@ -263,7 +268,7 @@ static TCHAR *writeSYSToTempFile(const unsigned char *sysBytes, size_t sysSize)
     {
         LOGE("CaptureDevice: Failed to write sys file");
         CloseHandle(hFile);
-        DeleteFile(tempFileName);
+        DeleteFile(tempPath);
         return NULL;
     }
 
@@ -271,7 +276,7 @@ static TCHAR *writeSYSToTempFile(const unsigned char *sysBytes, size_t sysSize)
     CloseHandle(hFile);
 
     // Return the path to the temporary file
-    return _tcsdup(tempFileName);
+    return _tcsdup(tempPath);
 }
 
 /**
@@ -299,6 +304,7 @@ static void rawWindowsStartup(void)
     if (! tempDllPath)
     {
         LOGE("CaptureDevice: Failed to write DLL to temporary file");
+        free(tempSysPath);
         return;
     }
 
@@ -311,10 +317,13 @@ static void rawWindowsStartup(void)
         LOGE("CaptureDevice: Failed to load DLL: error %lu", GetLastError());
         DeleteFile(tempDllPath);
         free(tempDllPath);
+        free(tempSysPath);
         return;
     }
 
     GSTATE.windivert_dll_handle = hModule;
+    free(tempDllPath);
+    free(tempSysPath);
 }
 
 static void localThreadEventReceived(wevent_t *ev)

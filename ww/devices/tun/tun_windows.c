@@ -221,7 +221,6 @@ static WTHREAD_ROUTINE(routineReadFromTun)
     WINTUN_SESSION_HANDLE Session = tdev->session_handle;
     sbuf_t               *bufs[kMaxReadDistributeQueueSize];
     uint8_t               queued_count = 0;
-    ssize_t               nread;
 
     while (atomicLoadRelaxed(&(tdev->running)))
     {
@@ -240,7 +239,7 @@ static WTHREAD_ROUTINE(routineReadFromTun)
 
             if (TUN_LOG_EVERYTHING)
             {
-                LOGD("TunDevice: ReadThread: Read %zd bytes from device %s", nread, tdev->name);
+                LOGD("TunDevice: ReadThread: Read %lu bytes from device %s", packet_size, tdev->name);
                 // printPacket(Packet, PacketSize);
             }
 
@@ -265,7 +264,7 @@ static WTHREAD_ROUTINE(routineReadFromTun)
             }
             else
             {
-                distributePacketPayloads(tdev, getNextDistributionWID(), &bufs[0], queued_count);
+                distributePacketPayloads(tdev, getNextDistributionWID(), &bufs[0], queued_count + 1);
                 queued_count = 0;
             }
         }
@@ -448,8 +447,9 @@ bool tundeviceBringDown(tun_device_t *tdev)
     sbuf_t *buf;
     while (chanRecv(tdev->writer_buffer_channel, (void *) &buf))
     {
-        bufferpoolReuseBuffer(tdev->reader_buffer_pool, buf);
+        bufferpoolReuseBuffer(tdev->writer_buffer_pool, buf);
     }
+    chanFree(tdev->writer_buffer_channel);
     tdev->writer_buffer_channel = NULL;
 
     assert(tdev->session_handle != NULL);
@@ -465,6 +465,7 @@ bool tundeviceAssignIP(tun_device_t *tdev, const char *ip_presentation, unsigned
     if (! (inet_pton(AF_INET, ip_presentation, &ip_binary) == 1))
     {
         LOGE("TunDevice: Cannot set IP -> Invalid IP address: %s", ip_presentation);
+        return false;
     }
 
     if (tdev->adapter_handle == NULL)
@@ -497,12 +498,22 @@ bool tundeviceAssignIP(tun_device_t *tdev, const char *ip_presentation, unsigned
 
 bool tundeviceUnAssignIP(tun_device_t *tdev, const char *ip_presentation, unsigned int subnet)
 {
-    discard subnet;
-    discard ip_presentation;
+    ULONG ip_binary;
+    if (! (inet_pton(AF_INET, ip_presentation, &ip_binary) == 1))
+    {
+        LOGE("TunDevice: Cannot unset IP -> Invalid IP address: %s", ip_presentation);
+        return false;
+    }
 
     if (tdev->adapter_handle == NULL)
     {
-        LOGE("TunDevice: Cannot set IP -> No Adapter!");
+        LOGE("TunDevice: Cannot unset IP -> No Adapter!");
+        return false;
+    }
+
+    if (tdev->session_handle != NULL)
+    {
+        LOGE("TunDevice: Cannot unset IP -> Session already started");
         return false;
     }
 
@@ -510,9 +521,10 @@ bool tundeviceUnAssignIP(tun_device_t *tdev, const char *ip_presentation, unsign
     InitializeUnicastIpAddressEntry(AddressRow);
     WintunGetAdapterLUID(tdev->adapter_handle, &AddressRow->InterfaceLuid);
     AddressRow->Address.Ipv4.sin_family           = AF_INET;
-    AddressRow->Address.Ipv4.sin_addr.S_un.S_addr = htonl((10 << 24) | (6 << 16) | (7 << 8) | (7 << 0)); /* 10.6.7.7 */
-    DWORD LastError                               = CreateUnicastIpAddressEntry(AddressRow);
-    if (LastError != ERROR_SUCCESS && LastError != ERROR_OBJECT_ALREADY_EXISTS)
+    AddressRow->Address.Ipv4.sin_addr.S_un.S_addr = ip_binary;
+    AddressRow->OnLinkPrefixLength                = (uint8_t) subnet;
+    DWORD LastError                               = DeleteUnicastIpAddressEntry(AddressRow);
+    if (LastError != ERROR_SUCCESS && LastError != ERROR_NOT_FOUND)
     {
         LOGE("TunDevice: Failed to unassign IP address, code: %lu", LastError);
         return false;
@@ -669,15 +681,27 @@ tun_device_t *tundeviceCreate(const char *name, bool offload, uint16_t mtu, void
     masterpoolInstallCallBacks(tdev->reader_message_pool, allocTunMsgPoolHandle, destroyTunMsgPoolHandle);
 
     int wide_size = MultiByteToWideChar(CP_UTF8, 0, name, -1, NULL, 0);
-
-    tdev->name_w = (wchar_t *) memoryAllocate(wide_size * sizeof(wchar_t));
-    if (! tdev->name)
+    if (wide_size <= 0)
     {
-        LOGE("TunDevice: Memory allocation failed!");
+        LOGE("TunDevice: Failed to calculate UTF-16 length for adapter name");
+        tundeviceDestroy(tdev);
         return NULL;
     }
 
-    MultiByteToWideChar(CP_UTF8, 0, name, -1, (tdev->name_w), wide_size);
+    tdev->name_w = (wchar_t *) memoryAllocate(wide_size * sizeof(wchar_t));
+    if (! tdev->name_w)
+    {
+        LOGE("TunDevice: Memory allocation failed!");
+        tundeviceDestroy(tdev);
+        return NULL;
+    }
+
+    if (MultiByteToWideChar(CP_UTF8, 0, name, -1, (tdev->name_w), wide_size) <= 0)
+    {
+        LOGE("TunDevice: Failed to convert adapter name to UTF-16");
+        tundeviceDestroy(tdev);
+        return NULL;
+    }
 
     GUID example_guid = {0xDEADC0DE, 0xFADE, 0xC01D, {0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66}};
 
