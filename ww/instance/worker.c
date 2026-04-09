@@ -60,7 +60,11 @@ void workerExitJoin(worker_t *worker)
 {
 
     workerFinish(worker);
-    safeThreadJoin(worker->thread);
+    if (worker->thread != (wthread_t) 0)
+    {
+        safeThreadJoin(worker->thread);
+        worker->thread = (wthread_t) 0;
+    }
 }
 
 void workerInit(worker_t *worker, wid_t wid, bool eventloop)
