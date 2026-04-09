@@ -225,6 +225,9 @@ static WTHREAD_ROUTINE(routineReadFromTun)
 
         if (fds[1].revents & POLLIN)
         {
+            char    drain_byte;
+            ssize_t drain_res = read(tdev->linux_pipe_fds[0], &drain_byte, 1);
+            discard drain_res;
             LOGW("TunDevice: Exit read routine due to pipe event");
             break;
         }
@@ -401,9 +404,6 @@ bool tundeviceBringUp(tun_device_t *tdev)
                                        bufferpoolGetLargeBufferPadding(getWorkerBufferPool(getWID())),
                                        bufferpoolGetSmallBufferPadding(getWorkerBufferPool(getWID())));
 
-    tdev->up = true;
-    atomicStoreRelaxed(&(tdev->running), true);
-
     tdev->writer_buffer_channel = chanOpen(sizeof(void *), kTunWriteChannelQueueMax);
 
     char command[128];
@@ -411,8 +411,18 @@ bool tundeviceBringUp(tun_device_t *tdev)
     if (execCmd(command).exit_code != 0)
     {
         LOGE("TunDevice: error bringing device %s up", tdev->name);
+        if (tdev->writer_buffer_channel != NULL)
+        {
+            chanClose(tdev->writer_buffer_channel);
+            chanFree(tdev->writer_buffer_channel);
+        }
+        tdev->writer_buffer_channel = NULL;
         return false;
     }
+
+    tdev->up = true;
+    atomicStoreRelaxed(&(tdev->running), true);
+
     LOGI("TunDevice: device %s is now up", tdev->name);
 
     if (tdev->read_event_callback != NULL)
@@ -440,17 +450,22 @@ bool tundeviceBringDown(tun_device_t *tdev)
 
     while (chanRecv(tdev->writer_buffer_channel, (void *) &buf))
     {
-        bufferpoolReuseBuffer(tdev->reader_buffer_pool, buf);
+        bufferpoolReuseBuffer(tdev->writer_buffer_pool, buf);
     }
+
+    bool bring_down_ok = true;
 
     char command[128];
     snprintf(command, sizeof(command), "ip link set dev %s down", tdev->name);
     if (execCmd(command).exit_code != 0)
     {
         LOGE("TunDevice: error bringing %s down", tdev->name);
-        return false;
+        bring_down_ok = false;
     }
-    LOGI("TunDevice: device %s is now down", tdev->name);
+    else
+    {
+        LOGI("TunDevice: device %s is now down", tdev->name);
+    }
 
     if (tdev->read_event_callback != NULL)
     {
@@ -465,7 +480,7 @@ bool tundeviceBringDown(tun_device_t *tdev)
 
     tdev->writer_buffer_channel = NULL;
 
-    return true;
+    return bring_down_ok;
 }
 
 tun_device_t *tundeviceCreate(const char *name, bool offload, uint16_t mtu, void *userdata, TunReadEventHandle cb)

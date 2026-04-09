@@ -360,6 +360,9 @@ static WTHREAD_ROUTINE(routineReadFromCapture) // NOLINT
 
         if (fds[1].revents & POLLIN)
         {
+            char    drain_byte;
+            ssize_t drain_res = read(cdev->linux_pipe_fds[0], &drain_byte, 1);
+            discard drain_res;
             LOGW("CaptureDevice: Exit read routine due to pipe event");
             break;
         }
@@ -655,5 +658,7 @@ void capturedeviceDestroy(capture_device_t *cdev)
     masterpoolMakeEmpty(cdev->reader_message_pool, NULL);
     masterpoolDestroy(cdev->reader_message_pool);
     close(cdev->socket);
+    close(cdev->linux_pipe_fds[0]);
+    close(cdev->linux_pipe_fds[1]);
     memoryFree(cdev);
 }
