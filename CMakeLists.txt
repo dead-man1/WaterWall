@@ -180,6 +180,7 @@ option(INCLUDE_MUX_SERVER               "link MuxServer staticly to the core"   
 option(INCLUDE_MUX_CLIENT               "link MuxClient staticly to the core"            TRUE)
 option(INCLUDE_TUN_DEVICE               "link TunDevice staticly to the core"            ${TUNDEVICE_SUPPORTED})
 option(INCLUDE_RAWSOCKET                "link RawSocket staticly to the core"            ${RAWSOCKET_SUPPORTED})
+option(INCLUDE_DISTURBER                "link Disturber staticly to the core"            TRUE)
 
 
 
@@ -623,6 +624,14 @@ if(INCLUDE_MUX_CLIENT)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/MuxClient)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/MuxClient)
   target_link_libraries(Waterwall MuxClient)
+endif()
+
+#disturber
+if(INCLUDE_DISTURBER)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_DISTURBER=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/Disturber)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/Disturber)
+  target_link_libraries(Waterwall Disturber)
 endif()
 
 
