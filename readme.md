@@ -6,10 +6,27 @@
 [![CI](https://github.com/radkesvat/WaterWall/actions/workflows/ci.yaml/badge.svg)](https://github.com/radkesvat/WaterWall/actions/workflows/ci.yaml)
 
 
-A simple core for tunneling and even direct user-server connections. based on high-performance, fully customizeable nodes for creating any kind of protocol without writing code for it.
 
-To start please read the [docs](https://radkesvat.github.io/WaterWall-Docs/). (The documents are currently only in Persian language.)
+## Overview
 
+A simple networking core for tunneling and direct user–server connections.
+Built on high-performance, fully customizable nodes, it allows you to create a wide range of protocols without writing low-level implementation code.
+*(Though admittedly, it might make things feel more complex depending on how you use it.)*
+
+## Getting Started
+
+To begin, please read the documentation:
+👉 [https://radkesvat.github.io/WaterWall-Docs/](https://radkesvat.github.io/WaterWall-Docs/)
+
+> **Note:** The documentation is currently available only in Persian.
+
+## Additional Documentation
+
+If you're familiar with network protocol structures:
+
+* Each tunnel includes a `description.md` file
+* These files are written in English
+* They provide advanced documentation and implementation details
 
 <!-- # Plan
 
