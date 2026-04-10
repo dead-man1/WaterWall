@@ -54,8 +54,8 @@ void setInternalLogger(logger_t *newlogger)
 logger_t *createInternalLogger(const char *log_file, bool console)
 {
     assert(internal_logger == NULL);
-    internal_logger             = loggerCreate();
-    bool path_accepted = loggerSetFile(internal_logger, log_file);
+    internal_logger    = loggerCreate();
+    bool path_accepted = ((log_file != NULL) && loggerSetFile(internal_logger, log_file)) != 0;
     if (console)
     {
         if (path_accepted)
@@ -70,7 +70,7 @@ logger_t *createInternalLogger(const char *log_file, bool console)
     }
     else if (path_accepted)
     {
-        loggerSetHandler(internal_logger, internalLoggerHandle);
+        // no logger
     }
 
     return internal_logger;
@@ -85,6 +85,9 @@ logger_t *loggerGetDefaultLogger(void)
 {
     if (internal_logger == NULL)
     {
+        // loggerGetDefaultLogger is not threadsafe, this function can be called from many threads and
+        // we dont want to lock a mutex for everylog, so crash if asked before init.
+        printError("DefaultLogger Get() called before runtime init");
         internal_logger = loggerCreate();
         loggerSetHandler(internal_logger, internalLoggerHandleOnlyStdStream);
     }

@@ -1,6 +1,5 @@
 #include "dns_logger.h"
 
-
 struct logger_s;
 static logger_t *dns_logger = NULL;
 
@@ -35,7 +34,6 @@ static void dnsLoggerHandleWithStdStream(int loglevel, const char *buf, int len)
     loggerWrite(dns_logger, buf, len);
 }
 
-
 static void dnsLoggerHandle(int loglevel, const char *buf, int len)
 {
     discard loglevel;
@@ -55,8 +53,8 @@ void setDnsLogger(logger_t *newlogger)
 logger_t *createDnsLogger(const char *log_file, bool console)
 {
     assert(dns_logger == NULL);
-    dns_logger = loggerCreate();
-    bool path_accepted = loggerSetFile(dns_logger, log_file);
+    dns_logger         = loggerCreate();
+    bool path_accepted = ((log_file != NULL) && loggerSetFile(dns_logger, log_file)) != 0;
     if (console)
     {
         if (path_accepted)
@@ -72,6 +70,10 @@ logger_t *createDnsLogger(const char *log_file, bool console)
     else if (path_accepted)
     {
         loggerSetHandler(dns_logger, dnsLoggerHandle);
+    }
+    else
+    {
+        // no logger
     }
     return dns_logger;
 }

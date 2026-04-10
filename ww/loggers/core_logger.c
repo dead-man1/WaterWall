@@ -1,6 +1,5 @@
 #include "core_logger.h"
 
-
 struct logger_s;
 static logger_t *core_logger = NULL;
 
@@ -52,10 +51,11 @@ void setCoreLogger(logger_t *newlogger)
 }
 
 logger_t *createCoreLogger(const char *log_file, bool console)
-{   
+{
     assert(core_logger == NULL);
     core_logger = loggerCreate();
-    bool path_accepted = loggerSetFile(core_logger, log_file);
+
+    bool path_accepted = ((log_file != NULL) && loggerSetFile(core_logger, log_file)) != 0;
     if (console)
     {
         if (path_accepted)
@@ -71,6 +71,10 @@ logger_t *createCoreLogger(const char *log_file, bool console)
     else if (path_accepted)
     {
         loggerSetHandler(core_logger, coreLoggerHandle);
+    }
+    else
+    {
+        // no logger
     }
 
     return core_logger;
