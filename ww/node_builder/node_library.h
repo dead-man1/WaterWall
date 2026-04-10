@@ -6,10 +6,10 @@
 
 node_t nodelibraryLoadByTypeName(const char *name);
 node_t nodelibraryLoadByTypeHash(hash_t htype);
+void   nodelibrarySetSearchPath(const char *path);
 
 void nodelibraryRegister(node_t lib);
 bool nodeHasFlagChainHead(node_t *node);
 
 void nodelibraryCleanup(void);
-
 

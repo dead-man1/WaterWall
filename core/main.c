@@ -71,6 +71,7 @@ int main(void)
 
     // core logger is available after ww setup
     createGlobalState(runtime_data);
+    nodelibrarySetSearchPath(getCoreSettings()->libs_path);
 
     LOGI("Starting Waterwall version %s", TOSTRING(WATERWALL_VERSION));
     LOGI("Parsing core file complete");
