@@ -14,14 +14,34 @@ enum direction_dynamic_value_status
     kDvsDown
 };
 
-typedef struct ipoverrider_tstate_s
+enum ipoverrider_direction_index
+{
+    kIpOverriderDirectionUp = 0,
+    kIpOverriderDirectionDown,
+    kIpOverriderDirectionCount
+};
+
+enum ipoverrider_mode_index
+{
+    kIpOverriderModeSource = 0,
+    kIpOverriderModeDest,
+    kIpOverriderModeCount
+};
+
+typedef struct ipoverrider_rule_s
 {
     struct in6_addr ov_6;
     uint32_t        ov_4;
     int             skip_chance;
+    bool            enabled;
     bool            only120;
     bool            support4;
     bool            support6;
+} ipoverrider_rule_t;
+
+typedef struct ipoverrider_tstate_s
+{
+    ipoverrider_rule_t rules[kIpOverriderDirectionCount][kIpOverriderModeCount];
 } ipoverrider_tstate_t;
 
 typedef struct ipoverrider_lstate_s
@@ -61,7 +81,5 @@ void ipoverriderDownStreamResume(tunnel_t *t, line_t *l);
 void ipoverriderLinestateInitialize(ipoverrider_lstate_t *ls);
 void ipoverriderLinestateDestroy(ipoverrider_lstate_t *ls);
 
-void ipoverriderReplacerDestModeUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
-void ipoverriderReplacerSrcModeUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
-void ipoverriderReplacerDestModeDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
-void ipoverriderReplacerSrcModeDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
+void ipoverriderApplyUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
+void ipoverriderApplyDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);

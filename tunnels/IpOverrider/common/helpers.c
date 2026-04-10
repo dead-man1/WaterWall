@@ -2,148 +2,71 @@
 
 #include "loggers/network_logger.h"
 
-static void something(void)
+static bool ipoverriderShouldSkipRule(const ipoverrider_rule_t *rule)
 {
-    // This function is not implemented yet
+    return rule->skip_chance != -1 && (fastRand32() % 100) < (uint32_t) rule->skip_chance;
 }
 
-void ipoverriderReplacerDestModeUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
+static void ipoverriderApplyRule(const ipoverrider_rule_t *rule, line_t *l, sbuf_t *buf, bool replace_source)
 {
-
-    ipoverrider_tstate_t *state = tunnelGetState(t);
-
-    if (state->skip_chance != -1 && (fastRand32() % 100) < (uint32_t) state->skip_chance)
+    if (! rule->enabled || ipoverriderShouldSkipRule(rule))
     {
-        goto skip;
+        return;
     }
 
     struct ip_hdr *ipheader = (struct ip_hdr *) sbufGetMutablePtr(buf);
 
-    if (state->support4 && IPH_V(ipheader) == 4)
+    if (rule->support4 && IPH_V(ipheader) == 4)
     {
         uint16_t size = lwip_ntohs(IPH_LEN(ipheader));
 
-        if (state->only120 && size > 120)
+        if (rule->only120 && size > 120)
         {
-            goto skip;
+            return;
         }
 
-        memoryCopy(&(ipheader->dest.addr), &state->ov_4, 4);
+        if (replace_source)
+        {
+            memoryCopy(&(ipheader->src.addr), &(rule->ov_4), sizeof(rule->ov_4));
+        }
+        else
+        {
+            memoryCopy(&(ipheader->dest.addr), &(rule->ov_4), sizeof(rule->ov_4));
+        }
+
         l->recalculate_checksum = true;
     }
-    // else if (state->support6 && IPH_V(ipheader) == 6)
+    // else if (rule->support6 && IPH_V(ipheader) == 6)
     // {
     //     struct ip6_hdr *ip6header = (struct ip6_hdr *) sbufGetMutablePtr(buf);
     //     // alignment assumed to be correct
-    //     memoryCopy(&(ip6header->dest.addr), &state->ov_6, 16);
+    //     if (replace_source)
+    //     {
+    //         memoryCopy(&(ip6header->src.addr), &(rule->ov_6), sizeof(rule->ov_6));
+    //     }
+    //     else
+    //     {
+    //         memoryCopy(&(ip6header->dest.addr), &(rule->ov_6), sizeof(rule->ov_6));
+    //     }
     // }
-
-skip:
-    tunnelNextUpStreamPayload(t, l, buf);
 }
 
-void ipoverriderReplacerSrcModeUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
+void ipoverriderApplyUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
-
     ipoverrider_tstate_t *state = tunnelGetState(t);
 
-    if (state->skip_chance != -1 && (fastRand32() % 100) < (uint32_t) state->skip_chance)
-    {
-        goto skip;
-    }
-
-    struct ip_hdr *ipheader = (struct ip_hdr *) sbufGetMutablePtr(buf);
-
-    if (state->support4 && IPH_V(ipheader) == 4)
-    {
-        uint16_t size = lwip_ntohs(IPH_LEN(ipheader));
-
-        if (state->only120 && size > 120)
-        {
-            goto skip;
-        }
-
-        memoryCopy(&(ipheader->src.addr), &state->ov_4, 4);
-        l->recalculate_checksum = true;
-    }
-    // else if (state->support6 && IPH_V(ipheader) == 6)
-    // {
-    //     struct ip6_hdr *ip6header = (struct ip6_hdr *) sbufGetMutablePtr(buf);
-    //     // alignment assumed to be correct
-    //     memoryCopy(&(ip6header->dest.addr), &state->ov_6, 16);
-    // }
-
-skip:
+    ipoverriderApplyRule(&(state->rules[kIpOverriderDirectionUp][kIpOverriderModeSource]), l, buf, true);
+    ipoverriderApplyRule(&(state->rules[kIpOverriderDirectionUp][kIpOverriderModeDest]), l, buf, false);
 
     tunnelNextUpStreamPayload(t, l, buf);
 }
 
-void ipoverriderReplacerDestModeDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
+void ipoverriderApplyDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
-
     ipoverrider_tstate_t *state = tunnelGetState(t);
 
-    if (state->skip_chance != -1 && (fastRand32() % 100) < (uint32_t) state->skip_chance)
-    {
-        goto skip;
-    }
-
-    struct ip_hdr *ipheader = (struct ip_hdr *) sbufGetMutablePtr(buf);
-
-    if (state->support4 && IPH_V(ipheader) == 4)
-    {
-        uint16_t size = lwip_ntohs(IPH_LEN(ipheader));
-
-        if (state->only120 && size > 120)
-        {
-            goto skip;
-        }
-        memoryCopy(&(ipheader->dest.addr), &state->ov_4, 4);
-        l->recalculate_checksum = true;
-    }
-    // else if (state->support6 && IPH_V(ipheader) == 6)
-    // {
-    //     struct ip6_hdr *ip6header = (struct ip6_hdr *) sbufGetMutablePtr(buf);
-    //     // alignment assumed to be correct
-    //     memoryCopy(&(ip6header->dest.addr), &state->ov_6, 16);
-    // }
-
-skip:
-    tunnelPrevDownStreamPayload(t, l, buf);
-}
-
-void ipoverriderReplacerSrcModeDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
-{
-
-    ipoverrider_tstate_t *state = tunnelGetState(t);
-
-    if (state->skip_chance != -1 && (fastRand32() % 100) < (uint32_t) state->skip_chance)
-    {
-        goto skip;
-    }
-
-    struct ip_hdr *ipheader = (struct ip_hdr *) sbufGetMutablePtr(buf);
-
-    if (state->support4 && IPH_V(ipheader) == 4)
-    {
-
-        uint16_t size = lwip_ntohs(IPH_LEN(ipheader));
-
-        if (state->only120 && size > 120)
-        {
-            goto skip;
-        }
-        memoryCopy(&(ipheader->src.addr), &state->ov_4, 4);
-        l->recalculate_checksum = true;
-    }
-    // else if (state->support6 && IPH_V(ipheader) == 6)
-    // {
-    //     struct ip6_hdr *ip6header = (struct ip6_hdr *) sbufGetMutablePtr(buf);
-    //     // alignment assumed to be correct
-    //     memoryCopy(&(ip6header->dest.addr), &state->ov_6, 16);
-    // }
-
-skip:
+    ipoverriderApplyRule(&(state->rules[kIpOverriderDirectionDown][kIpOverriderModeSource]), l, buf, true);
+    ipoverriderApplyRule(&(state->rules[kIpOverriderDirectionDown][kIpOverriderModeDest]), l, buf, false);
 
     tunnelPrevDownStreamPayload(t, l, buf);
 }
