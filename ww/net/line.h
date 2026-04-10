@@ -41,10 +41,7 @@ typedef struct line_s
     wid_t       wid;
     uint8_t     auth_cur;
     uint8_t     established : 1;
-    uint8_t     recalculate_checksum : 1;    // used for packet tunnels
-    uint8_t     skip_transport_checksum : 1; // used for packet tunnels, skip transport layer checksum (rare used)
-                                             // if forexample the payload if packet is not a valid transport
-                                             // payload(fragmented ip packets)
+    uint8_t     recalculate_checksum : 1; // used for packet tunnels
     routing_context_t routing_context;
 
     generic_pool_t **pools;
@@ -315,4 +312,3 @@ static inline bool withLineLockedWithBuf(line_t *const line,LineTaskFnWithBuf ta
     lineUnlock(line);
     return true;
 }
-

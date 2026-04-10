@@ -108,8 +108,8 @@ Both upstream and downstream payload handlers write to the same TUN device.
 Before writing a packet, `TunDevice` checks line flags:
 
 - if `recalculate_checksum` is set, the packet checksum is recomputed
-- if `skip_transport_checksum` is also set, only the IP header checksum is recalculated
-- otherwise a full packet checksum recalculation is performed
+- full packet checksum recalculation is attempted
+- for fragmented IPv4 packets, transport checksum recalculation is skipped automatically and only the IP header checksum is recomputed
 
 ### Callback behavior
 

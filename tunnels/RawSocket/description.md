@@ -125,8 +125,8 @@ Current implementation behavior:
 Before writing a packet, `RawSocket` checks line flags:
 
 - if `recalculate_checksum` is set, checksums are recomputed
-- if `skip_transport_checksum` is also set, only the IPv4 header checksum is recalculated
-- otherwise full packet checksum recalculation is performed
+- full packet checksum recalculation is attempted
+- for fragmented IPv4 packets, transport checksum recalculation is skipped automatically and only the IPv4 header checksum is recomputed
 
 ### Why `TunDevice` may be a better fit for some cases
 
