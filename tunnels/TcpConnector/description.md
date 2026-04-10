@@ -1,109 +1,187 @@
-
 # TcpConnector Node
 
-The `TcpConnector` node is responsible for establishing outgoing TCP connections to specified targets. Below is the JSON configuration structure for this node, along with detailed explanations of each field.
+`TcpConnector` is an outbound TCP client node. It builds a destination address from its own configuration or from the line routing context, opens a TCP connection, and forwards traffic between the previous node and the remote server.
 
-This node must be placed at the end of a chain
+In practice, this node is used at the end of a chain.
+
+## What It Does
+
+- Chooses a destination address and port.
+- Resolves a domain name if needed.
+- Opens an outbound TCP socket.
+- Forwards upstream payloads from the previous node to the remote socket.
+- Forwards remote socket payloads back downstream to the previous node.
+- Applies optional socket options such as `TCP_NODELAY`, `TCP_FASTOPEN`, and `SO_MARK` when supported by the platform.
+
+This node behaves like a chain end. Its downstream entry callbacks are disabled because the outbound connection is initiated from upstream `init`.
 
 ## Configuration Example
 
 ```json
 {
-    "name": "my connector",  
-    "type": "TcpConnector",
-    "settings": {
-        "address": "httpforever.com", 
-        "port": 80,
-        "fwmark": 1,
-        "nodelay": true,
-        "fastopen": true,
-        "reuseaddr": false,
-        "domain-strategy": 0,
-        "device": "device name"
-    }
+  "name": "outbound-tcp",
+  "type": "TcpConnector",
+  "settings": {
+    "address": "example.com",
+    "port": 443,
+    "nodelay": true,
+    "fastopen": false,
+    "reuseaddr": false,
+    "fwmark": 10,
+    "domain-strategy": 0
+  }
 }
 ```
 
-## Configuration Fields
+## Required JSON Fields
 
-### General Fields
+### Top-level fields
 
-- **`name`** *(string)*:  
-  A user-defined name for the node. This is used for identification purposes.  
-  - Example: `"my connector"`.
+- `name` `(string)`
+  A user-chosen name for this node.
 
-- **`type`** *(string)*:  
-  The exact type name of the node. For this node, it must be `"TcpConnector"`.
+- `type` `(string)`
+  Must be exactly `"TcpConnector"`.
 
----
+### `settings`
 
-### Settings (`settings`)
+- `address` `(string)`
+  Destination address selection.
 
-The `settings` object contains the configuration specific to the `TcpConnector` node.
+  Supported values in the current implementation:
+  - a constant IPv4 address
+  - a constant IPv6 address
+  - a constant domain name
+  - `"src_context->address"`
+  - `"dest_context->address"`
 
-#### Required Fields
+  Examples:
+  - `"93.184.216.34"`
+  - `"2606:2800:220:1:248:1893:25c8:1946"`
+  - `"example.com"`
+  - `"src_context->address"`
 
-- **`address`** *(string)*:  
-  Specifies the target address to connect to. This can be an IPv4, IPv6, or domain name.  
-  - Special values:
-    - `"src_context->address"`: Uses the source address from the connection context.
-    - `"dest_context->address"`: Uses the destination address from the connection context (typically filled by a protocol-aware node in the chain).  
-  - Optional behavior: If the address ends with a CIDR range (e.g., `/32`), the node will intelligently select one IP from the range for each connection attempt. This behavior is referred to as `'freebind'`.  
-  - Example: `"httpforever.com"`, `"192.168.1.1"`, `"2001:db8::1"`, `"src_context->address"`.
+- `port` `(number or special string)`
+  Destination port selection.
 
-- **`port`** *(integer or string)*:  
-  Specifies the target port to connect to.  
-  - Special values:
-    - `"src_context->port"`: Uses the source port from the connection context.
-    - `"dest_context->port"`: Uses the destination port from the connection context.  
+  Supported values in the current implementation:
+  - a constant number such as `443`
+  - `"src_context->port"`
+  - `"dest_context->port"`
 
-  - Example: `80`, `"src_context->port"`.
+## Optional `settings` Fields
 
-#### Optional Fields
+- `nodelay` `(boolean)`
+  Enables `TCP_NODELAY` on the outbound socket.
+  Default: `true`
 
-- **`fwmark`** *(integer)*:  
-  Sets the firewall mark (fwmark) on the socket for routing purposes.  
-  - Default: Not set.  
-  - Example: `1`.
+- `fastopen` `(boolean)`
+  Requests `TCP_FASTOPEN` on the outbound socket when the platform exposes that socket option.
+  Default: `false`
 
-- **`nodelay`** *(boolean)*:  
-  Enables the TCP `NODELAY` option on the sockets, which disables Nagle's algorithm for reduced latency.  
-  - Default: `true`.
+- `reuseaddr` `(boolean)`
+  Parsed from JSON and stored in the tunnel state.
+  Default: `false`
 
-- **`fastopen`** *(boolean)*:  
-  Enables TCP Fast Open (TFO) for faster connection establishment.  
-  - Default: `false`.
+  Note: in the current implementation this option is not applied to the socket with `setsockopt`.
 
-- **`reuseaddr`** *(boolean)*:  
-  Enables the `SO_REUSEADDR` socket option, allowing the reuse of local addresses.  
-  - Default: `false`.
+- `fwmark` `(integer)`
+  Linux-style socket mark.
+  When the platform provides `SO_MARK`, this value is applied to the outbound socket.
+  Default: not set
 
-- **`domain-strategy`** *(integer)*:  
-  (Not yet implemented) Specifies the strategy for handling unresolved domain names, such as preferring IPv4 or IPv6.  
-  - Default: `0`.
+- `domain-strategy` `(integer)`
+  Parsed and stored in the tunnel state.
+  Default: `0`
 
-- **`device`** *(string)*:  
-  Specifies the network device to use for the connection (e.g., a WireGuard device name).  
-  - Default: Not set.  
-  - Example: `"wg0"`.
+  Note: the current connector path does not apply this value during DNS resolution.
 
----
+## Detailed Behavior
 
-### Behavior Notes
+### Chain behavior
 
-1. **Connection Context**:  
-   - The `src_context` and `dest_context` fields allow dynamic resolution of addresses and ports based on the connection context. These are typically populated by protocol-aware nodes earlier in the chain.
+`TcpConnector` receives line creation from upstream. During upstream `init`, it decides where to connect and immediately starts the outbound TCP connection attempt.
 
-2. **Freebind Behavior**:  
-   - When the `address` field includes a CIDR range (e.g., `/32`), the node intelligently selects one IP from the range for each connection attempt. This is useful for load balancing or failover scenarios.
+The normal flow is:
 
-3. **Firewall Mark (`fwmark`)**:  
-   - The `fwmark` option is particularly useful for advanced routing configurations, allowing traffic to be tagged and routed differently based on firewall rules.
+- previous node creates or passes a line
+- `TcpConnector` selects destination address and port
+- optional DNS resolution happens
+- outbound socket is created
+- asynchronous connect begins
+- after connect succeeds, the previous node receives downstream `est`
+- data starts flowing in both directions
 
-4. **TCP Options**:  
-   - The `nodelay`, `fastopen`, and `reuseaddr` options provide fine-grained control over socket behavior, optimizing performance and reliability based on your use case.
+### Address selection
 
----
+`address` can come from three places:
 
-This documentation provides a comprehensive overview of the `TcpConnector` node and its configuration options. Use this as a reference when setting up your network chain.
-```
+- constant value from JSON
+- `src_context->address`
+- `dest_context->address`
+
+The same is true for `port`.
+
+This makes `TcpConnector` useful in chains where earlier nodes decode or rewrite routing information. For example, a protocol-aware node can fill `dest_context`, and `TcpConnector` can connect to that decoded target.
+
+### Domain resolution
+
+If the selected destination is a domain name, the connector resolves it synchronously during upstream `init`. If resolution fails, the line is finished immediately and no outbound connection is created.
+
+### Subnet randomization on constant IP addresses
+
+If `address` is a constant IP string with a CIDR suffix, the connector randomizes the host part before connecting.
+
+Examples:
+
+- `"198.51.100.0/24"`
+- `"2001:db8:1::/64"`
+
+This is only used for constant IP addresses, not for domains and not for `src_context` or `dest_context` lookups.
+
+Current implementation notes:
+
+- IPv4 prefixes wider than `/32` are rejected.
+- IPv6 prefixes broader than `/64` are rejected.
+- A more specific prefix produces a smaller random range.
+- If the range size becomes zero or effectively one host, the destination behaves like a fixed address.
+
+### Socket creation and options
+
+After the destination is ready, `TcpConnector` creates a TCP socket and may apply these options:
+
+- `TCP_NODELAY` when `nodelay` is enabled
+- `TCP_FASTOPEN` when `fastopen` is enabled and the platform supports it
+- `SO_MARK` when `fwmark` is set and the platform supports it
+
+The code currently parses `reuseaddr`, but it does not call `SO_REUSEADDR` for the outbound socket.
+
+### Data flow direction
+
+- Previous node to remote server: upstream payload -> socket write
+- Remote server to previous node: socket read -> downstream payload
+
+Once the outbound socket connects, the node calls downstream `est` toward the previous node.
+
+### Flow control and buffering
+
+While the connection is still being established, or while the socket is temporarily backpressured, `TcpConnector` queues outgoing payloads.
+
+Current thresholds:
+
+- above `1 KB` queued data, the previous node is paused
+- when pending writes finish, the previous node is resumed
+- above `16 MB` queued data, the connection is closed and the line is finished
+
+This prevents unlimited buffering when the remote side is slow or the connection is not ready yet.
+
+### Idle timeout behavior
+
+Each outbound connection is tracked in an idle table with a timeout of about `300 seconds`. Read and write activity refreshes that timeout. If the connection expires, the socket is closed and downstream `finish` is sent to the previous node.
+
+## Notes And Caveats
+
+- This node is meant to be used as an outbound chain end.
+- `domain-strategy` is currently stored but not actively used by the connector path.
+- `reuseaddr` is currently parsed but not applied.
+- DNS resolution in this path is synchronous.

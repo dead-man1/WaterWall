@@ -1,103 +1,167 @@
 # TcpListener Node
 
-The `TcpListener` node is responsible for listening to incoming TCP connections. Below is the JSON configuration structure for this node, along with detailed explanations of each field.
+`TcpListener` is a TCP server node. It listens for inbound TCP connections, creates a new line for each accepted client, and passes that line upstream to the next node in the chain.
+
+In practice, this node is used at the beginning of a chain.
+
+## What It Does
+
+- Binds and listens on one TCP port or a TCP port range.
+- Accepts incoming client connections.
+- Creates a WaterWall line for each accepted socket.
+- Sends data received from the client to the next node.
+- Sends downstream data from the next node back to the client socket.
+- Applies optional accept-time filters such as whitelist checks and balance groups.
+
+This node is a chain head. Its upstream entry callbacks are disabled because connections are created by external clients, not by a previous tunnel.
 
 ## Configuration Example
 
 ```json
 {
-    "name": "my listener",  
-    "type": "TcpListener",   
-    "settings": {                   
-        "address": "0.0.0.0", 
-        "port": 8443,            
-        "nodelay": true,         
-        "balance-group": "balance group name", 
-        "balance-interval": 100,
-        "multiport-backend": "iptables",
-        "whitelist": ["1.1.1.1/32", "2.2.2.2/32"],
-        "blacklist": ["3.3.3.3/32", "4.4.4.4/32"]
-    },
-    "next": "any next node name"
+  "name": "inbound-listener",
+  "type": "TcpListener",
+  "settings": {
+    "address": "0.0.0.0",
+    "port": 443,
+    "nodelay": true,
+    "interface": "eth0",
+    "balance-group": "public-443",
+    "balance-interval": 30000,
+    "multiport-backend": "socket",
+    "whitelist": [
+      "192.168.1.0/24",
+      "2001:db8::/64"
+    ]
+  },
+  "next": "next-node-name"
 }
 ```
 
-## Configuration Fields
+## Required JSON Fields
 
-### General Fields
+### Top-level fields
 
-- **`name`** *(string)*:  
-  A user-defined name for the node. This is used for identification purposes.
+- `name` `(string)`
+  A user-chosen name for this node.
 
-- **`type`** *(string)*:  
-  The exact type name of the node. For this node, it must be `"TcpListener"`.
+- `type` `(string)`
+  Must be exactly `"TcpListener"`.
 
-- **`next`** *(string)*:  
-  Specifies the name of the next node in the chain that will handle the traffic after this node processes it.
+- `next` `(string)`
+  The next node that should receive accepted TCP lines.
 
----
+### `settings`
 
-### Settings (`settings`)
+- `address` `(string)`
+  The bind address for the listener.
+  Common values are `"0.0.0.0"`, `"::"`, or a specific local address.
 
-The `settings` object contains the configuration specific to the `TcpListener` node.
+- `port` `(number or array[2])`
+  The listening port definition.
+  Supported forms in the current implementation are:
+  - a single number, for example `443`
+  - a two-item array, for example `[40000, 40100]`
 
-#### Required Fields
+  Older string-style examples such as `"40000-40100"` are not what the current code parses.
 
-- **`address`** *(string)*:  
-  The IP address on which the node will listen for incoming connections.  
-  - Example: `"0.0.0.0"` (listens on all available interfaces).
+## Optional `settings` Fields
 
-- **`port`** *(integer or range)*:  
-  The port number (or range of ports) on which the node will listen.  
-  - Example: `8443` (single port) or `"8443-8450"` (port range).
+- `nodelay` `(boolean)`
+  Enables `TCP_NODELAY` on accepted sockets.
+  Default: `false`
 
-#### Optional Fields
+- `interface` `(string)`
+  Binds the listener using the IP address of a local network interface.
+  Example: `"eth0"`
 
-- **`nodelay`** *(boolean)*:  
-  Enables the TCP `NODELAY` option on the sockets, which disables Nagle's algorithm for reduced latency.  
-  - Default: `false`.
+  When this field is present, the socket manager resolves the interface address and uses that address for the actual listen socket.
 
-- **`balance-group`** *(string)*:  
-  Defines a balance group name. When multiple sockets are part of the same balance group and listen on the same port, incoming clients are distributed (balanced) between them.  
-  - Example: `"balance group name"`.
+- `balance-group` `(string)`
+  Places this listener into a balance group with other listeners on the same port.
+  New clients are distributed between matching listeners, and repeat clients stay sticky for a period of time.
 
-- **`balance-interval`** *(integer)*:  
-  Specifies the interval (in milliseconds) after which the client IP is forgotten in the balance context. After this time, the next connection from the same client may be routed to a different socket in the balance group.  
-  - Default: Not set (only relevant when `balance-group` is defined).  
-  - Example: `100`.
+- `balance-interval` `(integer, milliseconds)`
+  Sticky duration for a client entry inside a balance group.
+  After this interval expires, the next connection from that client can be routed to a different listener in the same group.
 
-- **`multiport-backend`** *(string)*:  
-  Specifies the backend method used to implement multiport support when a port range is provided.  
-  - Possible values: `"iptables"` (default), `"socket"`.  
-  - Example: `"iptables"`.
+- `multiport-backend` `(string)`
+  Backend used when `port` is a range.
+  Supported values:
+  - `"iptables"`
+  - `"socket"`
 
-- **`whitelist`** *(array of strings)*:  
-  A list of IP addresses or CIDR ranges that are allowed to connect to this node. If a client's IP is not in this list, the connection will be rejected.  
-  - Supports both IPv4 and IPv6.  
-  - Example: `["1.1.1.1/32", "2.2.2.2/32"]`.
+  This field only matters for port ranges.
 
-- **`blacklist`** *(array of strings)*:  
-  A list of IP addresses or CIDR ranges that are explicitly denied from connecting to this node.  
-  - Supports both IPv4 and IPv6.  
-  - Example: `["3.3.3.3/32", "4.4.4.4/32"]`.
+- `whitelist` `(array of strings)`
+  List of allowed client IPs or CIDR ranges.
+  Supports IPv4 and IPv6.
+  Example:
 
----
+  ```json
+  ["10.0.0.0/8", "2001:db8::/64"]
+  ```
 
-### Behavior Notes
+## Detailed Behavior
 
-1. **Whitelist and Blacklist**:  
-   - If both `whitelist` and `blacklist` are defined, the `whitelist` takes precedence.  
-   - If a client is rejected due to these rules, another socket listening on the same port (even outside the balance group) can take ownership of the connection if it does not have conflicting rules.
+### Accept path
 
-2. **Balance Group**:  
-   - The `balance-group` feature allows multiple sockets to share the load of incoming connections on the same port.  
-   - The `balance-interval` ensures that clients are periodically redistributed across sockets in the group.
+When a TCP client connects, `TcpListener`:
 
-3. **Multiport Backend**:  
-   - The `multiport-backend` determines how port ranges are handled.  
-   - `"iptables"` uses system-level firewall rules, while `"socket"` handles it directly within the application.
+- attaches the accepted socket to a worker loop
+- creates a new line
+- stores line state for that connection
+- fills routing information for the new line
+- notifies the next node with upstream `init`
+- starts reading from the client socket
 
----
+The line's source context is populated from the accepted connection. In the current implementation, the peer IP is recorded and the local port that accepted the connection is stored in the source context port field.
 
-This documentation provides a comprehensive overview of the `TcpListener` node and its configuration options. Use this as a reference when setting up your network chain.
-```
+### Data flow direction
+
+- Client to chain: socket read -> upstream payload to the next node
+- Chain to client: downstream payload -> socket write
+
+That means the next node should expect to receive traffic from accepted clients and should send responses back downstream.
+
+### Flow control and buffering
+
+`TcpListener` implements backpressure for slow client sockets:
+
+- if a write cannot complete immediately, outgoing buffers are queued
+- once the queue grows beyond `1 KB`, the next node is paused
+- when the socket becomes writable again, the node resumes the next node
+- if the queued data grows beyond `16 MB`, the connection is closed
+
+This protects the process from unbounded buffering when the client is slow or stalled.
+
+### Idle timeout behavior
+
+Each accepted connection is tracked in an idle table.
+
+- a newly accepted connection starts with a `5 second` timeout
+- active connections are refreshed to about `300 seconds`
+- if the connection expires, the socket and line are closed
+
+### Balance groups
+
+If multiple listeners share the same `balance-group` and port, the socket manager selects one of them for a new client and remembers that choice using a hash of the client IP. During `balance-interval`, later connections from the same client IP stay pinned to the same listener.
+
+### Whitelist matching
+
+If `whitelist` is present, only matching client IPs are accepted by this listener. If multiple listeners are registered on the same port, another listener may still receive the same connection if its filter matches and this listener's filter does not.
+
+### Multiport backend notes
+
+For port ranges, the runtime can either:
+
+- create one listening socket per port with the `socket` backend
+- use a single main socket plus redirection rules with the `iptables` backend
+
+If you want `iptables` specifically, set it explicitly.
+
+## Notes And Caveats
+
+- The current `TcpListener` implementation parses `whitelist`, but it does not parse a `blacklist` field from JSON.
+- The current parser expects `port` as a number or a two-item array, not a string range.
+- This node is designed to be used as an inbound entry point in the chain.
