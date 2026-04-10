@@ -266,15 +266,16 @@ static void handleUploadInTable(tunnel_t *t, line_t *l, sbuf_t *buf, halfduplexs
 
     if (sbufGetLength(ls->buffering) >= kMaxBuffering)
     {
+        mutexLock(&(ts->upload_line_map_mutex));
         hmap_cons_t_iter f_iter = hmap_cons_t_find(&(ts->upload_line_map), ls->hash);
         bool             found  = f_iter.ref != hmap_cons_t_end(&(ts->upload_line_map)).ref;
 
         if (! found)
         {
+            mutexUnlock(&(ts->upload_line_map_mutex));
             LOGF("HalfDuplexServer: Thread safety is done incorrectly  [%s:%d]", __FILENAME__, __LINE__);
             exit(1);
         }
-        mutexLock(&(ts->upload_line_map_mutex));
         hmap_cons_t_erase_at(&(ts->upload_line_map), f_iter);
         mutexUnlock(&(ts->upload_line_map_mutex));
 
