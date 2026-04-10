@@ -58,7 +58,7 @@ int iowatcherPollEvents(wloop_t* loop, int timeout) {
     int err = 0;
     if (povlp == NULL) {
         err = WSAGetLastError();
-        if (err == WAIT_TIMEOUT || ERROR_NETNAME_DELETED || ERROR_OPERATION_ABORTED) {
+        if (err == WAIT_TIMEOUT || err == ERROR_NETNAME_DELETED || err == ERROR_OPERATION_ABORTED) {
             return 0;
         }
         return -err;

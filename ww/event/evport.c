@@ -115,8 +115,15 @@ int iowatcherPollEvents(wloop_t* loop, int timeout) {
         tp = &ts;
     }
     unsigned nevents = 1;
-    port_getn(evport_ctx->port, evport_ctx->events, evport_ctx->capacity, &nevents, tp);
-    for (int i = 0; i < nevents; ++i) {
+    int ret = port_getn(evport_ctx->port, evport_ctx->events, evport_ctx->capacity, &nevents, tp);
+    if (ret < 0) {
+        if (errno == ETIME) {
+            return 0;
+        }
+        printError("port_getn");
+        return -errno;
+    }
+    for (int i = 0; i < (int)nevents; ++i) {
         int fd = evport_ctx->events[i].portev_object;
         int revents = evport_ctx->events[i].portev_events;
         wio_t* io = loop->ios.ptr[fd];
@@ -128,10 +135,10 @@ int iowatcherPollEvents(wloop_t* loop, int timeout) {
                 io->revents |= WW_WRITE;
             }
             EVENT_PENDING(io);
+            // Upon retrieval, the event object is no longer associated with the port.
+            iowatcherAddEvent(loop, fd, io->events);
         }
-        // Upon retrieval, the event object is no longer associated with the port.
-        iowatcherAddEvent(loop, fd, io->events);
     }
-    return nevents;
+    return (int)nevents;
 }
 #endif
