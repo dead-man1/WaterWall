@@ -42,18 +42,25 @@ void calcFullPacketChecksum(uint8_t *buf)
         return;
     }
 
-    /* 1) Recalculate IP header checksum */
-    IPH_CHKSUM_SET(ipheader, 0);
-    IPH_CHKSUM_SET(ipheader, inet_chksum(ipheader, IPH_HL_BYTES(ipheader)));
-
-    /* 2) Get transport header & length */
-    u16_t ip_hdr_len = IPH_HL(ipheader) * 4;
+    u16_t ip_hdr_len = IPH_HL_BYTES(ipheader);
     u16_t ip_tot_len = lwip_ntohs(IPH_LEN(ipheader));
-    if (ip_tot_len < ip_hdr_len)
+    if (ip_hdr_len < IP_HLEN || ip_hdr_len > IP_HLEN_MAX || ip_tot_len < ip_hdr_len)
     {
         return; /* malformed */
     }
 
+    /* 1) Recalculate IP header checksum */
+    IPH_CHKSUM_SET(ipheader, 0);
+    IPH_CHKSUM_SET(ipheader, inet_chksum(ipheader, ip_hdr_len));
+
+    /* Fragmented IPv4 packets cannot have transport checksum recalculated per-fragment. */
+    u16_t frag_field = lwip_ntohs(IPH_OFFSET(ipheader));
+    if ((frag_field & (IP_MF | IP_OFFMASK)) != 0)
+    {
+        return;
+    }
+
+    /* 2) Get transport header & length */
     uint8_t *transport_hdr = buf + ip_hdr_len;
     u16_t    transport_len = ip_tot_len - ip_hdr_len;
     u8_t     protocol      = IPH_PROTO(ipheader);
@@ -62,7 +69,16 @@ void calcFullPacketChecksum(uint8_t *buf)
     switch (protocol)
     {
     case IP_PROTO_TCP: {
+        if (transport_len < TCP_HLEN)
+        {
+            return;
+        }
         struct tcp_hdr *tcph = (struct tcp_hdr *) transport_hdr;
+        u16_t           tcp_hdr_len = TCPH_HDRLEN_BYTES(tcph);
+        if (tcp_hdr_len < TCP_HLEN || tcp_hdr_len > transport_len)
+        {
+            return;
+        }
         tcph->chksum         = 0;
         {
             // seed with pseudo-header checksum (not finalized)
@@ -78,11 +94,20 @@ void calcFullPacketChecksum(uint8_t *buf)
         break;
     }
     case IP_PROTO_UDP: {
+        if (transport_len < UDP_HLEN)
+        {
+            return;
+        }
         struct udp_hdr *udph = (struct udp_hdr *) transport_hdr;
+        u16_t           udp_len = lwip_ntohs(udph->len);
+        if (udp_len < UDP_HLEN || udp_len > transport_len)
+        {
+            return;
+        }
         udph->chksum         = 0;
         {
-            uint32_t init = checksumPseudoHeader(&ipheader->src, &ipheader->dest, IP_PROTO_UDP, transport_len);
-            udph->chksum = checksum(transport_hdr, transport_len, init);
+            uint32_t init = checksumPseudoHeader(&ipheader->src, &ipheader->dest, IP_PROTO_UDP, udp_len);
+            udph->chksum = checksum(transport_hdr, udp_len, init);
         }
         /* RFC 768: checksum of zero is transmitted as all‑ones */
         if (udph->chksum == 0)
@@ -92,6 +117,10 @@ void calcFullPacketChecksum(uint8_t *buf)
         break;
     }
     case IP_PROTO_ICMP: {
+        if (transport_len < sizeof(struct icmp_hdr))
+        {
+            return;
+        }
         struct icmp_hdr *icmph = (struct icmp_hdr *) transport_hdr;
         icmph->chksum          = 0;
         // ICMP: no pseudo-header, just header+payload

@@ -6,21 +6,29 @@ uint16_t checksumSSE3(const uint8_t *addr, uint16_t len, uint32_t csum);
 // Note: This function works internally in big endian
 uint16_t checksumSSE3(const uint8_t *addr, uint16_t len, uint32_t csum)
 {
-    csum = lwip_htons(csum);
-    uint_fast64_t  acc       = csum; /* fixed size for asm */
+    uint_fast64_t  acc;
     const uint8_t *buf       = (const uint8_t *) addr;
     uint16_t       remainder = 0; /* fixed size for endian swap */
     uint_fast16_t  count2;
     uint_fast16_t  count16;
-    bool           is_odd;
+    bool           is_odd = ((uintptr_t) buf & 1);
 
-    if (UNLIKELY(len == 0))
+    /* Keep seed convention identical to checksumDefault. */
+    if (is_odd)
     {
-        return (uint16_t) acc;
+        /* Odd-aligned path swaps at the end; keep seed as-is. */
+        acc = csum;
     }
+    else
+    {
+        /* Even-aligned path operates on little-endian words. */
+        csum = (csum & 0xFFFFU) + (csum >> 16);
+        csum = (csum & 0xFFFFU) + (csum >> 16);
+        acc  = lwip_htons((uint16_t) csum);
+    }
+
     /* align first byte */
-    is_odd = ((uintptr_t) buf & 1);
-    if (UNLIKELY(is_odd))
+    if (UNLIKELY(is_odd && len > 0))
     {
         ((uint8_t *) &remainder)[1] = *buf++;
         len--;
