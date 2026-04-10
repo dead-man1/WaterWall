@@ -327,7 +327,7 @@ static uint32_t tunnelGetStateSize(tunnel_t *self)
  */
 static uint32_t tunnelGetLineStateSize(tunnel_t *self)
 {
-    return self->tstate_size;
+    return self->lstate_size;
 }
 
 /**
@@ -336,9 +336,9 @@ static uint32_t tunnelGetLineStateSize(tunnel_t *self)
  * @param size Size to be aligned.
  * @return uint16_t Correctly aligned state size.
  */
-static uint16_t tunnelGetCorrectAlignedStateSize(uint32_t size)
+static uint32_t tunnelGetCorrectAlignedStateSize(uint32_t size)
 {
-    return (size + kCpuLineCacheSize - 1) & ~(kCpuLineCacheSize - 1);
+    return (size + (uint32_t) kCpuLineCacheSize - 1U) & ~((uint32_t) kCpuLineCacheSize - 1U);
 }
 
 /**
@@ -347,9 +347,9 @@ static uint16_t tunnelGetCorrectAlignedStateSize(uint32_t size)
  * @param size Size to be aligned.
  * @return uint16_t Correctly aligned line state size.
  */
-static uint16_t tunnelGetCorrectAlignedLineStateSize(uint16_t size)
+static uint32_t tunnelGetCorrectAlignedLineStateSize(uint32_t size)
 {
-    return (size + kCpuLineCacheSize - 1) & ~(kCpuLineCacheSize - 1);
+    return (size + (uint32_t) kCpuLineCacheSize - 1U) & ~((uint32_t) kCpuLineCacheSize - 1U);
 }
 
 /**

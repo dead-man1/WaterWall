@@ -7,7 +7,7 @@
 
 void tunnelarrayInsert(tunnel_array_t *tc, tunnel_t *t)
 {
-    if (t->chain_index == kMaxChainLen)
+    if (tc->len >= kMaxChainLen)
     {
         LOGF("tunnelarrayInsert overflow!");
         terminateProgram(1);

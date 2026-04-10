@@ -150,6 +150,8 @@ static void addresscontextSetIpPort(address_context_t *ctx, const ip_addr_t *ip,
  */
 static bool addresscontextSetIpAddressPort(address_context_t *ctx, const char *ip_str, uint16_t port)
 {
+    addresscontextReset(ctx);
+
     if (ipaddr_aton(ip_str, &ctx->ip_address))
     {
         ctx->type_ip = kCCTypeIp;

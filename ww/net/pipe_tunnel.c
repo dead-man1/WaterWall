@@ -136,7 +136,9 @@ static void sendMessageUp(line_t *l_to, pipetunnel_msg_event_t *msg)
     {
         if (msg->ctx.payload != NULL)
         {
-            contextReusePayload(&msg->ctx);
+            // the l_to can be from a different worker, so we must reuse to current wid
+            reuseBuffer(msg->ctx.payload);
+            msg->ctx.payload = NULL;
         }
         genericpoolReuseItem(getWorkerPipeTunnelMsgPool(wid_to), msg);
         lineUnlock(l_to);
@@ -209,7 +211,9 @@ static void sendMessageDown(line_t *l_to, pipetunnel_msg_event_t *msg)
     {
         if (msg->ctx.payload != NULL)
         {
-            contextReusePayload(&msg->ctx);
+            // the l_to can be from a different worker, so we must reuse to current wid
+            reuseBuffer(msg->ctx.payload);
+            msg->ctx.payload = NULL;
         }
         genericpoolReuseItem(getWorkerPipeTunnelMsgPool(wid_to), msg);
         lineUnlock(l_to);
