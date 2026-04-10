@@ -17,6 +17,7 @@ typedef struct hoverlapped_s {
     int         fd;
     int         event;
     WSABUF      buf;
+    sbuf_t*     sbuf;
     int         bytes;
     int         error;
     wio_t*      io;

@@ -47,13 +47,17 @@ int post_recv(wio_t* io, hoverlapped_t* hovlp) {
     hovlp->fd = io->fd;
     hovlp->event = WW_READ;
     hovlp->io = io;
-    hovlp->buf.len = io->readbuf.len;
+    if (hovlp->sbuf != NULL) {
+        bufferpoolReuseBuffer(io->loop->bufpool, hovlp->sbuf);
+        hovlp->sbuf = NULL;
+    }
     if (io->io_type == WIO_TYPE_UDP || io->io_type == WIO_TYPE_IP) {
-        EVENTLOOP_ALLOC(hovlp->buf.buf, hovlp->buf.len);
+        hovlp->sbuf = bufferpoolGetSmallBuffer(io->loop->bufpool);
+    } else {
+        hovlp->sbuf = bufferpoolGetLargeBuffer(io->loop->bufpool);
     }
-    else {
-        hovlp->buf.buf = io->readbuf.base;
-    }
+    hovlp->buf.len = sbufGetMaximumWriteableSize(hovlp->sbuf);
+    hovlp->buf.buf = (CHAR*)sbufGetMutablePtr(hovlp->sbuf);
     //memorySet(hovlp->buf.buf, 0, hovlp->buf.len);
     DWORD dwbytes = 0;
     DWORD flags = 0;
@@ -77,6 +81,10 @@ int post_recv(wio_t* io, hoverlapped_t* hovlp) {
         int err = WSAGetLastError();
         if (err != ERROR_IO_PENDING) {
             printError("WSARecv error: %d\n", err);
+            if (hovlp->sbuf) {
+                bufferpoolReuseBuffer(io->loop->bufpool, hovlp->sbuf);
+                hovlp->sbuf = NULL;
+            }
             return err;
         }
     }
@@ -156,7 +164,14 @@ static void on_connectex_complete(wio_t* io) {
 static void on_wsarecv_complete(wio_t* io) {
     printd("on_recv_complete------\n");
     hoverlapped_t* hovlp = (hoverlapped_t*)io->hovlp;
+    if (hovlp == NULL) {
+        return;
+    }
     if (hovlp->bytes == 0) {
+        if (hovlp->sbuf) {
+            bufferpoolReuseBuffer(io->loop->bufpool, hovlp->sbuf);
+            hovlp->sbuf = NULL;
+        }
         io->error = WSAGetLastError();
         wioClose(io);
         return;
@@ -168,21 +183,29 @@ static void on_wsarecv_complete(wio_t* io) {
                 wioSetPeerAddr(io, hovlp->addr, hovlp->addrlen);
             }
         }
+        sbufSetLength(hovlp->sbuf, (uint32_t)hovlp->bytes);
         //printd("read_cb------\n");
-        io->read_cb(io, hovlp->buf.buf, hovlp->bytes);
+        io->read_cb(io, hovlp->sbuf);
         //printd("read_cb======\n");
+    } else if (hovlp->sbuf) {
+        bufferpoolReuseBuffer(io->loop->bufpool, hovlp->sbuf);
+    }
+    hovlp->sbuf = NULL;
+
+    if (io->closed || io->hovlp == NULL) {
+        return;
     }
 
     if (io->io_type == WIO_TYPE_TCP) {
         // reuse hovlp
         if (!io->closed) {
-            post_recv(io, hovlp);
+            post_recv(io, (hoverlapped_t*)io->hovlp);
         }
     }
     else if (io->io_type == WIO_TYPE_UDP ||
             io->io_type == WIO_TYPE_IP) {
-        EVENTLOOP_FREE(hovlp->buf.buf);
-        EVENTLOOP_FREE(hovlp->addr);
+        hoverlapped_t* current_hovlp = (hoverlapped_t*)io->hovlp;
+        EVENTLOOP_FREE(current_hovlp->addr);
         EVENTLOOP_FREE(io->hovlp);
     }
 }
@@ -202,11 +225,12 @@ static void on_wsasend_complete(wio_t* io) {
             }
         }
         //printd("write_cb------\n");
-        io->write_cb(io, hovlp->buf.buf, hovlp->bytes);
+        io->write_cb(io);
         //printd("write_cb======\n");
     }
 end:
     if (io->hovlp) {
+        EVENTLOOP_FREE(hovlp->addr);
         EVENTLOOP_FREE(hovlp->buf.buf);
         EVENTLOOP_FREE(io->hovlp);
     }
@@ -328,7 +352,7 @@ try_send:
     }
     if (io->write_cb) {
         //printd("try_write_cb------\n");
-        io->write_cb(io, buf);
+        io->write_cb(io);
         //printd("try_write_cb======\n");
     }
     if (nwrite == sbufGetLength(buf)) {
@@ -385,8 +409,11 @@ int wioClose (wio_t* io) {
     wioDone(io);
     if (io->hovlp) {
         hoverlapped_t* hovlp = (hoverlapped_t*)io->hovlp;
-        // NOTE: wRead buf provided by caller
-        if (hovlp->buf.buf != io->readbuf.base) {
+        if (hovlp->sbuf) {
+            bufferpoolReuseBuffer(io->loop->bufpool, hovlp->sbuf);
+            hovlp->sbuf = NULL;
+        }
+        if (hovlp->event != WW_READ || io->accept) {
             EVENTLOOP_FREE(hovlp->buf.buf);
         }
         EVENTLOOP_FREE(hovlp->addr);
@@ -409,7 +436,7 @@ int wioClose (wio_t* io) {
                 &guidDisconnectEx, sizeof(guidDisconnectEx),
                 &DisconnectEx, sizeof(DisconnectEx),
                 &dwbytes, NULL, NULL) != 0) {
-                return;
+                return -1;
             }
             DisconnectEx(io->fd, NULL, 0, 0);
         }
