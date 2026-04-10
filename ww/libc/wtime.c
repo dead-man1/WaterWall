@@ -14,11 +14,18 @@ static const uint8_t s_days[] = //   1       3       5       7   8       10     
 unsigned int getTickMS(void)
 {
 #ifdef OS_WIN
-    LARGE_INTEGER count, s_freq;
+    LARGE_INTEGER count;
+    static LARGE_INTEGER s_freq = {0};
     QueryPerformanceCounter(&count);
-    QueryPerformanceFrequency(&s_freq);
-    // Cast count and frequency to long double for precise division, then convert result to unsigned long long
-    return (((count.QuadPart / s_freq.QuadPart) * 1000L));
+    if (s_freq.QuadPart == 0)
+    {
+        QueryPerformanceFrequency(&s_freq);
+    }
+    if (s_freq.QuadPart == 0)
+    {
+        return 0;
+    }
+    return (unsigned int) (((unsigned long long) count.QuadPart * 1000ULL) / (unsigned long long) s_freq.QuadPart);
 #elif HAVE_CLOCK_GETTIME
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -205,7 +212,9 @@ char *gmTimeFmt(time_t time, char *buf)
 {
 
 #ifdef OS_UNIX
-    struct tm *tm = gmtime(&time);
+    struct tm  tm_buf;
+    struct tm *tm = &tm_buf;
+    gmtime_r(&time, tm);
 #else
     struct tm  gmt_tm_buf;
     struct tm *tm = &gmt_tm_buf;

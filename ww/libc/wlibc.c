@@ -131,7 +131,11 @@ char *stringCopyN(char *dest, const char *src, size_t n)
 {
     assert(dest != NULL && src != NULL);
     char *ret = dest;
-    while (*src != '\0' && n > 0)
+    if (n == 0)
+    {
+        return ret;
+    }
+    while (*src != '\0' && n > 1)
     {
         *dest++ = *src++;
         n--;
@@ -300,14 +304,35 @@ char *readFile(const char *const path)
     long fsize = ftell(f);
     fseek(f, 0, SEEK_SET); /* same as rewind(f); */
 
+    if (fsize < 0)
+    {
+        fclose(f);
+        return NULL;
+    }
+
     char  *string = memoryAllocate((size_t) (fsize + 1));
-    size_t count  = fread(string, (size_t) fsize, 1, f);
-    if (count == 0)
+    if (string == NULL)
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    if (fsize > 0)
+    {
+        size_t count = fread(string, 1, (size_t) fsize, f);
+        if (count != (size_t) fsize)
+        {
+            fclose(f);
+            memoryFree(string);
+            return NULL;
+        }
+    }
+
+    if (fclose(f) != 0)
     {
         memoryFree(string);
         return NULL;
     }
-    fclose(f);
 
     string[fsize] = 0;
     return string;
@@ -324,7 +349,7 @@ bool writeFile(const char *const path, const char *data, size_t len)
 
     fseek(f, 0, SEEK_SET);
 
-    if (fwrite(data, len, 1, f) != len)
+    if (fwrite(data, 1, len, f) != len)
     {
         fclose(f);
         return false;
@@ -481,15 +506,32 @@ int _NSGetExecutablePath(char *buf, uint32_t *bufsize);
 
 char *getExecuteablePath(char *buf, int size)
 {
-#ifdef OS_WIN
-    GetModuleFileName(NULL, buf, (DWORD) size);
-#elif defined(OS_DARWIN)
-    _NSGetExecutablePath(buf, (uint32_t *) &size);
-#elif defined(OS_UNIX)
-    if (readlink("/proc/self/exe", buf, (size_t) size) == -1)
+    if (buf == NULL || size <= 0)
     {
         return NULL;
     }
+
+#ifdef OS_WIN
+    DWORD copied = GetModuleFileNameA(NULL, buf, (DWORD) size);
+    if (copied == 0)
+    {
+        return NULL;
+    }
+    buf[size - 1] = '\0';
+#elif defined(OS_DARWIN)
+    uint32_t size_u32 = (uint32_t) size;
+    if (_NSGetExecutablePath(buf, &size_u32) != 0)
+    {
+        return NULL;
+    }
+    buf[size - 1] = '\0';
+#elif defined(OS_UNIX)
+    ssize_t copied = readlink("/proc/self/exe", buf, (size_t) (size - 1));
+    if (copied < 0)
+    {
+        return NULL;
+    }
+    buf[copied] = '\0';
 
 #endif
     return buf;
@@ -497,35 +539,50 @@ char *getExecuteablePath(char *buf, int size)
 
 char *getExecuteableDir(char *buf, int size)
 {
+    if (buf == NULL || size <= 0)
+    {
+        return NULL;
+    }
+
     char filepath[MAX_PATH] = {0};
-    getExecuteablePath(filepath, sizeof(filepath));
+    if (getExecuteablePath(filepath, sizeof(filepath)) == NULL)
+    {
+        return NULL;
+    }
     char *pos = stringChrDir(filepath);
     if (pos)
     {
         *pos = '\0';
-
-#if defined(OS_UNIX)
-        strncpy(buf, filepath, (long unsigned int) size);
-#else
-        strncpy_s(buf, ((size_t) size) + 1, filepath, (size_t) size);
-#endif
+        stringCopyN(buf, filepath, (size_t) size);
     }
+    else
+    {
+        buf[0] = '\0';
+    }
+
     return buf;
 }
 
 char *getExecuteableFile(char *buf, int size)
 {
+    if (buf == NULL || size <= 0)
+    {
+        return NULL;
+    }
+
     char filepath[MAX_PATH] = {0};
-    getExecuteablePath(filepath, sizeof(filepath));
+    if (getExecuteablePath(filepath, sizeof(filepath)) == NULL)
+    {
+        return NULL;
+    }
     char *pos = stringChrDir(filepath);
     if (pos)
     {
-
-#if defined(OS_UNIX)
-        strncpy(buf, pos + 1, (unsigned long) size);
-#else
-        strncpy_s(buf, ((size_t) size) + 1, pos + 1, (size_t) size);
-#endif
+        stringCopyN(buf, pos + 1, (size_t) size);
+    }
+    else
+    {
+        stringCopyN(buf, filepath, (size_t) size);
     }
     return buf;
 }
