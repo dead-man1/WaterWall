@@ -17,11 +17,11 @@
 #endif
 
 #ifdef INCLUDE_PACKET_AS_DATA
-#include "tunnels/PacketAsData/include/interface.h"
+#include "tunnels/PacketsToStream/include/interface.h"
 #endif
 
 #ifdef INCLUDE_DATA_AS_PACKET
-#include "tunnels/DataAsPacket/include/interface.h"
+#include "tunnels/StreamToPackets/include/interface.h"
 #endif
 
 #ifdef INCLUDE_WIREGUARD_DEVICE
@@ -224,11 +224,11 @@ void loadImportedTunnelsIntoCore(void)
 #endif
 
 #ifdef INCLUDE_PACKET_AS_DATA
-    USING(PacketAsData);
+    USING(PacketsToStream);
 #endif
 
 #ifdef INCLUDE_DATA_AS_PACKET
-    USING(DataAsPacket);
+    USING(StreamToPackets);
 #endif
 
 #ifdef INCLUDE_WIREGUARD_DEVICE
