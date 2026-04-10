@@ -52,7 +52,6 @@ static void handleFirstPacket(tunnel_t *t, line_t *l, sbuf_t *buf, halfduplexcli
 {
     halfduplexclient_tstate_t *state = tunnelGetState(t);
     
-    ls->first_packet_sent = true;
     uint64_t identifier = atomicIncRelaxed(&state->identifier);
     uint32_t cids[2] = {0};
     uint8_t *cid_bytes = (uint8_t *)&(cids[0]);
@@ -65,6 +64,8 @@ static void handleFirstPacket(tunnel_t *t, line_t *l, sbuf_t *buf, halfduplexcli
     {
         return;
     }
+
+    ls->first_packet_sent = true;
     
     sbuf_t *intro_upload_payload = createUploadIntroPayload(t, buf, cid_bytes, sizeof(cids));
     
