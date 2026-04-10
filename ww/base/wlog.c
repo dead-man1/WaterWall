@@ -426,6 +426,57 @@ static int i2a(int i, char *buf, int len)
     return len;
 }
 
+static inline void loggerAppendChar(char *buf, int bufsize, int *len, char c)
+{
+    if (*len < bufsize - 1)
+    {
+        buf[(*len)++] = c;
+    }
+}
+
+static inline void loggerAppendFixedInt(char *buf, int bufsize, int *len, int value, int width)
+{
+    char num_buf[8] = {0};
+    i2a(value, num_buf, width);
+
+    for (int i = 0; i < width; ++i)
+    {
+        loggerAppendChar(buf, bufsize, len, num_buf[i]);
+    }
+}
+
+static inline void loggerAppendVFormat(char *buf, int bufsize, int *len, const char *fmt, va_list ap)
+{
+    int avail = bufsize - *len;
+    if (avail <= 0)
+    {
+        return;
+    }
+
+    int wrote = vsnprintf(buf + *len, (size_t) avail, fmt, ap);
+    if (wrote <= 0)
+    {
+        return;
+    }
+
+    if (wrote >= avail)
+    {
+        *len = bufsize - 1;
+    }
+    else
+    {
+        *len += wrote;
+    }
+}
+
+static inline void loggerAppendFormat(char *buf, int bufsize, int *len, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    loggerAppendVFormat(buf, bufsize, len, fmt, ap);
+    va_end(ap);
+}
+
 int loggerPrintVA(logger_t *logger, int level, const char *fmt, va_list ap)
 {
     if (level < logger->level)
@@ -480,7 +531,7 @@ int loggerPrintVA(logger_t *logger, int level, const char *fmt, va_list ap)
 
     if (logger->enable_color)
     {
-        len = snprintf(buf, (size_t) bufsize, "%s", pcolor);
+        loggerAppendFormat(buf, bufsize, &len, "%s", pcolor);
     }
 
     const char *p = logger->format;
@@ -493,44 +544,44 @@ int loggerPrintVA(logger_t *logger, int level, const char *fmt, va_list ap)
                 switch (*++p)
                 {
                 case 'y':
-                    len += i2a(year, buf + len, 4);
+                    loggerAppendFixedInt(buf, bufsize, &len, year, 4);
                     break;
                 case 'm':
-                    len += i2a(month, buf + len, 2);
+                    loggerAppendFixedInt(buf, bufsize, &len, month, 2);
                     break;
                 case 'd':
-                    len += i2a(day, buf + len, 2);
+                    loggerAppendFixedInt(buf, bufsize, &len, day, 2);
                     break;
                 case 'H':
-                    len += i2a(hour, buf + len, 2);
+                    loggerAppendFixedInt(buf, bufsize, &len, hour, 2);
                     break;
                 case 'M':
-                    len += i2a(min, buf + len, 2);
+                    loggerAppendFixedInt(buf, bufsize, &len, min, 2);
                     break;
                 case 'S':
-                    len += i2a(sec, buf + len, 2);
+                    loggerAppendFixedInt(buf, bufsize, &len, sec, 2);
                     break;
                 case 'z':
-                    len += i2a(us / 1000, buf + len, 3);
+                    loggerAppendFixedInt(buf, bufsize, &len, us / 1000, 3);
                     break;
                 case 'Z':
-                    len += i2a(us, buf + len, 6);
+                    loggerAppendFixedInt(buf, bufsize, &len, us, 6);
                     break;
                 case 'l':
-                    buf[len++] = *plevel;
+                    loggerAppendChar(buf, bufsize, &len, *plevel);
                     break;
                 case 'L':
                     for (int i = 0; i < 5; ++i)
                     {
-                        buf[len++] = plevel[i];
+                        loggerAppendChar(buf, bufsize, &len, plevel[i]);
                     }
                     break;
                 case 's': {
-                    len += vsnprintf(buf + len, (size_t)(bufsize - len), fmt, ap);
+                    loggerAppendVFormat(buf, bufsize, &len, fmt, ap);
                 }
                 break;
                 case '%':
-                    buf[len++] = '%';
+                    loggerAppendChar(buf, bufsize, &len, '%');
                     break;
                 default:
                     break;
@@ -538,28 +589,25 @@ int loggerPrintVA(logger_t *logger, int level, const char *fmt, va_list ap)
             }
             else
             {
-                buf[len++] = *p;
+                loggerAppendChar(buf, bufsize, &len, *p);
             }
             ++p;
         }
     }
     else
     {
-        len += snprintf(buf + len, (size_t)(bufsize - len), "%04d-%02d-%02d %02d:%02d:%02d.%03d %s ", year, month, day, hour, min,
-                        sec, us / 1000, plevel);
+        loggerAppendFormat(buf, bufsize, &len, "%04d-%02d-%02d %02d:%02d:%02d.%03d %s ", year, month, day, hour,
+                           min, sec, us / 1000, plevel);
 
-        len += vsnprintf(buf + len, (size_t) (bufsize - len), fmt, ap);
+        loggerAppendVFormat(buf, bufsize, &len, fmt, ap);
     }
 
     if (logger->enable_color)
     {
-        len += snprintf(buf + len, (size_t) (bufsize - len), "%s", CLR_CLR);
+        loggerAppendFormat(buf, bufsize, &len, "%s", CLR_CLR);
     }
 
-    if (len < bufsize)
-    {
-        buf[len++] = '\n';
-    }
+    loggerAppendChar(buf, bufsize, &len, '\n');
 
     if (logger->handler)
     {
