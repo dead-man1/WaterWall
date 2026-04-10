@@ -229,7 +229,7 @@ process_timers:
         }
     }
     int ncbs = wloopProcessPendings(loop);
-    printd("blocktime=%d nios=%d/%u ntimers=%d/%u nidles=%d/%u nactives=%d npendings=%d ncbs=%d\n", blocktime, nios,
+    printd("blocktime=%d nios=%d/%u ntimers=%d/%u nidles=%d/%u nactives=%d npendings=%d ncbs=%d\n", blocktime_ms, nios,
            loop->nios, ntimers, loop->ntimers, nidles, loop->nidles, loop->nactives, npendings, ncbs);
     discard nios;
     return ncbs;
@@ -348,7 +348,8 @@ bool wloopPostEvent(wloop_t *loop, wevent_t *ev)
         ev->event_id = wloopGetNextEventID();
     }
 
-    int nwrite = 0;
+    bool success = false;
+    int  nwrite  = 0;
     mutexLock(&loop->custom_events_mutex);
     if (loop->eventfds[EVENTFDS_WRITE_INDEX] == -1)
     {
@@ -375,9 +376,10 @@ bool wloopPostEvent(wloop_t *loop, wevent_t *ev)
         event_queue_init(&loop->custom_events, CUSTOM_EVENT_QUEUE_INIT_SIZE);
     }
     event_queue_push_back(&loop->custom_events, ev);
+    success = true;
 unlock:
     mutexUnlock(&loop->custom_events_mutex);
-    return true;
+    return success;
 }
 
 static void wloopInit(wloop_t *loop)
