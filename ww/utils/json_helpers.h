@@ -119,7 +119,7 @@ static inline dynamic_value_t parseDynamicStrValueFromJsonObject(const cJSON *js
         va_start(argp, matchers);
         for (size_t mi = kDvsConstant + 1; mi < matchers + kDvsConstant + 1; mi++)
         {
-            char *matcher = va_arg(argp, char *);
+            const char *matcher = va_arg(argp, const char *);
             if (stringCompare(matcher, jstr->valuestring) == 0)
             {
                 va_end(argp);
@@ -155,7 +155,7 @@ static inline dynamic_value_t parseDynamicNumericValueFromJsonObject(const cJSON
         va_start(argp, matchers);
         for (size_t mi = kDvsConstant + 1; mi < matchers + kDvsConstant + 1; mi++)
         {
-            char *matcher = va_arg(argp, char *);
+            const char *matcher = va_arg(argp, const char *);
             if (stringCompare(matcher, jstr->valuestring) == 0)
             {
                 va_end(argp);

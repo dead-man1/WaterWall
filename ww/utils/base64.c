@@ -51,6 +51,10 @@ static const signed char base64de[] = {
 int wwBase64Encode(const unsigned char *in, unsigned int inlen, char *out) {
     unsigned int i = 0, j = 0;
 
+    if (inlen == 0) {
+        return 0;
+    }
+
     for (; i < inlen; i++) {
         int s = (int) (i % 3);
 
@@ -86,41 +90,60 @@ int wwBase64Encode(const unsigned char *in, unsigned int inlen, char *out) {
 int wwBase64Decode(const char *in, unsigned int inlen, unsigned char *out) {
     unsigned int i = 0, j = 0;
 
-    for (; i < inlen; i++) {
-        int c;
-        int s = i % 4;
-
-        if (in[i] == '=')
-            return (int) (j);
-
-
-        if (in[i] < BASE64DE_FIRST || in[i] > BASE64DE_LAST ||
-            (c = base64de[in[i] - BASE64DE_FIRST]) == -1)
-            return -1;
-
-        switch (s) {
-        case 0:
-            out[j] = ((unsigned int)c << 2) & 0xFF;
-            continue;
-        case 1:
-            out[j++] += ((unsigned int)c >> 4) & 0x3;
-
-            /* if not last char with padding */
-            if (i < (inlen - 3) || in[inlen - 2] != '=')
-                out[j] = (unsigned char)(((unsigned int)c & 0xF) << 4);
-            continue;
-        case 2:
-            out[j++] += ((unsigned int)c >> 2) & 0xF;
-
-            /* if not last char with padding */
-            if (i < (inlen - 2) || in[inlen - 1] != '=')
-                out[j] = (unsigned char)(((unsigned int)c & 0x3) << 6);
-            continue;
-        case 3:
-            out[j++] += (unsigned char)c;
-        }
+    if ((inlen % 4) != 0) {
+        return -1;
     }
 
-    return (int) (j);
+    for (; i < inlen; i += 4) {
+        int c0, c1, c2, c3;
+        unsigned char ch0 = (unsigned char)in[i];
+        unsigned char ch1 = (unsigned char)in[i + 1];
+        unsigned char ch2 = (unsigned char)in[i + 2];
+        unsigned char ch3 = (unsigned char)in[i + 3];
+
+        if (ch0 < BASE64DE_FIRST || ch0 > BASE64DE_LAST ||
+            (c0 = base64de[ch0 - BASE64DE_FIRST]) == -1) {
+            return -1;
+        }
+        if (ch1 < BASE64DE_FIRST || ch1 > BASE64DE_LAST ||
+            (c1 = base64de[ch1 - BASE64DE_FIRST]) == -1) {
+            return -1;
+        }
+
+        if (ch2 == BASE64_PAD) {
+            /* xx== is only valid in the final 4-char block */
+            if (ch3 != BASE64_PAD || (i + 4) != inlen) {
+                return -1;
+            }
+            out[j++] = (unsigned char)(((unsigned int)c0 << 2) | (((unsigned int)c1 >> 4) & 0x3));
+            return (int)j;
+        }
+
+        if (ch2 < BASE64DE_FIRST || ch2 > BASE64DE_LAST ||
+            (c2 = base64de[ch2 - BASE64DE_FIRST]) == -1) {
+            return -1;
+        }
+
+        if (ch3 == BASE64_PAD) {
+            /* xxx= is only valid in the final 4-char block */
+            if ((i + 4) != inlen) {
+                return -1;
+            }
+            out[j++] = (unsigned char)(((unsigned int)c0 << 2) | (((unsigned int)c1 >> 4) & 0x3));
+            out[j++] = (unsigned char)((((unsigned int)c1 & 0xF) << 4) | (((unsigned int)c2 >> 2) & 0xF));
+            return (int)j;
+        }
+
+        if (ch3 < BASE64DE_FIRST || ch3 > BASE64DE_LAST ||
+            (c3 = base64de[ch3 - BASE64DE_FIRST]) == -1) {
+            return -1;
+        }
+
+        out[j++] = (unsigned char)(((unsigned int)c0 << 2) | (((unsigned int)c1 >> 4) & 0x3));
+        out[j++] = (unsigned char)((((unsigned int)c1 & 0xF) << 4) | (((unsigned int)c2 >> 2) & 0xF));
+        out[j++] = (unsigned char)((((unsigned int)c2 & 0x3) << 6) | (unsigned int)c3);
+    }
+
+    return (int)(j);
 
 }

@@ -39,6 +39,7 @@ WW_EXPORT void wwSHA1Final(
     WW_SHA1_CTX * context
     );
 
+// Writes exactly 20 raw digest bytes into hash_out (not NUL-terminated).
 WW_EXPORT void wwSHA1Pointer(
     char *hash_out,
     const char *str,

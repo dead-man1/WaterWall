@@ -282,7 +282,7 @@ void wwSHA1Pointer(
     for (ii=0; ii<len; ii+=1)
         wwSHA1Update(&ctx, (const unsigned char*)str + ii, 1);
     wwSHA1Final((unsigned char *)hash_out, &ctx);
-    hash_out[20] = '\0';
+    // hash_out[20] = '\0'; // Null-terminate the output
 }
 
 void wwSHA1(unsigned char* input, uint32_t inputlen, unsigned char digest[20]) {

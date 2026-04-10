@@ -1,5 +1,18 @@
 #include "objects/user.h"
 
+static void userCleanup(user_t *user)
+{
+    if (user == NULL)
+    {
+        return;
+    }
+    memoryFree(user->name);
+    memoryFree(user->email);
+    memoryFree(user->notes);
+    memoryFree(user->uid);
+    memoryFree(user);
+}
+
 struct user_s *parseUserFromJsonObject(const cJSON *user_json)
 {
     if (! cJSON_IsObject(user_json) || user_json->child == NULL)
@@ -15,7 +28,7 @@ struct user_s *parseUserFromJsonObject(const cJSON *user_json)
 
     if (! getStringFromJsonObject(&(user->uid), user_json, "uid"))
     {
-        memoryFree(user);
+        userCleanup(user);
         return NULL;
     }
     user->hash_uid = calcHashBytes(user->uid, strlen(user->uid));
@@ -23,11 +36,10 @@ struct user_s *parseUserFromJsonObject(const cJSON *user_json)
     bool enable;
     if (! getBoolFromJsonObject(&(enable), user_json, "enable"))
     {
-        memoryFree(user);
+        userCleanup(user);
         return NULL;
     }
     user->enable = enable;
     // TODO (parse user) parse more fields from user like limits/dates/etc..
     return user;
 }
-

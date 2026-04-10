@@ -80,6 +80,10 @@ node_t nodelibraryLoadByTypeHash(hash_t htype)
 
 node_t nodelibraryLoadByTypeName(const char *name)
 {
+    if (name == NULL || *name == '\0')
+    {
+        return (node_t) {0};
+    }
     hash_t htype = calcHashBytes(name, strlen(name));
     return nodelibraryLoadByTypeHash(htype);
 }
