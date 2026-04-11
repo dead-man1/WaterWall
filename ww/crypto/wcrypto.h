@@ -144,6 +144,43 @@ int chacha20poly1305Decrypt(unsigned char *dst, const unsigned char *src, size_t
                             size_t ad_len, const unsigned char *nonce, const unsigned char *key);
 
 /**
+ * @brief Check whether AES-256-GCM is available in the active crypto backend.
+ *
+ * @return 1 if available, 0 otherwise.
+ */
+int aes256gcmIsAvailable(void);
+
+/**
+ * @brief Encrypt data using AES-256-GCM AEAD.
+ *
+ * @param dst Destination buffer for ciphertext appended with a 16-byte tag.
+ * @param src Pointer to plaintext.
+ * @param src_len Plaintext size in bytes.
+ * @param ad Pointer to additional authenticated data (can be NULL).
+ * @param ad_len AAD length in bytes.
+ * @param nonce 12-byte nonce.
+ * @param key 32-byte key.
+ * @return 0 on success, non-zero on failure.
+ */
+int aes256gcmEncrypt(unsigned char *dst, const unsigned char *src, size_t src_len, const unsigned char *ad,
+                     size_t ad_len, const unsigned char *nonce, const unsigned char *key);
+
+/**
+ * @brief Decrypt and authenticate AES-256-GCM ciphertext.
+ *
+ * @param dst Destination buffer for plaintext.
+ * @param src Pointer to ciphertext with trailing 16-byte tag.
+ * @param src_len Ciphertext+tag size in bytes.
+ * @param ad Pointer to additional authenticated data (can be NULL).
+ * @param ad_len AAD length in bytes.
+ * @param nonce 12-byte nonce.
+ * @param key 32-byte key.
+ * @return 0 on success, non-zero on failure.
+ */
+int aes256gcmDecrypt(unsigned char *dst, const unsigned char *src, size_t src_len, const unsigned char *ad,
+                     size_t ad_len, const unsigned char *nonce, const unsigned char *key);
+
+/**
  * @brief Encrypt using XChaCha20-Poly1305 AEAD.
  *
  * Works similarly to chacha20poly1305Encrypt but uses a 24-byte nonce for extended nonce support.
