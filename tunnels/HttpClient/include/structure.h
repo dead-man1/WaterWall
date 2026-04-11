@@ -2,48 +2,103 @@
 
 #include "wwapi.h"
 
+#include "bufio/buffer_stream.h"
 #include "http2_def.h"
 #include "http_def.h"
 #include "nghttp2/nghttp2.h"
 
-typedef struct httpclient_lstate_s
+typedef enum httpclient_version_mode_e
 {
-    context_queue_t  cq;
-    context_queue_t  cq_d;
-    buffer_queue_t   bq;
-    nghttp2_session *session;
-    tunnel_t        *tunnel;
-    line_t          *line;
+    kHttpClientVersionModeHttp1 = 1,
+    kHttpClientVersionModeHttp2 = 2,
+    kHttpClientVersionModeBoth  = 3
+} httpclient_version_mode_t;
 
-    const char            *path;
-    const char            *host; // authority
-    const char            *scheme;
-    enum http_method       method;
-    enum http_content_type content_type;
-    int                    host_port;
-    int                    stream_id;
-    bool                   handshake_completed;
-    bool                   init_sent;
-} httpclient_lstate_t;
+typedef enum httpclient_runtime_proto_e
+{
+    kHttpClientRuntimeUnknown      = 0,
+    kHttpClientRuntimeHttp1        = 1,
+    kHttpClientRuntimeHttp2        = 2,
+    kHttpClientRuntimeWaitUpgrade  = 3,
+    kHttpClientRuntimeAfterUpgrade = 4
+} httpclient_runtime_proto_t;
+
+typedef enum httpclient_h1_body_mode_e
+{
+    kHttpClientH1BodyNone         = 0,
+    kHttpClientH1BodyChunked      = 1,
+    kHttpClientH1BodyContentLen   = 2,
+    kHttpClientH1BodyUntilClose   = 3
+} httpclient_h1_body_mode_t;
 
 typedef struct httpclient_tstate_s
 {
     nghttp2_session_callbacks *cbs;
     nghttp2_option            *ngoptions;
-    char                      *scheme;
-    char                      *path;
-    char                      *host; // authority in http/2
-    enum http_content_type     content_type;
-    int                        host_port;
 
+    char *scheme;
+    char *path;
+    char *host;
+    char *method;
+
+    const cJSON *headers;
+
+    enum http_method       method_enum;
+    enum http_content_type content_type;
+
+    int host_port;
+
+    uint8_t *upgrade_settings_payload;
+    size_t   upgrade_settings_payload_len;
+    char    *upgrade_settings_b64;
+
+    httpclient_version_mode_t version_mode;
+    bool                      enable_upgrade;
 } httpclient_tstate_t;
+
+typedef struct httpclient_lstate_s
+{
+    tunnel_t *tunnel;
+    line_t   *line;
+
+    nghttp2_session *session;
+
+    buffer_stream_t in_stream;
+    buffer_queue_t  pending_up;
+    context_queue_t events_down;
+
+    httpclient_runtime_proto_t runtime_proto;
+
+    int32_t h2_stream_id;
+
+    int64_t h1_chunk_expected;
+    int64_t h1_body_remaining;
+
+    bool initialized;
+
+    bool h1_headers_parsed;
+    bool h1_response_chunked;
+    bool h1_upgrade_accepted;
+    httpclient_h1_body_mode_t h1_body_mode;
+
+    bool h2_headers_received;
+    bool prev_finished;
+
+    bool fin_sent;
+} httpclient_lstate_t;
 
 enum
 {
-    kTunnelStateSize               = sizeof(httpclient_tstate_t),
-    kLineStateSize                 = sizeof(httpclient_lstate_t),
-    kHttpClientRequiredPaddingLeft = HTTP2_FRAME_HDLEN, // used in node.c
-    kDefaultHttp2MuxConcurrency    = 1,
+    kTunnelStateSize = sizeof(httpclient_tstate_t),
+    kLineStateSize   = sizeof(httpclient_lstate_t),
+
+    kHttpClientRequiredPaddingLeft = 16,
+
+    kHttpClientBufferQueueCap   = 8,
+    kHttpClientMaxHeaderBytes   = 64 * 1024,
+    kHttpClientHttp2FrameBytes  = 32 * 1024,
+    kHttpClientDefaultHttp1Port = 80,
+    kHttpClientDefaultHttpsPort = 443
 };
 
 WW_EXPORT void         httpclientTunnelDestroy(tunnel_t *t);
@@ -55,45 +110,45 @@ void httpclientTunnelOnChain(tunnel_t *t, tunnel_chain_t *chain);
 void httpclientTunnelOnPrepair(tunnel_t *t);
 void httpclientTunnelOnStart(tunnel_t *t);
 
-void httpclientV2TunnelUpStreamInit(tunnel_t *t, line_t *l);
-void httpclientV2TunnelUpStreamEst(tunnel_t *t, line_t *l);
-void httpclientV2TunnelUpStreamFinish(tunnel_t *t, line_t *l);
-void httpclientV2TunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
-void httpclientV2TunnelUpStreamPause(tunnel_t *t, line_t *l);
-void httpclientV2TunnelUpStreamResume(tunnel_t *t, line_t *l);
+void httpclientTunnelUpStreamInit(tunnel_t *t, line_t *l);
+void httpclientTunnelUpStreamEst(tunnel_t *t, line_t *l);
+void httpclientTunnelUpStreamFinish(tunnel_t *t, line_t *l);
+void httpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
+void httpclientTunnelUpStreamPause(tunnel_t *t, line_t *l);
+void httpclientTunnelUpStreamResume(tunnel_t *t, line_t *l);
 
-void httpclientV2TunnelDownStreamInit(tunnel_t *t, line_t *l);
-void httpclientV2TunnelDownStreamEst(tunnel_t *t, line_t *l);
-void httpclientV2TunnelDownStreamFinish(tunnel_t *t, line_t *l);
-void httpclientV2TunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
-void httpclientV2TunnelDownStreamPause(tunnel_t *t, line_t *l);
-void httpclientV2TunnelDownStreamResume(tunnel_t *t, line_t *l);
+void httpclientTunnelDownStreamInit(tunnel_t *t, line_t *l);
+void httpclientTunnelDownStreamEst(tunnel_t *t, line_t *l);
+void httpclientTunnelDownStreamFinish(tunnel_t *t, line_t *l);
+void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
+void httpclientTunnelDownStreamPause(tunnel_t *t, line_t *l);
+void httpclientTunnelDownStreamResume(tunnel_t *t, line_t *l);
 
-void httpclientV2LinestateInitialize(httpclient_lstate_t *ls, tunnel_t *t, wid_t wid);
-void httpclientV2LinestateDestroy(httpclient_lstate_t *ls);
+void httpclientLinestateInitialize(httpclient_lstate_t *ls, tunnel_t *t, line_t *l);
+void httpclientLinestateDestroy(httpclient_lstate_t *ls);
 
-sbuf_t *httpclientV2MakeFrame(bool is_grpc, unsigned int stream_id, sbuf_t *buf);
 
-bool httpclientV2PullAndSendNgHttp2SendableData(tunnel_t *t, httpclient_lstate_t *ls);
 
-int httpclientV2OnHeaderCallBack(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name,
-                                 size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *userdata);
 
-int httpclientV2OnDataChunkRecvCallBack(nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data,
-                                        size_t len, void *userdata);
 
-int httpclientV2OnFrameRecvCallBack(nghttp2_session *session, const nghttp2_frame *frame, void *userdata);
+bool httpclientStringCaseEquals(const char *a, const char *b);
+bool httpclientStringCaseContains(const char *haystack, const char *needle);
+bool httpclientStringCaseContainsToken(const char *value, const char *token);
+bool bufferstreamFindCRLF(buffer_stream_t *stream, size_t *line_end);
+bool bufferstreamFindDoubleCRLF(buffer_stream_t *stream, size_t *header_end);
+sbuf_t *allocBufferForLength(line_t *l, uint32_t len);
 
-int httpclientV2OnStreamClosedCallBack(nghttp2_session *session, int32_t stream_id, uint32_t error_code,
-                                       void *userdata);
+bool httpclientTransportSendHttp1RequestHeaders(tunnel_t *t, line_t *l, bool upgrade_to_h2);
+bool httpclientTransportSendHttp1FinalChunk(tunnel_t *t, line_t *l);
+bool httpclientTransportSendHttp1ChunkedPayload(tunnel_t *t, line_t *l, sbuf_t *payload);
 
-static inline nghttp2_nv makeNV(const char *name, const char *value)
-{
-    nghttp2_nv nv;
-    nv.name     = (uint8_t *) name;
-    nv.value    = (uint8_t *) value;
-    nv.namelen  = stringLength(name);
-    nv.valuelen = stringLength(value);
-    nv.flags    = NGHTTP2_NV_FLAG_NONE;
-    return nv;
-}
+bool httpclientTransportEnsureHttp2Session(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
+bool httpclientTransportHandleUpgradeAccepted(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
+bool httpclientTransportSendHttp2DataFrame(tunnel_t *t, line_t *l, httpclient_lstate_t *ls, sbuf_t *payload,
+                                           bool end_stream);
+
+bool httpclientTransportFlushPendingUp(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
+bool httpclientTransportFeedHttp2Input(tunnel_t *t, line_t *l, httpclient_lstate_t *ls, sbuf_t *buf);
+bool httpclientTransportHandleHttp1ResponseHeaderPhase(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
+bool httpclientTransportDrainHttp1ChunkedBody(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
+bool httpclientTransportDrainHttp1Body(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);

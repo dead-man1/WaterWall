@@ -2,60 +2,47 @@
 
 #include "loggers/network_logger.h"
 
-static void *httpserverNgh2CustomMemoryAllocate(size_t size, void *mem_user_data)
+void httpserverLinestateInitialize(httpserver_lstate_t *ls, tunnel_t *t, line_t *l)
 {
-    discard mem_user_data;
-    return memoryAllocate(size);
+    *ls = (httpserver_lstate_t){.tunnel                   = t,
+                                .line                     = l,
+                                .session                  = NULL,
+                                .in_stream                = bufferstreamCreate(lineGetBufferPool(l), 0),
+                                .pending_down             = bufferqueueCreate(kHttpServerBufferQueueCap),
+                                .events_up                = contextqueueCreate(),
+                                .runtime_proto            = kHttpServerRuntimeUnknown,
+                                .h2_stream_id             = 0,
+                                .h1_chunk_expected        = -1,
+                                .h1_body_remaining        = 0,
+                                .initialized              = true,
+                                .h1_headers_parsed        = false,
+                                .h1_request_chunked       = false,
+                                .h1_request_finished      = false,
+                                .h1_response_headers_sent = false,
+                                .h1_body_mode             = kHttpServerH1BodyNone,
+                                .h2_response_headers_sent = false,
+                                .h2_request_finished      = false,
+                                .fin_sent                 = false,
+                                .prev_finished            = false,
+                                .next_finished            = false,
+                                .h2_reject_extra_streams  = true};
 }
 
-static void *httpserverNgh2CustomMemoryReAllocate(void *ptr, size_t size, void *mem_user_data)
+void httpserverLinestateDestroy(httpserver_lstate_t *ls)
 {
-    discard mem_user_data;
-    return memoryReAllocate(ptr, size);
-}
-static void *httpserverNgh2CustomMemoryCalloc(size_t n, size_t size, void *mem_user_data)
-{
-    discard mem_user_data;
-    return memoryCalloc(n, size);
-}
-static void httpserverNgh2CustomMemoryFree(void *ptr, void *mem_user_data)
-{
-    discard mem_user_data;
-    memoryFree(ptr);
-}
+    if (ls->session != NULL)
+    {
+        nghttp2_session_del(ls->session);
+        ls->session = NULL;
+    }
 
+    if (ls->initialized)
+    {
+        bufferstreamDestroy(&ls->in_stream);
+        bufferqueueDestroy(&ls->pending_down);
+        contextqueueDestroy(&ls->events_up);
+        ls->initialized = false;
+    }
 
-void httpserverV2LinestateInitialize(httpserver_lstate_t *ls, tunnel_t *t, wid_t wid)
-{
-
-    httpserver_tstate_t *ts = tunnelGetState(t);
-
-    *ls = (httpserver_lstate_t){.cq_u         = contextqueueCreate(),
-                                .session      = NULL,
-                                .tunnel       = t,
-                                .line         = lineCreate(tunnelchainGetLinePools(tunnelGetChain(t)), wid),
-                                .content_type = kContentTypeNone,
-                                .stream_id    = 0};
-
-    nghttp2_mem mem = {.mem_user_data = NULL,
-                       .malloc        = &httpserverNgh2CustomMemoryAllocate,
-                       .free          = &httpserverNgh2CustomMemoryFree,
-                       .calloc        = &httpserverNgh2CustomMemoryCalloc,
-                       .realloc       = &httpserverNgh2CustomMemoryReAllocate};
-
-    nghttp2_session_server_new3(&ls->session, ts->cbs, ls, ts->ngoptions, &mem);
-
-    nghttp2_settings_entry settings[] = {{NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, kDefaultHttp2MuxConcurrency},
-                                         {NGHTTP2_SETTINGS_MAX_FRAME_SIZE, (1U << 18)},
-                                         {NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE, (1U << 18)}
-
-    };
-    nghttp2_submit_settings(ls->session, NGHTTP2_FLAG_NONE, settings, ARRAY_SIZE(settings));
-}
-
-void httpserverV2LinestateDestroy(httpserver_lstate_t *ls)
-{
-    nghttp2_session_del(ls->session);
-
-    memoryZeroAligned32(ls, kLineStateSize);
+    memoryZeroAligned32(ls, sizeof(*ls));
 }

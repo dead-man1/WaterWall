@@ -2,18 +2,66 @@
 
 #include "wwapi.h"
 
+#include "bufio/buffer_stream.h"
 #include "http2_def.h"
 #include "http_def.h"
 #include "nghttp2/nghttp2.h"
 
+typedef enum httpserver_version_mode_e
+{
+    kHttpServerVersionModeHttp1 = 1,
+    kHttpServerVersionModeHttp2 = 2,
+    kHttpServerVersionModeBoth  = 3
+} httpserver_version_mode_t;
+
+typedef enum httpserver_runtime_proto_e
+{
+    kHttpServerRuntimeUnknown = 0,
+    kHttpServerRuntimeHttp1   = 1,
+    kHttpServerRuntimeHttp2   = 2
+} httpserver_runtime_proto_t;
+
+typedef enum httpserver_h1_body_mode_e
+{
+    kHttpServerH1BodyNone       = 0,
+    kHttpServerH1BodyChunked    = 1,
+    kHttpServerH1BodyContentLen = 2
+} httpserver_h1_body_mode_t;
+
 typedef struct httpserver_lstate_s
 {
-    context_queue_t        cq_u;
-    nghttp2_session       *session;
-    tunnel_t              *tunnel;
-    line_t                *line;
-    enum http_content_type content_type;
-    int                    stream_id;
+    tunnel_t *tunnel;
+    line_t   *line;
+
+    nghttp2_session *session;
+
+    buffer_stream_t in_stream;
+    buffer_queue_t  pending_down;
+    context_queue_t events_up;
+
+    httpserver_runtime_proto_t runtime_proto;
+
+    int32_t h2_stream_id;
+
+    int64_t h1_chunk_expected;
+    int64_t h1_body_remaining;
+
+    bool initialized;
+
+    bool h1_headers_parsed;
+    bool h1_request_chunked;
+    bool h1_request_finished;
+    bool h1_response_headers_sent;
+    httpserver_h1_body_mode_t h1_body_mode;
+
+    bool h2_response_headers_sent;
+    bool h2_request_finished;
+
+    bool fin_sent;
+    bool prev_finished;
+    bool next_finished;
+
+    bool h2_reject_extra_streams;
 } httpserver_lstate_t;
 
 typedef struct httpserver_tstate_s
@@ -21,14 +69,32 @@ typedef struct httpserver_tstate_s
     nghttp2_session_callbacks *cbs;
     nghttp2_option            *ngoptions;
 
+    char *expected_host;
+    char *expected_path;
+    char *expected_method;
+
+    const cJSON *headers;
+
+    enum http_method       expected_method_enum;
+    enum http_content_type content_type;
+    int                    status_code;
+
+    httpserver_version_mode_t version_mode;
+    bool                     enable_upgrade;
 } httpserver_tstate_t;
 
 enum
 {
-    kTunnelStateSize               = sizeof(httpserver_tstate_t),
-    kLineStateSize                 = sizeof(httpserver_lstate_t),
-    kHttpServerRequiredPaddingLeft = HTTP2_FRAME_HDLEN, // used in node.c
-    kDefaultHttp2MuxConcurrency    = 1,
+    kTunnelStateSize = sizeof(httpserver_tstate_t),
+    kLineStateSize   = sizeof(httpserver_lstate_t),
+
+    kHttpServerRequiredPaddingLeft = 16,
+
+    kHttpServerBufferQueueCap   = 8,
+    kHttpServerMaxHeaderBytes   = 64 * 1024,
+    kHttpServerHttp2FrameBytes  = 32 * 1024,
+    kHttpServerDefaultHttp1Port = 80,
+    kHttpServerDefaultHttpsPort = 443
 };
 
 WW_EXPORT void         httpserverTunnelDestroy(tunnel_t *t);
@@ -54,34 +120,29 @@ void httpserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
 void httpserverTunnelDownStreamPause(tunnel_t *t, line_t *l);
 void httpserverTunnelDownStreamResume(tunnel_t *t, line_t *l);
 
-void httpserverLinestateInitialize(httpserver_lstate_t *ls);
+void httpserverLinestateInitialize(httpserver_lstate_t *ls, tunnel_t *t, line_t *l);
 void httpserverLinestateDestroy(httpserver_lstate_t *ls);
 
-void httpserverV2LinestateInitialize(httpserver_lstate_t *ls, tunnel_t *t, wid_t wid);
-void httpserverV2LinestateDestroy(httpserver_lstate_t *ls);
+bool httpserverStringCaseEquals(const char *a, const char *b);
+bool httpserverStringCaseContains(const char *haystack, const char *needle);
+bool httpserverStringCaseContainsToken(const char *value, const char *token);
+bool httpserverBufferstreamFindCRLF(buffer_stream_t *stream, size_t *line_end);
+bool httpserverBufferstreamFindDoubleCRLF(buffer_stream_t *stream, size_t *header_end);
+sbuf_t *httpserverAllocBufferForLength(line_t *l, uint32_t len);
 
-sbuf_t *httpserverV2MakeFrame(bool is_grpc, unsigned int stream_id, sbuf_t *buf);
+bool httpserverTransportSendHttp1ResponseHeaders(tunnel_t *t, line_t *l);
+bool httpserverTransportSendHttp1FinalChunk(tunnel_t *t, line_t *l);
+bool httpserverTransportSendHttp1ChunkedPayload(tunnel_t *t, line_t *l, sbuf_t *payload);
 
-bool httpserverV2PullAndSendNgHttp2SendableData(tunnel_t *t, httpserver_lstate_t *ls);
+bool httpserverTransportEnsureHttp2Session(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);
+bool httpserverTransportSubmitHttp2ResponseHeaders(tunnel_t *t, line_t *l, httpserver_lstate_t *ls, bool end_stream);
+bool httpserverTransportSendHttp2DataFrame(tunnel_t *t, line_t *l, httpserver_lstate_t *ls, sbuf_t *payload,
+                                           bool end_stream);
 
-int httpserverV2OnHeaderCallBack(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name,
-                                 size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *userdata);
-
-int httpserverV2OnDataChunkRecvCallBack(nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data,
-                                        size_t len, void *userdata);
-
-int httpserverV2OnFrameRecvCallBack(nghttp2_session *session, const nghttp2_frame *frame, void *userdata);
-
-int httpserverV2OnStreamClosedCallBack(nghttp2_session *session, int32_t stream_id, uint32_t error_code,
-                                       void *userdata);
-                                       
-static inline nghttp2_nv makeNV(const char *name, const char *value)
-{
-    nghttp2_nv nv;
-    nv.name     = (uint8_t *) name;
-    nv.value    = (uint8_t *) value;
-    nv.namelen  = stringLength(name);
-    nv.valuelen = stringLength(value);
-    nv.flags    = NGHTTP2_NV_FLAG_NONE;
-    return nv;
-}
+bool httpserverTransportFlushPendingDown(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);
+bool httpserverTransportFeedHttp2Input(tunnel_t *t, line_t *l, httpserver_lstate_t *ls, sbuf_t *buf);
+bool httpserverTransportDetectRuntimeProtocol(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);
+bool httpserverTransportHandleHttp1RequestHeaderPhase(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);
+bool httpserverTransportDrainHttp1ChunkedRequestBody(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);
+bool httpserverTransportDrainHttp1RequestBody(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);
+void httpserverTransportCloseBothDirections(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);

@@ -8,24 +8,20 @@ add_library(HttpServer STATIC
                     instance/chain.c
                     instance/index.c
                     common/helpers.c
-                    common/h2_helpers.c
                     common/line_state.c
-
-
-                    http2/upstream/init.c
-                    http2/upstream/est.c
-                    http2/upstream/fin.c
-                    http2/upstream/payload.c
-                    http2/upstream/pause.c
-                    http2/upstream/resume.c
-                    http2/upstream/est.c
-                    http2/downstream/init.c
-                    http2/downstream/est.c
-                    http2/downstream/fin.c
-                    http2/downstream/payload.c
-                    http2/downstream/pause.c
-                    http2/downstream/resume.c
-                    http2/downstream/est.c
+                    common/transport.c
+                    upstream/init.c
+                    upstream/est.c
+                    upstream/fin.c
+                    upstream/payload.c
+                    upstream/pause.c
+                    upstream/resume.c
+                    downstream/init.c
+                    downstream/est.c
+                    downstream/fin.c
+                    downstream/payload.c
+                    downstream/pause.c
+                    downstream/resume.c
   
 )
 
