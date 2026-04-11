@@ -1,7 +1,16 @@
+/*
+ * Parses node config files and provides guarded commit helpers.
+ */
+
 #include "config_file.h"
 #include "loggers/internal_logger.h"
 #include "utils/json_helpers.h"
 
+/**
+ * @brief Internal config cleanup routine shared by destroy wrappers.
+ *
+ * @param state Config object.
+ */
 static void freeConfigFile(config_file_t *state)
 {
     if (state == NULL)

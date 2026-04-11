@@ -1,3 +1,7 @@
+/*
+ * Memory allocation backend bindings and dedicated-memory compatibility layer.
+ */
+
 #include "memory_manager.h"
 #include "mimalloc.h"
 #include "wmutex.h"
@@ -10,6 +14,9 @@
 
 #if ! ALLOCATOR_BYPASS
 
+/**
+ * @brief Initialize mimalloc runtime options.
+ */
 void memorymanagerInit(void)
 {
     // assert(state == NULL);
@@ -125,6 +132,9 @@ void memoryDedicatedFree(dedicated_memory_t *dm, void *ptr)
 
 #else
 
+/**
+ * @brief Initialize allocator in bypass mode (no-op).
+ */
 void memorymanagerInit(void)
 {
 }
@@ -181,6 +191,12 @@ void memoryDedicatedFree(dedicated_memory_t *dm, void *ptr)
 
 #endif
 
+/**
+ * @brief Allocate memory and zero-initialize it.
+ *
+ * @param size Allocation size.
+ * @return void* Zeroed allocation.
+ */
 void *memoryAllocateZero(size_t size)
 {
     void *ptr = memoryAllocate(size);

@@ -1,3 +1,11 @@
+/**
+ * @file wchan.c
+ * @brief Implementation of CSP-style synchronous/buffered channels.
+ *
+ * Provides channel allocation, send/recv operations, waiting queues,
+ * and channel close semantics for multi-threaded message passing.
+ */
+
 #include "wchan.h"
 #include "watomic.h"
 #include "wmutex.h"
@@ -28,6 +36,7 @@ typedef _Atomic(unsigned char)      atomic_uint8_t;
 #ifdef DEBUG_CHAN_LOG
 #define THREAD_ID_INVALID SIZE_MAX
 
+// Assigns a compact debug-only id to each calling thread.
 static size_t thread_id()
 {
     static thread_local size_t _thread_id         = THREAD_ID_INVALID;
@@ -41,6 +50,7 @@ static size_t thread_id()
     return tid;
 }
 
+// Returns a per-thread ANSI color for debug log output.
 static const char *tcolor()
 {
     static const char *colors[] = {
@@ -240,6 +250,7 @@ typedef MSVC_ATTR_ALIGNED_LINE_CACHE struct wchan_s
     uint8_t buf[]; // queue storage
 } GNU_ATTR_ALIGNED_LINE_CACHE wchan_t;
 
+// Initializes thread-local channel wait context.
 static void thr_init(Thr *t)
 {
     static atomic_size_t _thread_id_counter = (0);
@@ -249,6 +260,7 @@ static void thr_init(Thr *t)
     leightweightsemaphoreInit(&t->sema, 0); // TODO: Semadestroy?
 }
 
+// Returns thread-local wait context, initializing it on first use.
 inline static Thr *thr_current(void)
 {
     static thread_local Thr _thr = {0};
@@ -259,17 +271,20 @@ inline static Thr *thr_current(void)
     return t;
 }
 
+// Wakes a parked sender/receiver thread.
 inline static void thr_signal(Thr *t)
 {
     leightweightsemaphoreSignal(&t->sema, 1); // wake
 }
 
+// Blocks current sender/receiver thread until signaled.
 inline static void thr_wait(Thr *t)
 {
     // dlog_chan("thr_wait ...");
     leightweightsemaphoreWait(&t->sema); // sleep
 }
 
+// Enqueues a waiting participant into a channel wait queue.
 static void wq_enqueue(WaitQ *wq, Thr *t)
 {
     // note: atomic loads & stores for cache reasons, not thread safety; c->lock is held.
@@ -285,6 +300,7 @@ static void wq_enqueue(WaitQ *wq, Thr *t)
     atomicStoreExplicit((_Atomic(Thr *)*)&wq->last, t, memory_order_release);
 }
 
+// Dequeues one waiting participant from a channel wait queue.
 static inline Thr *wq_dequeue(WaitQ *wq)
 {
     Thr *t = atomicLoadExplicit((_Atomic(Thr *)*)&wq->first, memory_order_acquire);
@@ -326,6 +342,7 @@ inline static bool chan_full(wchan_t *c)
     return atomicLoadExplicit(&c->qlen, memory_order_relaxed) == c->qcap;
 }
 
+// Copies sender payload directly into a waiting receiver and wakes it.
 static bool chan_send_direct(wchan_t *c, void *srcelemptr, Thr *recvt)
 {
     // chan_send_direct processes a send operation on an empty channel c.
@@ -346,6 +363,7 @@ static bool chan_send_direct(wchan_t *c, void *srcelemptr, Thr *recvt)
     return true;
 }
 
+// Internal send implementation used by blocking and try-send APIs.
 inline static bool chan_send(wchan_t *c, void *srcelemptr, bool *closed)
 {
     bool block = closed == NULL;
@@ -441,6 +459,7 @@ inline static bool chan_empty(wchan_t *c)
 
 static bool chan_recv_direct(wchan_t *c, void *dstelemptr, Thr *st);
 
+// Internal receive implementation used by blocking and try-recv APIs.
 inline static bool chan_recv(wchan_t *c, void *dstelemptr, bool *closed)
 {
     bool block = closed == NULL; // TODO: non-blocking path
@@ -564,6 +583,7 @@ ret_closed:
 }
 
 // chan_recv_direct processes a receive operation on a full channel c
+// Receives from a waiting sender, with special handling for buffered channels.
 static bool chan_recv_direct(wchan_t *c, void *dstelemptr, Thr *sendert)
 {
     // There are 2 parts:

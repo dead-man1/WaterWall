@@ -1,5 +1,14 @@
+/*
+ * Implements user object parsing and cleanup helpers.
+ */
+
 #include "objects/user.h"
 
+/**
+ * @brief Free all owned allocations of a user object.
+ *
+ * @param user User object.
+ */
 static void userCleanup(user_t *user)
 {
     if (user == NULL)

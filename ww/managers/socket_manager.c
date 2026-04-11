@@ -1,3 +1,7 @@
+/*
+ * Socket listener manager for filtered TCP/UDP accept and worker dispatch.
+ */
+
 #include "socket_manager.h"
 
 #include "generic_pool.h"
@@ -80,27 +84,58 @@ typedef struct socket_manager_s
 
 static socket_manager_state_t *socketmanager_gstate = NULL;
 
+/**
+ * @brief Forward declaration for TCP socket dispatch.
+ */
 static void distributeTcpSocket(wio_t *io, uint16_t local_port);
+
+/**
+ * @brief Forward declaration for UDP payload dispatch.
+ */
 static void distributeUdpPayload(udp_payload_t pl);
 
+/**
+ * @brief Allocate pooled TCP accept result object.
+ *
+ * @param pool Pool instance.
+ * @return pool_item_t* Allocated object.
+ */
 static pool_item_t *allocTcpResultObjectPoolHandle(generic_pool_t *pool)
 {
     discard pool;
     return memoryAllocate(sizeof(socket_accept_result_t));
 }
 
+/**
+ * @brief Destroy pooled TCP accept result object.
+ *
+ * @param pool Pool instance.
+ * @param item Item to destroy.
+ */
 static void destroyTcpResultObjectPoolHandle(generic_pool_t *pool, pool_item_t *item)
 {
     discard pool;
     memoryFree(item);
 }
 
+/**
+ * @brief Allocate pooled UDP payload wrapper.
+ *
+ * @param pool Pool instance.
+ * @return pool_item_t* Allocated object.
+ */
 static pool_item_t *allocUdpPayloadPoolHandle(generic_pool_t *pool)
 {
     discard pool;
     return memoryAllocate(sizeof(udp_payload_t));
 }
 
+/**
+ * @brief Destroy pooled UDP payload wrapper.
+ *
+ * @param pool Pool instance.
+ * @param item Item to destroy.
+ */
 static void destroyUdpPayloadPoolHandle(generic_pool_t *pool, pool_item_t *item)
 {
     discard pool;
@@ -116,6 +151,12 @@ void socketacceptresultDestroy(socket_accept_result_t *sar)
     mutexUnlock(&(socketmanager_gstate->tcp_pools[wid].mutex));
 }
 
+/**
+ * @brief Acquire a UDP payload object from worker-specific pool.
+ *
+ * @param wid Worker id.
+ * @return udp_payload_t* Pooled payload object.
+ */
 static udp_payload_t *newUdpPayload(wid_t wid)
 {
     mutexLock(&(socketmanager_gstate->udp_pools[wid].mutex));
@@ -133,6 +174,16 @@ void udppayloadDestroy(udp_payload_t *upl)
     mutexUnlock(&(socketmanager_gstate->udp_pools[wid].mutex));
 }
 
+/**
+ * @brief Execute one iptables/ip6tables redirect rule.
+ *
+ * @param protocol Protocol token.
+ * @param port_min Range start.
+ * @param port_max Range end.
+ * @param to_port Redirect target port.
+ * @return true Command succeeded.
+ * @return false Command failed.
+ */
 static bool executeIptablesRule(const char *protocol, unsigned int port_min, unsigned int port_max,
                                 unsigned int to_port)
 {
@@ -170,26 +221,45 @@ static bool executeIptablesRule(const char *protocol, unsigned int port_min, uns
     return result;
 }
 
+/**
+ * @brief Install TCP redirect rule for one range.
+ */
 static bool redirectPortRangeTcp(unsigned int pmin, unsigned int pmax, unsigned int to)
 {
     return executeIptablesRule("TCP", pmin, pmax, to);
 }
 
+/**
+ * @brief Install UDP redirect rule for one range.
+ */
 static bool redirectPortRangeUdp(unsigned int pmin, unsigned int pmax, unsigned int to)
 {
     return executeIptablesRule("UDP", pmin, pmax, to);
 }
 
+/**
+ * @brief Install TCP redirect rule for one port.
+ */
 static bool redirectPortTcp(unsigned int port, unsigned int to)
 {
     return executeIptablesRule("TCP", port, port, to);
 }
 
+/**
+ * @brief Install UDP redirect rule for one port.
+ */
 static bool redirectPortUdp(unsigned int port, unsigned int to)
 {
     return executeIptablesRule("UDP", port, port, to);
 }
 
+/**
+ * @brief Flush NAT redirect rules from iptables/ip6tables.
+ *
+ * @param safe_mode True to print via write(), false to log normally.
+ * @return true Rules cleared.
+ * @return false At least one command failed.
+ */
 static bool resetIptables(bool safe_mode)
 {
     if (safe_mode)
@@ -218,6 +288,13 @@ static bool resetIptables(bool safe_mode)
     return result;
 }
 
+/**
+ * @brief Detect IPv4-mapped IPv6 addresses that should use IPv4 checks.
+ *
+ * @param addr IPv6 address.
+ * @return true Address uses IPv4-mapped strategy.
+ * @return false Native IPv6 address.
+ */
 static inline bool needsV4SocketStrategy(const ip6_addr_t addr)
 {
     uint16_t segments[8];
@@ -226,6 +303,12 @@ static inline bool needsV4SocketStrategy(const ip6_addr_t addr)
             segments[5] == 0xFFFF);
 }
 
+/**
+ * @brief Calculate filter processing priority from option complexity.
+ *
+ * @param option Socket filter option.
+ * @return unsigned int Priority level.
+ */
 static unsigned int calculateFilterPriority(const socket_filter_option_t option)
 {
     unsigned int priority = 0;
@@ -246,6 +329,12 @@ static unsigned int calculateFilterPriority(const socket_filter_option_t option)
     return priority;
 }
 
+/**
+ * @brief Get or create shared balance table for a balance group name.
+ *
+ * @param balance_group_name Group name.
+ * @return idle_table_t* Shared balance table.
+ */
 static idle_table_t *getOrCreateBalanceTable(const char *balance_group_name)
 {
     hash_t         name_hash = calcHashBytes(balance_group_name, stringLength(balance_group_name));
@@ -293,6 +382,13 @@ void socketacceptorRegister(tunnel_t *tunnel, socket_filter_option_t option, onA
     mutexUnlock(&(socketmanager_gstate->mutex));
 }
 
+/**
+ * @brief Forward accepted socket to selected worker and tunnel callback.
+ *
+ * @param io Accepted socket.
+ * @param filter Selected filter.
+ * @param local_port Original local port.
+ */
 static void distributeSocket(void *io, socket_filter_t *filter, uint16_t local_port)
 {
     wioDetach(io);
@@ -329,6 +425,11 @@ static void distributeSocket(void *io, socket_filter_t *filter, uint16_t local_p
     }
 }
 
+/**
+ * @brief Log and close TCP socket when no filter matched.
+ *
+ * @param io Socket handle.
+ */
 static void noTcpSocketConsumerFound(wio_t *io)
 {
     char localaddrstr[SOCKADDR_STRLEN] = {0};
@@ -339,6 +440,9 @@ static void noTcpSocketConsumerFound(wio_t *io)
     wioClose(io);
 }
 
+/**
+ * @brief Check IPv4 address against whitelist.
+ */
 static bool checkIpv4WhiteList(const ip4_addr_t ipv4_addr, const socket_filter_option_t option)
 {
     for (int i = 0; i < vec_ipmask_t_size(&option.white_list); i++)
@@ -352,6 +456,9 @@ static bool checkIpv4WhiteList(const ip4_addr_t ipv4_addr, const socket_filter_o
     return false;
 }
 
+/**
+ * @brief Check IPv6 address against whitelist.
+ */
 static bool checkIpv6WhiteList(const ip6_addr_t ipv6_addr, const socket_filter_option_t option)
 {
     for (int i = 0; i < vec_ipmask_t_size(&option.white_list); i++)
@@ -365,6 +472,9 @@ static bool checkIpv6WhiteList(const ip6_addr_t ipv6_addr, const socket_filter_o
     return false;
 }
 
+/**
+ * @brief Check IPv4 address against blacklist.
+ */
 static bool checkIpv4BlackList(const ip4_addr_t ipv4_addr, const socket_filter_option_t option)
 {
     for (int i = 0; i < vec_ipmask_t_size(&option.black_list); i++)
@@ -378,6 +488,9 @@ static bool checkIpv4BlackList(const ip4_addr_t ipv4_addr, const socket_filter_o
     return false;
 }
 
+/**
+ * @brief Check IPv6 address against blacklist.
+ */
 static bool checkIpv6BlackList(const ip6_addr_t ipv6_addr, const socket_filter_option_t option)
 {
     for (int i = 0; i < vec_ipmask_t_size(&option.black_list); i++)
@@ -391,6 +504,9 @@ static bool checkIpv6BlackList(const ip6_addr_t ipv6_addr, const socket_filter_o
     return false;
 }
 
+/**
+ * @brief Check peer IP against whitelist strategy for dual-stack handling.
+ */
 static bool checkIpIsWhiteList(const ip_addr_t addr, const socket_filter_option_t option)
 {
     const bool is_v4 = addr.type == IPADDR_TYPE_V4;
@@ -410,6 +526,9 @@ static bool checkIpIsWhiteList(const ip_addr_t addr, const socket_filter_option_
     return checkIpv6WhiteList(addr.u_addr.ip6, option);
 }
 
+/**
+ * @brief Check peer IP against blacklist strategy for dual-stack handling.
+ */
 static bool checkIpIsBlackList(const ip_addr_t addr, const socket_filter_option_t option)
 {
     const bool is_v4 = addr.type == IPADDR_TYPE_V4;
@@ -429,6 +548,21 @@ static bool checkIpIsBlackList(const ip_addr_t addr, const socket_filter_option_
     return checkIpv6BlackList(addr.u_addr.ip6, option);
 }
 
+/**
+ * @brief Handle TCP balancing logic for filters with shared balance table.
+ *
+ * @param filter Candidate filter.
+ * @param option Filter option.
+ * @param io Accepted socket.
+ * @param local_port Local port.
+ * @param src_hash Cached source hash.
+ * @param src_hashed Whether source hash is ready.
+ * @param balance_selection_filters Candidate fallback filters.
+ * @param balance_selection_filters_length Candidate count.
+ * @param selected_balance_table Selected table guard.
+ * @return true Socket was dispatched.
+ * @return false Continue evaluating filters.
+ */
 static bool handleBalancedFilter(socket_filter_t *filter, const socket_filter_option_t option, wio_t *io,
                                  uint16_t local_port, hash_t *src_hash, bool *src_hashed,
                                  socket_filter_t **balance_selection_filters, uint8_t *balance_selection_filters_length,
@@ -473,6 +607,9 @@ static bool handleBalancedFilter(socket_filter_t *filter, const socket_filter_op
     return false;
 }
 
+/**
+ * @brief Finalize TCP dispatch when only balanced candidates remain.
+ */
 static void finalizeTcpDistribution(socket_filter_t **balance_selection_filters,
                                     uint8_t balance_selection_filters_length, wio_t *io, uint16_t local_port,
                                     hash_t src_hash)
@@ -495,6 +632,9 @@ static void finalizeTcpDistribution(socket_filter_t **balance_selection_filters,
     }
 }
 
+/**
+ * @brief Evaluate whether filter matches TCP packet metadata and ACL rules.
+ */
 static bool processFilterMatch(const socket_filter_option_t option, uint16_t local_port, const ip_addr_t paddr)
 {
     if (option.protocol != IPPROTO_TCP || option.port_min > local_port || option.port_max < local_port)
@@ -519,6 +659,9 @@ static bool processFilterMatch(const socket_filter_option_t option, uint16_t loc
     return true;
 }
 
+/**
+ * @brief Route accepted TCP socket through filter chain.
+ */
 static void distributeTcpSocket(wio_t *io, uint16_t local_port)
 {
     ip_addr_t paddr;
@@ -566,11 +709,17 @@ static void distributeTcpSocket(wio_t *io, uint16_t local_port)
     finalizeTcpDistribution(balance_selection_filters, balance_selection_filters_length, io, local_port, src_hash);
 }
 
+/**
+ * @brief TCP accept callback for single-port listeners.
+ */
 static void onAcceptTcpSinglePort(wio_t *io)
 {
     distributeTcpSocket(io, sockaddrPort(wioGetLocaladdrU(io)));
 }
 
+/**
+ * @brief TCP accept callback for redirected multi-port listeners.
+ */
 static void onAcceptTcpMultiPort(wio_t *io)
 {
 #ifdef OS_UNIX
@@ -604,6 +753,9 @@ static void onAcceptTcpMultiPort(wio_t *io)
 #endif
 }
 
+/**
+ * @brief Pick default multi-port backend from detected capabilities.
+ */
 static multiport_backend_t getDefaultMultiPortBackend(void)
 {
     if (socketmanager_gstate->iptables_installed)
@@ -613,6 +765,9 @@ static multiport_backend_t getDefaultMultiPortBackend(void)
     return kMultiportBackendSockets;
 }
 
+/**
+ * @brief Resolve interface name to host string.
+ */
 static bool getInterfaceHostString(const char *if_name, char *host_if)
 {
     ip4_addr_t if_ip;
@@ -626,6 +781,9 @@ static bool getInterfaceHostString(const char *if_name, char *host_if)
     return true;
 }
 
+/**
+ * @brief Create TCP listener optionally bound to configured interface IP.
+ */
 static wio_t *createTcpServerWithInterface(wloop_t *loop, socket_filter_t *filter, char *host, uint16_t port,
                                            void (*callback)(wio_t *))
 {
@@ -638,6 +796,9 @@ static wio_t *createTcpServerWithInterface(wloop_t *loop, socket_filter_t *filte
     return wloopCreateTcpServer(loop, host, port, callback);
 }
 
+/**
+ * @brief Select one listening port used as redirect target for iptables mode.
+ */
 static uint16_t selectMainPortForIptables(socket_filter_t *filter, wloop_t *loop, char *host, uint16_t port_min,
                                           uint16_t port_max, uint8_t *ports_overlapped)
 {
@@ -664,6 +825,9 @@ static uint16_t selectMainPortForIptables(socket_filter_t *filter, wloop_t *loop
     return 0;
 }
 
+/**
+ * @brief Validate and initialize iptables state on first use.
+ */
 static void initializeIptablesIfNeeded(void)
 {
     if (! socketmanager_gstate->iptables_installed)
@@ -690,6 +854,9 @@ static void initializeIptablesIfNeeded(void)
     }
 }
 
+/**
+ * @brief Listen TCP on range via iptables redirect backend.
+ */
 static void listenTcpMultiPortIptables(wloop_t *loop, socket_filter_t *filter, char *host, uint16_t port_min,
                                        uint8_t *ports_overlapped, uint16_t port_max)
 {
@@ -705,6 +872,9 @@ static void listenTcpMultiPortIptables(wloop_t *loop, socket_filter_t *filter, c
     LOGI("SocketManager: listening on %s:[%u - %u] >> %d (%s)", host, port_min, port_max, main_port, "TCP");
 }
 
+/**
+ * @brief Listen TCP on each port in range via socket-per-port backend.
+ */
 static void listenTcpMultiPortSockets(wloop_t *loop, socket_filter_t *filter, char *host, uint16_t port_min,
                                       uint8_t *ports_overlapped, uint16_t port_max)
 {
@@ -736,6 +906,9 @@ static void listenTcpMultiPortSockets(wloop_t *loop, socket_filter_t *filter, ch
     }
 }
 
+/**
+ * @brief Listen TCP on single port.
+ */
 static void listenTcpSinglePort(wloop_t *loop, socket_filter_t *filter, char *host, uint16_t port,
                                 uint8_t *ports_overlapped)
 {
@@ -756,6 +929,9 @@ static void listenTcpSinglePort(wloop_t *loop, socket_filter_t *filter, char *ho
     filter->v6_dualstack = wioGetLocaladdr(filter->listen_io)->sa_family == AF_INET6;
 }
 
+/**
+ * @brief Build TCP listeners for all registered TCP filters.
+ */
 static void listenTcp(wloop_t *loop, uint8_t *ports_overlapped)
 {
     for (int ri = (kFilterLevels - 1); ri >= 0; ri--)
@@ -801,6 +977,9 @@ static void listenTcp(wloop_t *loop, uint8_t *ports_overlapped)
     }
 }
 
+/**
+ * @brief Log dropped UDP payload when no filter matched.
+ */
 static void noUdpSocketConsumerFound(const udp_payload_t upl)
 {
     char localaddrstr[SOCKADDR_STRLEN] = {0};
@@ -810,6 +989,9 @@ static void noUdpSocketConsumerFound(const udp_payload_t upl)
          SOCKADDR_STR(wioGetPeerAddrU(upl.sock->io), peeraddrstr));
 }
 
+/**
+ * @brief Post one UDP payload object to target filter callback.
+ */
 static void postUdpPayload(udp_payload_t post_pl, socket_filter_t *filter)
 {
     mutexLock(&(socketmanager_gstate->udp_pools[post_pl.wid].mutex));
@@ -834,6 +1016,9 @@ static void postUdpPayload(udp_payload_t post_pl, socket_filter_t *filter)
     }
 }
 
+/**
+ * @brief Evaluate whether filter matches UDP packet metadata and ACL rules.
+ */
 static bool processUdpFilterMatch(const socket_filter_option_t option, uint16_t local_port, const ip_addr_t paddr)
 {
     if (option.protocol != IPPROTO_UDP || option.port_min > local_port || option.port_max < local_port)
@@ -858,6 +1043,9 @@ static bool processUdpFilterMatch(const socket_filter_option_t option, uint16_t 
     return true;
 }
 
+/**
+ * @brief Handle UDP balancing logic for filters with shared balance table.
+ */
 static bool handleUdpBalancedFilter(socket_filter_t *filter, const socket_filter_option_t option,
                                     const udp_payload_t pl, hash_t *src_hash, bool *src_hashed,
                                     socket_filter_t **balance_selection_filters,
@@ -898,6 +1086,9 @@ static bool handleUdpBalancedFilter(socket_filter_t *filter, const socket_filter
     return false;
 }
 
+/**
+ * @brief Finalize UDP dispatch when only balanced candidates remain.
+ */
 static void finalizeUdpDistribution(socket_filter_t **balance_selection_filters,
                                     uint8_t balance_selection_filters_length, const udp_payload_t pl, hash_t src_hash)
 {
@@ -915,6 +1106,9 @@ static void finalizeUdpDistribution(socket_filter_t **balance_selection_filters,
     }
 }
 
+/**
+ * @brief Route received UDP payload through filter chain.
+ */
 static void distributeUdpPayload(const udp_payload_t pl)
 {
     ip_addr_t paddr;
@@ -959,6 +1153,9 @@ static void distributeUdpPayload(const udp_payload_t pl)
     finalizeUdpDistribution(balance_selection_filters, balance_selection_filters_length, pl, src_hash);
 }
 
+/**
+ * @brief UDP read callback for single-port listeners.
+ */
 static void onUdpPacketReceived(wio_t *io, sbuf_t *buf)
 {
     udpsock_t *socket      = weventGetUserdata(io);
@@ -979,6 +1176,9 @@ static void onUdpPacketReceived(wio_t *io, sbuf_t *buf)
 }
 
 // sad: this dose not work (getsockopt fails)
+/**
+ * @brief UDP read callback for redirected multi-port listeners.
+ */
 static void onUdpPacketReceivedMultiPort(wio_t *io, sbuf_t *buf)
 {
 
@@ -1026,6 +1226,9 @@ static void onUdpPacketReceivedMultiPort(wio_t *io, sbuf_t *buf)
 #endif
 }
 
+/**
+ * @brief Listen UDP on single port.
+ */
 static void listenUdpSinglePort(wloop_t *loop, socket_filter_t *filter, char *host, uint16_t port,
                                 uint8_t *ports_overlapped)
 {
@@ -1049,6 +1252,9 @@ static void listenUdpSinglePort(wloop_t *loop, socket_filter_t *filter, char *ho
     wioRead(filter->listen_io);
 }
 
+/**
+ * @brief Listen UDP on range via iptables redirect backend.
+ */
 static void listenUdpMultiPortIptables(wloop_t *loop, socket_filter_t *filter, char *host, uint16_t port_min,
                                        uint8_t *ports_overlapped, uint16_t port_max)
 {
@@ -1096,6 +1302,9 @@ static void listenUdpMultiPortIptables(wloop_t *loop, socket_filter_t *filter, c
     LOGI("SocketManager: listening on %s:[%u - %u] >> %d (%s)", host, port_min, port_max, main_port, "UDP");
 }
 
+/**
+ * @brief Listen UDP on each port in range via socket-per-port backend.
+ */
 static void listenUdpMultiPortSockets(wloop_t *loop, socket_filter_t *filter, char *host, uint16_t port_min,
                                       uint8_t *ports_overlapped, uint16_t port_max)
 {
@@ -1135,6 +1344,9 @@ static void listenUdpMultiPortSockets(wloop_t *loop, socket_filter_t *filter, ch
     }
 }
 
+/**
+ * @brief Build UDP listeners for all registered UDP filters.
+ */
 static void listenUdp(wloop_t *loop, uint8_t *ports_overlapped)
 {
     for (int ri = (kFilterLevels - 1); ri >= 0; ri--)
@@ -1178,6 +1390,9 @@ static void listenUdp(wloop_t *loop, uint8_t *ports_overlapped)
     }
 }
 
+/**
+ * @brief Worker-loop callback that writes queued UDP payload.
+ */
 static void writeUdpThisLoop(wevent_t *ev)
 {
     udp_payload_t *upl = weventGetUserdata(ev);
@@ -1242,6 +1457,9 @@ void socketmanagerStart(void)
     mutexUnlock(&(socketmanager_gstate->mutex));
 }
 
+/**
+ * @brief Allocate and initialize worker-specific TCP/UDP object pools.
+ */
 static void initializeSocketManagerPools(void)
 {
     socketmanager_gstate->udp_pools = memoryAllocate(sizeof(*socketmanager_gstate->udp_pools) * getTotalWorkersCount());
@@ -1270,6 +1488,9 @@ static void initializeSocketManagerPools(void)
     }
 }
 
+/**
+ * @brief Detect runtime availability of external socket-routing tools.
+ */
 static void detectSystemCapabilities(void)
 {
 #ifdef OS_UNIX
@@ -1304,6 +1525,9 @@ socket_manager_state_t *socketmanagerCreate(void)
     return socketmanager_gstate;
 }
 
+/**
+ * @brief Close one listener and release protocol-specific userdata.
+ */
 static void cleanupOneListenerIo(wio_t *io, uint8_t protocol)
 {
     if (io == NULL)
@@ -1329,6 +1553,9 @@ static void cleanupOneListenerIo(wio_t *io, uint8_t protocol)
     wioClose(io);
 }
 
+/**
+ * @brief Destroy all registered filters and associated listener sockets.
+ */
 static void cleanupFilters(void)
 {
     for (size_t i = 0; i < kFilterLevels; i++)
@@ -1363,6 +1590,9 @@ static void cleanupFilters(void)
     }
 }
 
+/**
+ * @brief Destroy all shared balance-group idle tables.
+ */
 static void destroyBalanceGroups(void)
 {
     c_foreach(bg, balancegroup_registry_t, socketmanager_gstate->balance_groups)
@@ -1372,6 +1602,9 @@ static void destroyBalanceGroups(void)
     balancegroup_registry_t_drop(&socketmanager_gstate->balance_groups);
 }
 
+/**
+ * @brief Destroy socket manager pools and synchronization primitives.
+ */
 static void destroyPools(void)
 {
     for (unsigned int i = 0; i < getTotalWorkersCount(); ++i)

@@ -1,5 +1,9 @@
 #pragma once
 
+/*
+ * Signal manager API for shutdown handlers and process termination flow.
+ */
+
 #include "wlibc.h"
 #include "worker.h"
 
@@ -38,13 +42,51 @@ typedef struct signal_manager_s
 
 } signal_manager_t;
 
+/**
+ * @brief Create and initialize global signal manager state.
+ *
+ * @return signal_manager_t* Created signal manager.
+ */
 signal_manager_t *signalmanagerCreate(void);
+
+/**
+ * @brief Destroy global signal manager state.
+ */
 void              signalmanagerDestroy(void);
+
+/**
+ * @brief Get global signal manager state.
+ *
+ * @return signal_manager_t* Current signal manager.
+ */
 signal_manager_t *signalmanagerGet(void);
+
+/**
+ * @brief Set global signal manager state pointer.
+ *
+ * @param sm Signal manager instance.
+ */
 void              signalmanagerSet(signal_manager_t *sm);
+
+/**
+ * @brief Install configured signal handlers for current process.
+ */
 void              signalmanagerStart(void);
 
+/**
+ * @brief Register callback invoked during exit/signal shutdown sequence.
+ *
+ * @param handle Callback function.
+ * @param userdata Opaque callback context.
+ */
 void registerAtExitCallBack(SignalHandler handle, void *userdata);
+
+/**
+ * @brief Remove a previously registered exit callback.
+ *
+ * @param handle Callback function.
+ * @param userdata Opaque callback context.
+ */
 void removeAtExitCallBack(SignalHandler handle, void *userdata);
 
 // void terminateProgram(int exit_code); in wlibc.h

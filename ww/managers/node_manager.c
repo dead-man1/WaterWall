@@ -1,3 +1,7 @@
+/*
+ * Builds node instances from config files and orchestrates tunnel chains.
+ */
+
 #include "node_manager.h"
 #include "chain.h"
 #include "global_state.h"
@@ -39,6 +43,14 @@ typedef struct node_manager_s
 
 static node_manager_t *nodemanager_gstate;
 
+/**
+ * @brief Create tunnel instances for all nodes in a config.
+ *
+ * @param cfg Node manager config.
+ * @param t_array Output array of created tunnels.
+ * @param max_size Maximum supported tunnels.
+ * @return int Number of created tunnel instances.
+ */
 static int createTunnelInstances(node_manager_config_t *cfg, tunnel_t **t_array, int max_size)
 {
     int index = 0;
@@ -64,6 +76,12 @@ static int createTunnelInstances(node_manager_config_t *cfg, tunnel_t **t_array,
     return index;
 }
 
+/**
+ * @brief Assign chain objects to tunnel instances that are not chained yet.
+ *
+ * @param t_array Tunnel instance array.
+ * @param tunnels_count Number of tunnel instances.
+ */
 static void assignChainsToTunnels(tunnel_t **t_array, int tunnels_count)
 {
     for (int i = 0; i < tunnels_count; i++)
@@ -77,6 +95,13 @@ static void assignChainsToTunnels(tunnel_t **t_array, int tunnels_count)
     }
 }
 
+/**
+ * @brief Finalize chains, store them, and compute per-tunnel line offsets.
+ *
+ * @param cfg Node manager config.
+ * @param t_array Tunnel instance array.
+ * @param tunnels_count Number of tunnel instances.
+ */
 static void finalizeTunnelChains(node_manager_config_t *cfg, tunnel_t **t_array, int tunnels_count)
 {
     for (int i = 0; i < tunnels_count; i++)
@@ -99,6 +124,12 @@ static void finalizeTunnelChains(node_manager_config_t *cfg, tunnel_t **t_array,
     }
 }
 
+/**
+ * @brief Validate resulting tunnel topology and required node flags.
+ *
+ * @param t_array Tunnel instance array.
+ * @param tunnels_count Number of tunnel instances.
+ */
 static void validateTunnelChains(tunnel_t **t_array, int tunnels_count)
 {
     for (int i = 0; i < tunnels_count; i++)
@@ -126,6 +157,12 @@ static void validateTunnelChains(tunnel_t **t_array, int tunnels_count)
     }
 }
 
+/**
+ * @brief Invoke preparation callback for all tunnels.
+ *
+ * @param t_array Tunnel instance array.
+ * @param tunnels_count Number of tunnel instances.
+ */
 static void prepareTunnels(tunnel_t **t_array, int tunnels_count)
 {
     for (int i = 0; i < tunnels_count; i++)
@@ -135,6 +172,12 @@ static void prepareTunnels(tunnel_t **t_array, int tunnels_count)
     }
 }
 
+/**
+ * @brief Start all tunnels after preparation and chain finalization.
+ *
+ * @param t_array Tunnel instance array.
+ * @param tunnels_count Number of tunnel instances.
+ */
 static void startTunnels(tunnel_t **t_array, int tunnels_count)
 {
     for (int i = 0; i < tunnels_count; i++)
@@ -146,6 +189,12 @@ static void startTunnels(tunnel_t **t_array, int tunnels_count)
     }
 }
 
+/**
+ * @brief Send initial line events for packet-layer chain heads.
+ *
+ * @param t_array Tunnel instance array.
+ * @param tunnels_count Number of tunnel instances.
+ */
 static void initializePacketTunnels(tunnel_t **t_array, int tunnels_count)
 {
     for (int i = 0; i < tunnels_count; i++)
@@ -168,6 +217,11 @@ static void initializePacketTunnels(tunnel_t **t_array, int tunnels_count)
     }
 }
 
+/**
+ * @brief Execute full node startup pipeline for one config.
+ *
+ * @param cfg Node manager config.
+ */
 static void runNodes(node_manager_config_t *cfg)
 {
     enum
@@ -192,6 +246,12 @@ static void runNodes(node_manager_config_t *cfg)
     initializePacketTunnels(t_array, tunnels_count);
 }
 
+/**
+ * @brief Validate that one node path has valid `next` links and no long cycles.
+ *
+ * @param start_node Starting node.
+ * @param cfg Node manager config.
+ */
 static void validateNodeChainPath(node_t *start_node, node_manager_config_t *cfg)
 {
     node_t *current_node = start_node;
@@ -218,6 +278,11 @@ static void validateNodeChainPath(node_t *start_node, node_manager_config_t *cfg
     }
 }
 
+/**
+ * @brief Validate chain path integrity for all nodes in config.
+ *
+ * @param cfg Node manager config.
+ */
 static void pathWalk(node_manager_config_t *cfg)
 {
     c_foreach(p1, map_node_t, cfg->node_map)
@@ -227,6 +292,11 @@ static void pathWalk(node_manager_config_t *cfg)
     }
 }
 
+/**
+ * @brief Ensure at least one chain-head node exists in config.
+ *
+ * @param cfg Node manager config.
+ */
 static void validateChainHeadNodes(node_manager_config_t *cfg)
 {
     c_foreach(n1, map_node_t, cfg->node_map)
@@ -240,6 +310,11 @@ static void validateChainHeadNodes(node_manager_config_t *cfg)
     terminateProgram(1);
 }
 
+/**
+ * @brief Run cycle-related validations for current config graph.
+ *
+ * @param cfg Node manager config.
+ */
 static void cycleProcess(node_manager_config_t *cfg)
 {
     c_foreach(n1, map_node_t, cfg->node_map)
@@ -254,6 +329,16 @@ static void cycleProcess(node_manager_config_t *cfg)
     validateChainHeadNodes(cfg);
 }
 
+/**
+ * @brief Parse required/optional node fields from JSON object.
+ *
+ * @param node_json Source JSON object.
+ * @param cfg Node manager config.
+ * @param node_name Output node name.
+ * @param node_type Output node type.
+ * @param node_next Output next-node name.
+ * @param node_version Output node version.
+ */
 static void parseNodeJsonFields(cJSON *node_json, node_manager_config_t *cfg, char **node_name, char **node_type,
                                 char **node_next, int *node_version)
 {
@@ -275,6 +360,13 @@ static void parseNodeJsonFields(cJSON *node_json, node_manager_config_t *cfg, ch
     getIntFromJsonObjectOrDefault(node_version, node_json, "version", 0);
 }
 
+/**
+ * @brief Allocate a node object and load base node template from library.
+ *
+ * @param node_type Node type string.
+ * @param hash_type Hashed node type.
+ * @return node_t* Allocated and loaded node object.
+ */
 static node_t *createAndLoadNode(const char *node_type, hash_t hash_type)
 {
     node_t *new_node = nodemanagerNewNode();
@@ -290,6 +382,20 @@ static node_t *createAndLoadNode(const char *node_type, hash_t hash_type)
     return new_node;
 }
 
+/**
+ * @brief Fill node runtime/config properties after library load.
+ *
+ * @param node Destination node object.
+ * @param node_name Node name.
+ * @param node_type Node type.
+ * @param node_next Next-node name (optional).
+ * @param node_version Node version.
+ * @param hash_name Hashed node name.
+ * @param hash_type Hashed node type.
+ * @param hash_next Hashed next node name.
+ * @param node_json Original node JSON.
+ * @param cfg Owner config.
+ */
 static void setupNodeProperties(node_t *node, char *node_name, char *node_type, char *node_next, int node_version,
                                 hash_t hash_name, hash_t hash_type, hash_t hash_next, cJSON *node_json,
                                 node_manager_config_t *cfg)
@@ -306,6 +412,12 @@ static void setupNodeProperties(node_t *node, char *node_name, char *node_type, 
     node->node_manager_config = cfg;
 }
 
+/**
+ * @brief Insert node into config map and reject duplicate names.
+ *
+ * @param node Node object.
+ * @param cfg Node manager config.
+ */
 static void registerNodeInMap(node_t *node, node_manager_config_t *cfg)
 {
     map_node_t *map = &(cfg->node_map);
@@ -360,6 +472,11 @@ node_t *nodemanagerNewNode(void)
     return new_node;
 }
 
+/**
+ * @brief Create node runtime objects for every node JSON entry.
+ *
+ * @param cfg Node manager config.
+ */
 static void createAllNodeInstances(node_manager_config_t *cfg)
 {
     cJSON *nodes_json = cfg->config_file->nodes;
@@ -370,6 +487,11 @@ static void createAllNodeInstances(node_manager_config_t *cfg)
     }
 }
 
+/**
+ * @brief Parse, validate, and run all nodes for one config.
+ *
+ * @param cfg Node manager config.
+ */
 static void startInstallingConfigFile(node_manager_config_t *cfg)
 {
     createAllNodeInstances(cfg);
@@ -389,6 +511,12 @@ void nodemanagerSetState(struct node_manager_s *new_state)
     nodemanager_gstate = new_state;
 }
 
+/**
+ * @brief Allocate node-manager config container for one parsed config file.
+ *
+ * @param config_file Parsed config file.
+ * @return node_manager_config_t* Created config wrapper.
+ */
 static node_manager_config_t *createNodeManagerConfig(config_file_t *config_file)
 {
     node_manager_config_t *cfg = memoryAllocate(sizeof(node_manager_config_t));

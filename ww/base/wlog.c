@@ -1,3 +1,8 @@
+/**
+ * @file wlog.c
+ * @brief Implementation of thread-safe logging, formatting, and file rotation.
+ */
+
 #include "wlog.h"
 #include "wmutex.h"
 
@@ -31,6 +36,11 @@ struct logger_s
     wmutex_t mutex_; // thread-safe
 };
 
+/**
+ * @brief Initialize a logger object with default settings.
+ *
+ * @param logger Logger instance to initialize.
+ */
 static void initLogger(logger_t *logger)
 {
     logger->handler = NULL;
@@ -290,6 +300,14 @@ const char *loggerSetCurrentFile(logger_t *logger)
 #pragma GCC diagnostic ignored "-Wformat-truncation"
 #endif
 
+/**
+ * @brief Build daily rotated logfile name from base path and timestamp.
+ *
+ * @param filepath Base file path.
+ * @param ts Timestamp used for date suffix.
+ * @param buf Output buffer.
+ * @param len Output buffer size.
+ */
 static void logfile_name(const char *filepath, time_t ts, char *buf, int len)
 {
     static thread_local struct tm tm;
@@ -304,6 +322,12 @@ static void logfile_name(const char *filepath, time_t ts, char *buf, int len)
 #pragma GCC diagnostic pop
 #endif
 
+/**
+ * @brief Rotate/open current logfile and enforce retention/size rules.
+ *
+ * @param logger Logger instance.
+ * @return Writable FILE handle, or NULL on failure.
+ */
 static FILE *shiftLogFile(logger_t *logger)
 {
     time_t ts_now = time(NULL);
@@ -409,6 +433,14 @@ void loggerWrite(logger_t *logger, const char *buf, int len)
     }
 }
 
+/**
+ * @brief Convert integer to zero-padded decimal text.
+ *
+ * @param i Value to convert.
+ * @param buf Output buffer.
+ * @param len Fixed output width.
+ * @return Number of written chars.
+ */
 static int i2a(int i, char *buf, int len)
 {
     for (int l = len - 1; l >= 0; --l)
@@ -426,6 +458,14 @@ static int i2a(int i, char *buf, int len)
     return len;
 }
 
+/**
+ * @brief Append one character to bounded output buffer.
+ *
+ * @param buf Output buffer.
+ * @param bufsize Buffer capacity.
+ * @param len Current length (in/out).
+ * @param c Character to append.
+ */
 static inline void loggerAppendChar(char *buf, int bufsize, int *len, char c)
 {
     if (*len < bufsize - 1)
@@ -434,6 +474,15 @@ static inline void loggerAppendChar(char *buf, int bufsize, int *len, char c)
     }
 }
 
+/**
+ * @brief Append fixed-width zero-padded integer.
+ *
+ * @param buf Output buffer.
+ * @param bufsize Buffer capacity.
+ * @param len Current length (in/out).
+ * @param value Integer value.
+ * @param width Printed width.
+ */
 static inline void loggerAppendFixedInt(char *buf, int bufsize, int *len, int value, int width)
 {
     char num_buf[8] = {0};
@@ -445,6 +494,15 @@ static inline void loggerAppendFixedInt(char *buf, int bufsize, int *len, int va
     }
 }
 
+/**
+ * @brief Append formatted text from `va_list` with bounds checking.
+ *
+ * @param buf Output buffer.
+ * @param bufsize Buffer capacity.
+ * @param len Current length (in/out).
+ * @param fmt Format string.
+ * @param ap Variadic arguments.
+ */
 static inline void loggerAppendVFormat(char *buf, int bufsize, int *len, const char *fmt, va_list ap)
 {
     int avail = bufsize - *len;
@@ -469,6 +527,14 @@ static inline void loggerAppendVFormat(char *buf, int bufsize, int *len, const c
     }
 }
 
+/**
+ * @brief Variadic wrapper for `loggerAppendVFormat`.
+ *
+ * @param buf Output buffer.
+ * @param bufsize Buffer capacity.
+ * @param len Current length (in/out).
+ * @param fmt Format string.
+ */
 static inline void loggerAppendFormat(char *buf, int bufsize, int *len, const char *fmt, ...)
 {
     va_list ap;

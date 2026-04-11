@@ -1,3 +1,8 @@
+/**
+ * @file wsysinfo.c
+ * @brief Platform-specific implementation of system load checks.
+ */
+
 #include "wsysinfo.h"
 #include "wlibc.h"
 
@@ -5,6 +10,14 @@
 #include <mach/host_info.h>
 #include <mach/mach_host.h>
 
+/**
+ * @brief Determine whether current host load exceeds threshold.
+ *
+ * Platform-specific logic samples CPU (and on Windows also memory) usage.
+ *
+ * @param threshold Threshold in range `[0.0, 1.0]`.
+ * @return `true` when load is above threshold.
+ */
 bool isSystemUnderLoad(double threshold)
 {
     host_cpu_load_info_data_t cpuinfo;

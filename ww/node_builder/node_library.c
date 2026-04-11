@@ -1,3 +1,7 @@
+/*
+ * Implements node library registration and on-demand dynamic loading.
+ */
+
 #include "node_library.h"
 
 #include "worker.h"
@@ -33,6 +37,9 @@ enum
 
 typedef node_t (*node_get_fn)(void);
 
+/**
+ * @brief Lazily initialize global node-library state.
+ */
 static void nodelibraryEnsureStateInitialized(void)
 {
     if (nodelib_state != NULL)
@@ -58,6 +65,14 @@ void nodelibrarySetSearchPath(const char *path)
     }
 }
 
+/**
+ * @brief Add a non-empty path only if not already present.
+ *
+ * @param paths Destination path list.
+ * @param count Current path count (updated on insert).
+ * @param max_count Maximum allowed entries.
+ * @param path Candidate path.
+ */
 static void pushUniquePath(const char **paths, size_t *count, size_t max_count, const char *path)
 {
     if (path == NULL || *path == '\0' || *count >= max_count)
@@ -76,6 +91,16 @@ static void pushUniquePath(const char **paths, size_t *count, size_t max_count, 
     paths[(*count)++] = path;
 }
 
+/**
+ * @brief Build a path using optional directory and file name.
+ *
+ * @param out Output buffer.
+ * @param out_size Output buffer size.
+ * @param dir Optional directory.
+ * @param file File name.
+ * @return true Path was built successfully.
+ * @return false Input invalid or output truncated.
+ */
 static bool buildPath(char *out, size_t out_size, const char *dir, const char *file)
 {
     if (out == NULL || out_size == 0 || file == NULL || *file == '\0')
@@ -100,6 +125,12 @@ static bool buildPath(char *out, size_t out_size, const char *dir, const char *f
     return (n > 0) && ((size_t) n < out_size);
 }
 
+/**
+ * @brief Open a dynamic library.
+ *
+ * @param lib_path Library file path.
+ * @return void* Platform-native library handle, or NULL.
+ */
 static void *dynOpenLibrary(const char *lib_path)
 {
 #ifdef OS_WIN
@@ -109,6 +140,11 @@ static void *dynOpenLibrary(const char *lib_path)
 #endif
 }
 
+/**
+ * @brief Close a previously opened dynamic library handle.
+ *
+ * @param lib_handle Library handle.
+ */
 static void dynCloseLibrary(void *lib_handle)
 {
     if (lib_handle == NULL)
@@ -122,6 +158,13 @@ static void dynCloseLibrary(void *lib_handle)
 #endif
 }
 
+/**
+ * @brief Resolve a symbol from a dynamic library handle.
+ *
+ * @param lib_handle Library handle.
+ * @param symbol_name Symbol to resolve.
+ * @return void* Symbol address, or NULL.
+ */
 static void *dynGetSymbol(void *lib_handle, const char *symbol_name)
 {
     if (lib_handle == NULL || symbol_name == NULL || *symbol_name == '\0')
@@ -135,6 +178,13 @@ static void *dynGetSymbol(void *lib_handle, const char *symbol_name)
 #endif
 }
 
+/**
+ * @brief Resolve supported node getter symbol variants from a library.
+ *
+ * @param lib_handle Library handle.
+ * @param htype Target node type hash.
+ * @return node_get_fn Function pointer to node getter, or NULL.
+ */
 static node_get_fn dynResolveNodeGetter(void *lib_handle, hash_t htype)
 {
     char hash_sym_1[64] = {0};
@@ -172,6 +222,12 @@ static node_get_fn dynResolveNodeGetter(void *lib_handle, hash_t htype)
     return NULL;
 }
 
+/**
+ * @brief Try loading a node library by hash from known file/path candidates.
+ *
+ * @param htype Node type hash.
+ * @return node_t Loaded node definition, or zeroed node on failure.
+ */
 static node_t dynLoadNodeLib(hash_t htype)
 {
     char exe_dir[MAX_PATH]      = {0};

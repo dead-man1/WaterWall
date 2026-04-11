@@ -1,8 +1,12 @@
 #ifndef WW_LOG_H_
 #define WW_LOG_H_
 
-/*
- * wlog is thread-safe
+/**
+ * @file wlog.h
+ * @brief Thread-safe logging API with console and rotating-file backends.
+ *
+ * `wlog` provides log level filtering, formatted output, optional color,
+ * and file rotation/retention controls.
  */
 
 #include "wlibc.h"
@@ -68,24 +72,100 @@ typedef enum
 
 // logger: default fileLogger
 // network_logger() see event/nlog.h
+/**
+ * @brief Log sink callback signature.
+ *
+ * @param loglevel Log level of the message.
+ * @param buf Rendered message bytes.
+ * @param len Number of bytes in `buf`.
+ */
 typedef void (*logger_handler)(int loglevel, const char *buf, int len);
 typedef struct logger_s logger_t;
 
+/**
+ * @brief Write an already-formatted log line via the logger backend.
+ *
+ * @param logger Logger instance.
+ * @param buf Log bytes to write.
+ * @param len Number of bytes in `buf`.
+ */
 WW_EXPORT void loggerWrite(logger_t *logger, const char *buf, int len);
+/**
+ * @brief Console sink that writes to stdout.
+ *
+ * @param loglevel Message log level.
+ * @param buf Rendered message bytes.
+ * @param len Number of bytes in `buf`.
+ */
 WW_EXPORT void stdoutLogger(int loglevel, const char *buf, int len);
+/**
+ * @brief Console sink that writes to stderr.
+ *
+ * @param loglevel Message log level.
+ * @param buf Rendered message bytes.
+ * @param len Number of bytes in `buf`.
+ */
 WW_EXPORT void stderrLogger(int loglevel, const char *buf, int len);
+/**
+ * @brief File sink that writes through the default logger.
+ *
+ * @param loglevel Message log level.
+ * @param buf Rendered message bytes.
+ * @param len Number of bytes in `buf`.
+ */
 WW_EXPORT void fileLogger(int loglevel, const char *buf, int len);
 // network_logger implement see event/nlog.h
 // WW_EXPORT void network_logger(int loglevel, const char* buf, int len);
 
+/**
+ * @brief Allocate and initialize a logger instance.
+ *
+ * @return New logger object.
+ */
 WW_EXPORT logger_t *loggerCreate(void);
+/**
+ * @brief Destroy a logger instance and release resources.
+ *
+ * @param logger Logger instance to destroy.
+ */
 WW_EXPORT void      loggerDestroy(logger_t *logger);
 
+/**
+ * @brief Set the sink callback used to emit log records.
+ *
+ * @param logger Logger instance.
+ * @param fn Sink callback function.
+ */
 WW_EXPORT void loggerSetHandler(logger_t *logger, logger_handler fn);
+/**
+ * @brief Set minimum enabled log level.
+ *
+ * @param logger Logger instance.
+ * @param level One value from `log_level_e`.
+ */
 WW_EXPORT void loggerSetLevel(logger_t *logger, int level);
 // level = [VERBOSE,DEBUG,INFO,WARN,ERROR,FATAL,SILENT]
+/**
+ * @brief Set minimum enabled log level from a string value.
+ *
+ * @param logger Logger instance.
+ * @param level Text level (for example `"INFO"`).
+ */
 WW_EXPORT void           loggerSetLevelByString(logger_t *logger, const char *level);
+/**
+ * @brief Check whether a message level should be emitted.
+ *
+ * @param logger Logger instance.
+ * @param level Message level to test.
+ * @return Non-zero when the message should be written.
+ */
 WW_EXPORT int            loggerCheckWriteLevel(logger_t *logger, log_level_e level);
+/**
+ * @brief Get the currently configured sink callback.
+ *
+ * @param logger Logger instance.
+ * @return Sink callback.
+ */
 WW_EXPORT logger_handler loggerGetHandle(logger_t *logger);
 /*
  * format  = "%y-%m-%d %H:%M:%S.%z %L %s"
@@ -103,11 +183,46 @@ WW_EXPORT logger_handler loggerGetHandle(logger_t *logger);
  * %s message
  * %% %
  */
+/**
+ * @brief Set output format template.
+ *
+ * @param logger Logger instance.
+ * @param format Format string (supports `%y %m %d %H %M %S %z %Z %l %L %s %%`).
+ */
 WW_EXPORT void loggerSetFormat(logger_t *logger, const char *format);
+/**
+ * @brief Resize the internal temporary formatting buffer.
+ *
+ * @param logger Logger instance.
+ * @param bufsize Buffer size in bytes.
+ */
 WW_EXPORT void loggerSetMaxBufSIze(logger_t *logger, unsigned int bufsize);
+/**
+ * @brief Enable or disable ANSI color sequences.
+ *
+ * @param logger Logger instance.
+ * @param on Non-zero to enable, zero to disable.
+ */
 WW_EXPORT void loggerEnableColor(logger_t *logger, int on);
+/**
+ * @brief Print a formatted log message with a `va_list`.
+ *
+ * @param logger Logger instance.
+ * @param level Message level.
+ * @param fmt Format string.
+ * @param ap Variadic argument list.
+ * @return Number of bytes formatted/written, or negative on skip/error.
+ */
 WW_EXPORT int  loggerPrintVA(logger_t *logger, int level, const char *fmt, va_list ap);
 
+/**
+ * @brief Convenience variadic wrapper around `loggerPrintVA`.
+ *
+ * @param logger Logger instance.
+ * @param level Message level.
+ * @param fmt Format string.
+ * @return Number of bytes formatted/written, or negative on skip/error.
+ */
 static inline int loggerPrint(logger_t *logger, int level, const char *fmt, ...)
 {
     va_list myargs;
@@ -118,17 +233,67 @@ static inline int loggerPrint(logger_t *logger, int level, const char *fmt, ...)
 }
 
 // below for file logger
+/**
+ * @brief Configure base log file path.
+ *
+ * @param logger Logger instance.
+ * @param filepath Log file path/prefix.
+ * @return `true` when file logging remains enabled.
+ */
 WW_EXPORT bool loggerSetFile(logger_t *logger, const char *filepath);
+/**
+ * @brief Set max size of a single rotated log file.
+ *
+ * @param logger Logger instance.
+ * @param filesize Maximum bytes per file.
+ */
 WW_EXPORT void loggerSetMaxFileSize(logger_t *logger, unsigned long long filesize);
 // 16, 16M, 16MB
+/**
+ * @brief Set max file size from a human-readable string.
+ *
+ * @param logger Logger instance.
+ * @param filesize Size text such as `"16M"`.
+ */
 WW_EXPORT void        loggerSetMaxFileSizeByStr(logger_t *logger, const char *filesize);
+/**
+ * @brief Set log retention window in days.
+ *
+ * @param logger Logger instance.
+ * @param days Number of days to keep logs.
+ */
 WW_EXPORT void        loggerSetRemainDays(logger_t *logger, int days);
+/**
+ * @brief Enable or disable flushing on each write.
+ *
+ * @param logger Logger instance.
+ * @param on Non-zero to enable immediate flush.
+ */
 WW_EXPORT void        loggerEnableFileSync(logger_t *logger, int on);
+/**
+ * @brief Flush current log file buffer.
+ *
+ * @param logger Logger instance.
+ */
 WW_EXPORT void        loggerSyncFile(logger_t *logger);
+/**
+ * @brief Get current active log file name.
+ *
+ * @param logger Logger instance.
+ * @return Current log file path.
+ */
 WW_EXPORT const char *loggerSetCurrentFile(logger_t *logger);
 
 // wlog: default logger instance
+/**
+ * @brief Get singleton default logger instance.
+ *
+ * @return Default logger.
+ */
 WW_EXPORT logger_t *loggerGetDefaultLogger(void);
+/**
+ * @brief Destroy singleton default logger instance.
+ */
 WW_EXPORT void      loggerDestroyDefaultLogger(void);
 
 // macro wlog*
@@ -142,6 +307,11 @@ WW_EXPORT void      loggerDestroyDefaultLogger(void);
 #if defined(ANDROID) || defined(__ANDROID__)
 #include <android/log.h>
 #define LOG_TAG "JNI"
+/**
+ * @brief Log a debug message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static inline void wlogd(const char *fmt, ...)
 {
     va_list myargs;
@@ -150,6 +320,11 @@ static inline void wlogd(const char *fmt, ...)
     va_end(myargs);
 }
 
+/**
+ * @brief Log an info message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static inline void wlogi(const char *fmt, ...)
 {
     va_list myargs;
@@ -158,6 +333,11 @@ static inline void wlogi(const char *fmt, ...)
     va_end(myargs);
 }
 
+/**
+ * @brief Log a warning message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static inline void wlogw(const char *fmt, ...)
 {
     va_list myargs;
@@ -166,6 +346,11 @@ static inline void wlogw(const char *fmt, ...)
     va_end(myargs);
 }
 
+/**
+ * @brief Log an error message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static inline void wloge(const char *fmt, ...)
 {
     va_list myargs;
@@ -173,6 +358,11 @@ static inline void wloge(const char *fmt, ...)
     __android_log_vprint(ANDROID_LOG_ERROR, LOG_TAG, fmt, myargs);
     va_end(myargs);
 }
+/**
+ * @brief Log a fatal message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static inline void wlogf(const char *fmt, ...)
 {
     va_list myargs;
@@ -182,6 +372,11 @@ static inline void wlogf(const char *fmt, ...)
 }
 #else
 
+/**
+ * @brief Log a debug message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static void wlogd(const char *fmt, ...)
 {
     va_list myargs;
@@ -190,6 +385,11 @@ static void wlogd(const char *fmt, ...)
     va_end(myargs);
 }
 
+/**
+ * @brief Log an info message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static void wlogi(const char *fmt, ...)
 {
     va_list myargs;
@@ -198,6 +398,11 @@ static void wlogi(const char *fmt, ...)
     va_end(myargs);
 }
 
+/**
+ * @brief Log a warning message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static void wlogw(const char *fmt, ...)
 {
     va_list myargs;
@@ -206,6 +411,11 @@ static void wlogw(const char *fmt, ...)
     va_end(myargs);
 }
 
+/**
+ * @brief Log an error message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static void wloge(const char *fmt, ...)
 {
     va_list myargs;
@@ -213,6 +423,11 @@ static void wloge(const char *fmt, ...)
     loggerPrintVA(wlog, LOG_LEVEL_ERROR, fmt, myargs);
     va_end(myargs);
 }
+/**
+ * @brief Log a fatal message through the default logger backend.
+ *
+ * @param fmt Format string.
+ */
 static void wlogf(const char *fmt, ...)
 {
     va_list myargs;

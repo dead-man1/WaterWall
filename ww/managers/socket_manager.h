@@ -1,5 +1,9 @@
 #pragma once
 
+/*
+ * Socket manager interfaces for TCP/UDP listener registration and dispatch.
+ */
+
 #include "shiftbuffer.h"
 #include "socket_filter_option.h"
 #include "tunnel.h"
@@ -45,12 +49,66 @@ typedef struct udp_payload_s
 } udp_payload_t;
 
 // Function declarations
-void                     socketacceptresultDestroy(socket_accept_result_t *);
-void                     udppayloadDestroy(udp_payload_t *);
+/**
+ * @brief Release an accepted-socket dispatch object back to pools.
+ *
+ * @param sar Result object.
+ */
+void                     socketacceptresultDestroy(socket_accept_result_t *sar);
+
+/**
+ * @brief Release a UDP payload dispatch object back to pools.
+ *
+ * @param upl UDP payload object.
+ */
+void                     udppayloadDestroy(udp_payload_t *upl);
+
+/**
+ * @brief Get global socket manager state pointer.
+ *
+ * @return struct socket_manager_s* Current socket manager.
+ */
 struct socket_manager_s *socketmanagerGet(void);
+
+/**
+ * @brief Create and initialize global socket manager.
+ *
+ * @return struct socket_manager_s* Created socket manager state.
+ */
 struct socket_manager_s *socketmanagerCreate(void);
+
+/**
+ * @brief Destroy socket manager, listeners, and internal pools.
+ */
 void                     socketmanagerDestroy(void);
+
+/**
+ * @brief Set global socket manager state.
+ *
+ * @param state External socket manager state.
+ */
 void                     socketmanagerSet(struct socket_manager_s *state);
+
+/**
+ * @brief Start listening sockets for all registered filters.
+ */
 void                     socketmanagerStart(void);
+
+/**
+ * @brief Register one socket accept/filter rule for a tunnel.
+ *
+ * @param tunnel Target tunnel for accepted traffic.
+ * @param option Filter/listen options.
+ * @param cb Callback invoked on accepted payload/socket events.
+ */
 void                     socketacceptorRegister(tunnel_t *tunnel, socket_filter_option_t option, onAccept cb);
-void                     postUdpWrite(udpsock_t *socket_io, wid_t wid_from, sbuf_t *buf,sockaddr_u peer_addr);
+
+/**
+ * @brief Post an asynchronous UDP write to socket-manager worker context.
+ *
+ * @param socket_io UDP socket wrapper.
+ * @param wid_from Source worker id.
+ * @param buf Payload buffer.
+ * @param peer_addr Peer address.
+ */
+void                     postUdpWrite(udpsock_t *socket_io, wid_t wid_from, sbuf_t *buf, sockaddr_u peer_addr);

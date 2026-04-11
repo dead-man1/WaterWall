@@ -1,4 +1,9 @@
 #pragma once
+
+/*
+ * User model types and JSON parsing entrypoint.
+ */
+
 #include "wlibc.h"
 #include "cJSON.h"
 
@@ -62,4 +67,11 @@ typedef struct user_s
 
 
 struct user_s;
+
+/**
+ * @brief Parse a user object from JSON.
+ *
+ * @param user_json JSON object containing user fields.
+ * @return struct user_s* Allocated user object, or NULL on parse failure.
+ */
 struct user_s *parseUserFromJsonObject(const cJSON *user_json);

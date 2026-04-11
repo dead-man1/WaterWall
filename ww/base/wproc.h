@@ -1,8 +1,20 @@
 #ifndef WW_PROC_H_
 #define WW_PROC_H_
 
+/**
+ * @file wproc.h
+ * @brief Process/thread spawning helpers and command execution utilities.
+ *
+ * This module provides a small cross-platform abstraction for launching work
+ * in a child process (Unix) or worker thread (Windows), plus utility helpers
+ * for command execution and privilege checks.
+ */
+
 #include "wlibc.h"
 
+/**
+ * @brief Runtime context used by procSpawn/procRun callbacks.
+ */
 typedef struct proc_ctx_s
 {
     pid_t       pid; // tid in Windows
@@ -16,6 +28,11 @@ typedef struct proc_ctx_s
     void       *exit_userdata;
 } proc_ctx_t;
 
+/**
+ * @brief Execute callbacks from a process context in init/proc/exit order.
+ *
+ * @param ctx Process context containing callback pointers and user data.
+ */
 static inline void procRun(proc_ctx_t *ctx)
 {
     if (ctx->init)
@@ -34,6 +51,15 @@ static inline void procRun(proc_ctx_t *ctx)
 
 #ifdef OS_UNIX
 // unix use multi-processes
+/**
+ * @brief Spawn execution for a process context.
+ *
+ * On Unix this uses `fork`; in the child it runs `procRun` and exits.
+ *
+ * @param ctx Process context to execute.
+ * @return Child pid in the parent process, `0` in the child path before exit,
+ *         or `-1` on failure.
+ */
 static inline int procSpawn(proc_ctx_t *ctx)
 {
     ++ctx->spawn_cnt;
@@ -66,6 +92,14 @@ static void win_thread(void *userdata)
     ctx->pid        = GetCurrentThreadId(); // tid in Windows
     procRun(ctx);
 }
+/**
+ * @brief Spawn execution for a process context.
+ *
+ * On Windows this starts a worker thread that runs `procRun`.
+ *
+ * @param ctx Process context to execute.
+ * @return Thread id on success, or `-1` on failure.
+ */
 static inline int procSpawn(proc_ctx_t *ctx)
 {
     ++ctx->spawn_cnt;
@@ -87,6 +121,12 @@ typedef struct
 } cmd_result_t;
 
 // blocking io
+/**
+ * @brief Execute a shell command and capture a short output token.
+ *
+ * @param str Command string passed to `popen`/`_popen`.
+ * @return Command output buffer and exit code.
+ */
 static cmd_result_t execCmd(const char *str)
 {
     FILE        *fp;
@@ -118,6 +158,12 @@ static cmd_result_t execCmd(const char *str)
     // return 0 == pclose(fp);
 }
 
+/**
+ * @brief Check if a command is available in the current shell environment.
+ *
+ * @param app Executable name to search for.
+ * @return `true` if command lookup succeeds, otherwise `false`.
+ */
 static bool checkCommandAvailable(const char *app)
 {
     char b[300];
@@ -135,6 +181,11 @@ static bool checkCommandAvailable(const char *app)
 */
 bool elevatePrivileges(const char *app_name, char *fail_msg);
 
+/**
+ * @brief Check whether the current process has administrator/root privileges.
+ *
+ * @return `true` when running with elevated privileges.
+ */
 bool isAdmin(void);
 
 #endif // WW_PROC_H_

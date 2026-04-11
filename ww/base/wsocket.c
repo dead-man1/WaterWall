@@ -1,3 +1,11 @@
+/**
+ * @file wsocket.c
+ * @brief Implementation of cross-platform socket/address helper routines.
+ *
+ * Contains resolver/address formatting utilities, connect/listen helpers,
+ * socket-pair fallback logic, and basic IP/interface validation helpers.
+ */
+
 #include "wsocket.h"
 
 #include "shiftbuffer.h"
@@ -33,6 +41,12 @@ void WSADeinit(void)
 
 #endif
 
+/**
+ * @brief Return current socket error as a negative value and close fd on error path.
+ *
+ * @param sockfd Socket descriptor to close when valid.
+ * @return Negative error code.
+ */
 static inline int socketErrnoNegative(int sockfd)
 {
     int err = socketERRNO();
@@ -204,6 +218,13 @@ const char *sockaddrStr(sockaddr_u *addr, char *buf, int len)
     return buf;
 }
 
+/**
+ * @brief Create and bind a socket for a prepared local address.
+ *
+ * @param localaddr Local address to bind.
+ * @param type Socket type.
+ * @return Bound socket fd or negative error.
+ */
 static int sockaddrBind(sockaddr_u *localaddr, int type)
 {
     // socket -> setsockopt -> bind
@@ -238,6 +259,13 @@ error:
     return socketErrnoNegative(sockfd);
 }
 
+/**
+ * @brief Create and connect a TCP socket to a prepared peer address.
+ *
+ * @param peeraddr Remote address.
+ * @param nonblock Non-zero to use non-blocking connect.
+ * @return Socket fd or negative error.
+ */
 static int sockaddrConnect(sockaddr_u *peeraddr, int nonblock)
 {
     // socket -> nonblocking -> connect
@@ -271,6 +299,12 @@ error:
     return socketErrnoNegative(connfd);
 }
 
+/**
+ * @brief Put an existing socket into listening state.
+ *
+ * @param sockfd Bound socket descriptor.
+ * @return Listening fd or negative error.
+ */
 static int listenFD(int sockfd)
 {
     if (sockfd < 0)
@@ -284,6 +318,13 @@ static int listenFD(int sockfd)
     return sockfd;
 }
 
+/**
+ * @brief Wait for non-blocking connect completion with timeout.
+ *
+ * @param connfd Socket descriptor currently connecting.
+ * @param ms Timeout in milliseconds.
+ * @return Connected fd or negative error.
+ */
 static int ConnectFDTimeout(int connfd, int ms)
 {
     int            err    = 0;

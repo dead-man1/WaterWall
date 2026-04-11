@@ -1,6 +1,14 @@
 #ifndef WW_MUTEX_H_
 #define WW_MUTEX_H_
 
+/**
+ * @file wmutex.h
+ * @brief Cross-platform synchronization primitives and lightweight mutex/semaphore helpers.
+ *
+ * Provides platform mappings for mutex/rwlock/condvar/semaphore plus
+ * `wlsem_t` and `whybrid_mutex_t` implementations used across the project.
+ */
+
 #include "watomic.h"
 #include "wplatform.h"
 #include "wtime.h"
@@ -53,7 +61,18 @@
 
 #define wonce_t    INIT_ONCE
 #define WONCE_INIT INIT_ONCE_STATIC_INIT
+/**
+ * @brief Callback signature for one-time initialization routines.
+ */
 typedef void (*wonce_fn)(void);
+/**
+ * @brief Win32 callback adapter used by `wonce`.
+ *
+ * @param once Init-once state.
+ * @param arg User argument carrying the callback function pointer.
+ * @param _ Unused context pointer.
+ * @return `TRUE` when callback was invoked.
+ */
 static inline BOOL WINAPI s_once_func(INIT_ONCE *once, PVOID arg, PVOID *_)
 {
     discard  once;
@@ -63,6 +82,12 @@ static inline BOOL WINAPI s_once_func(INIT_ONCE *once, PVOID arg, PVOID *_)
     fn();
     return TRUE;
 }
+/**
+ * @brief Execute a callback exactly once.
+ *
+ * @param once One-time initialization token.
+ * @param fn Callback to run one time globally.
+ */
 static inline void wonce(wonce_t *once, wonce_fn fn)
 {
     PVOID dummy = NULL;
@@ -126,6 +151,12 @@ static inline void wonce(wonce_t *once, wonce_fn fn)
 #define timedmutexDestroy      pthread_mutex_destroy
 #define timedmutexLock         pthread_mutex_lock
 #define timedmutexUnlock       pthread_mutex_unlock
+/**
+ * @brief Build absolute timeout timestamp `ms` milliseconds in the future.
+ *
+ * @param ts Output absolute timestamp.
+ * @param ms Relative timeout in milliseconds.
+ */
 static inline void timespec_after(struct timespec *ts, unsigned int ms)
 {
     struct timeval tv;
@@ -140,6 +171,13 @@ static inline void timespec_after(struct timespec *ts, unsigned int ms)
 }
 // true:  OK
 // false: ETIMEDOUT
+/**
+ * @brief Lock a mutex with timeout.
+ *
+ * @param mutex Mutex to lock.
+ * @param ms Timeout in milliseconds.
+ * @return Non-zero on success, zero on timeout.
+ */
 static inline int timedmutexLockFor(wtimed_mutex_t *mutex, unsigned int ms)
 {
 #if HAVE_PTHREAD_MUTEX_TIMEDLOCK
@@ -169,6 +207,14 @@ static inline int timedmutexLockFor(wtimed_mutex_t *mutex, unsigned int ms)
 #define condvarBroadCast   pthread_cond_broadcast
 // true:  OK
 // false: ETIMEDOUT
+/**
+ * @brief Wait on a condition variable with timeout.
+ *
+ * @param cond Condition variable.
+ * @param mutex Associated locked mutex.
+ * @param ms Timeout in milliseconds.
+ * @return Non-zero on success/signal, zero on timeout.
+ */
 static inline int condvarWaitFor(wcondvar_t *cond, wmutex_t *mutex, unsigned int ms)
 {
     struct timespec ts;
@@ -189,6 +235,12 @@ static inline int condvarWaitFor(wcondvar_t *cond, wmutex_t *mutex, unsigned int
     semaphore_create(mach_task_self(), psem, SYNC_POLICY_FIFO, value) // (KERN_SUCCESS == 0 like linux)
 #define semaphoreDestroy(psem) semaphore_destroy(mach_task_self(), *psem);
 
+/**
+ * @brief Wait indefinitely on a Mach semaphore.
+ *
+ * @param sp Semaphore pointer.
+ * @return `true` on success.
+ */
 static bool semaphoreWait(wsem_t *sp)
 {
     semaphore_t s = *sp;
@@ -200,6 +252,12 @@ static bool semaphoreWait(wsem_t *sp)
     }
 }
 
+/**
+ * @brief Signal a Mach semaphore once.
+ *
+ * @param sp Semaphore pointer.
+ * @return `true` on success.
+ */
 static bool semaphorePost(wsem_t *sp)
 {
     uint32_t      count = 1;
@@ -217,6 +275,13 @@ static bool semaphorePost(wsem_t *sp)
 }
 #define USECS_IN_1_SEC         1000000
 #define NSECS_IN_1_SEC         1000000000
+/**
+ * @brief Wait on a Mach semaphore with microsecond timeout.
+ *
+ * @param sp Semaphore pointer.
+ * @param timeout_usecs Timeout in microseconds.
+ * @return `true` on success, `false` on timeout/error.
+ */
 static bool semaphoreWaitFor(wsem_t *sp, uint64_t timeout_usecs)
 {
     mach_timespec_t ts;
@@ -248,6 +313,12 @@ static bool semaphoreWaitFor(wsem_t *sp, uint64_t timeout_usecs)
 #define semaphoreInit(psem, value) sem_init(psem, 0, value)
 #define semaphoreDestroy           sem_destroy
 
+/**
+ * @brief Wait indefinitely on a POSIX semaphore.
+ *
+ * @param sp Semaphore pointer.
+ * @return `true` on success.
+ */
 static bool semaphoreWait(wsem_t *sp)
 {
     // http://stackoverflow.com/questions/2013181/gdb-causes-sem-wait-to-fail-with-eintr-error
@@ -262,6 +333,13 @@ static bool semaphoreWait(wsem_t *sp)
 #define semaphorePost sem_post
 // true:  OK
 // false: ETIMEDOUT
+/**
+ * @brief Wait on a POSIX semaphore with timeout.
+ *
+ * @param sem Semaphore pointer.
+ * @param ms Timeout in milliseconds.
+ * @return Non-zero on success, zero on timeout.
+ */
 static inline int semaphoreWaitFor(wsem_t *sem, unsigned int ms)
 {
 #if HAVE_SEM_TIMEDWAIT
@@ -335,12 +413,55 @@ typedef struct hlsem_s
     wsem_t       sema;
 } wlsem_t;
 
+/**
+ * @brief Initialize a lightweight semaphore.
+ *
+ * @param s Semaphore object.
+ * @param initcount Initial token count.
+ * @return `false` only when system semaphore init fails.
+ */
 bool   leightweightsemaphoreInit(wlsem_t *, uint32_t initcount); // returns false if system impl failed (rare)
+/**
+ * @brief Destroy a lightweight semaphore.
+ *
+ * @param s Semaphore object.
+ */
 void   leightweightsemaphoreDestroy(wlsem_t *);
+/**
+ * @brief Wait for one token.
+ *
+ * @param s Semaphore object.
+ * @return `true` when a token was acquired.
+ */
 bool   leightweightsemaphoreWait(wlsem_t *);
+/**
+ * @brief Try to acquire one token without blocking.
+ *
+ * @param s Semaphore object.
+ * @return `true` when a token was acquired.
+ */
 bool   leightweightsemaphoreTryWait(wlsem_t *);
+/**
+ * @brief Wait for one token with timeout.
+ *
+ * @param s Semaphore object.
+ * @param timeout_usecs Timeout in microseconds.
+ * @return `true` when a token was acquired before timeout.
+ */
 bool   leightweightsemaphoreTimedWait(wlsem_t *, uint64_t timeout_usecs);
+/**
+ * @brief Release one or more tokens.
+ *
+ * @param s Semaphore object.
+ * @param count Number of tokens to release (`> 0`).
+ */
 void   leightweightsemaphoreSignal(wlsem_t *, uint32_t count /*must be >0*/);
+/**
+ * @brief Get approximate available token count.
+ *
+ * @param s Semaphore object.
+ * @return Approximate non-negative availability.
+ */
 size_t leightweightsemaphoreApproxAvail(wlsem_t *);
 
 #define kYieldProcessorTries 1000
@@ -358,6 +479,12 @@ typedef struct
 // static void hybridmutexLock(whybrid_mutex_t* m);
 // static void hybridmutexUnlock(whybrid_mutex_t* m);
 
+/**
+ * @brief Initialize a hybrid spin-then-block mutex.
+ *
+ * @param m Mutex object.
+ * @return `true` on successful semaphore initialization.
+ */
 static inline bool hybridmutexInit(whybrid_mutex_t *m)
 {
     m->flag  = false;
@@ -365,11 +492,21 @@ static inline bool hybridmutexInit(whybrid_mutex_t *m)
     return semaphoreInit(&m->sema, 0);
 }
 
+/**
+ * @brief Destroy a hybrid mutex.
+ *
+ * @param m Mutex object.
+ */
 static inline void hybridmutexDestroy(whybrid_mutex_t *m)
 {
     semaphoreDestroy(&m->sema);
 }
 
+/**
+ * @brief Lock a hybrid mutex, blocking when needed.
+ *
+ * @param m Mutex object.
+ */
 static inline void hybridmutexLock(whybrid_mutex_t *m)
 {
     if (atomicExchangeExplicit(&m->flag, true, memory_order_acquire))
@@ -403,11 +540,22 @@ static inline void hybridmutexLock(whybrid_mutex_t *m)
     }
 }
 
+/**
+ * @brief Try to lock a hybrid mutex without blocking.
+ *
+ * @param m Mutex object.
+ * @return `true` when lock was acquired.
+ */
 static inline bool hybridmutexTryLock(whybrid_mutex_t *m)
 {
     return 0 == atomicExchangeExplicit(&m->flag, true, memory_order_acquire);
 }
 
+/**
+ * @brief Unlock a hybrid mutex and wake one waiter if present.
+ *
+ * @param m Mutex object.
+ */
 static inline void hybridmutexUnlock(whybrid_mutex_t *m)
 {
     atomic_exchange(&m->flag, false);

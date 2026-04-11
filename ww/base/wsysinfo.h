@@ -1,6 +1,14 @@
 #ifndef WW_SYS_INFO_H_
 #define WW_SYS_INFO_H_
 
+/**
+ * @file wsysinfo.h
+ * @brief Lightweight cross-platform system resource queries.
+ *
+ * Exposes helpers for CPU count, memory information, and coarse
+ * "system under load" checks.
+ */
+
 #include "wlibc.h"
 
 #ifdef OS_LINUX
@@ -12,6 +20,11 @@
 #include <sys/sysctl.h>
 #endif
 
+/**
+ * @brief Get the number of configured CPUs.
+ *
+ * @return Number of logical processors configured on the host.
+ */
 static inline int getNCPU(void)
 {
 #ifdef OS_WIN
@@ -32,6 +45,12 @@ typedef struct meminfo_s
     unsigned long free;  // KB
 } meminfo_t;
 
+/**
+ * @brief Populate total/free physical memory values (in KB).
+ *
+ * @param mem Output buffer for memory information.
+ * @return `0` on success, otherwise a platform-specific error code.
+ */
 static inline int getMemInfo(meminfo_t *mem)
 {
 #ifdef OS_WIN
@@ -68,7 +87,12 @@ static inline int getMemInfo(meminfo_t *mem)
     return -10;
 #endif
 }
-// threshould is  between 0 and 1
+/**
+ * @brief Check whether current CPU/memory usage exceeds a threshold.
+ *
+ * @param threshold Load threshold in range `[0.0, 1.0]`.
+ * @return `true` if system load is above threshold.
+ */
 bool isSystemUnderLoad(double threshold);
 
 #endif // WW_SYS_INFO_H_

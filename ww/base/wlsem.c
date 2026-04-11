@@ -1,3 +1,8 @@
+/**
+ * @file wlsem.c
+ * @brief Lightweight semaphore implementation with platform-specific backends.
+ */
+
 #include "wlibc.h"
 #include "wmutex.h"
 #include "wplatform.h"
@@ -53,6 +58,7 @@
 //---------------------------------------------------------------------------------------------
 #if defined(_WIN32) && ! defined(USE_UNIX_SEMA)
 
+// Backend primitives used by wlsem_t on Windows.
 static bool semaInit(wsem_t *sp, uint32_t initcount)
 {
     assert(initcount <= 0x7fffffff);
@@ -95,6 +101,7 @@ static bool semaSignal(wsem_t *sp, uint32_t count)
 // https://web.archive.org/web/20140109214515/
 // http://lists.apple.com/archives/darwin-kernel/2009/Apr/msg00010.html
 
+// Backend primitives used by wlsem_t on macOS (Mach semaphores).
 static bool semaInit(wsem_t *sp, uint32_t initcount)
 {
     assert(initcount <= 0x7fffffff);
@@ -170,6 +177,7 @@ static bool semaSignal(wsem_t *sp, uint32_t count)
 
 // TODO: implementation based on futex (for Linux and OpenBSD). See "__TBB_USE_FUTEX" of oneTBB
 
+// Backend primitives used by wlsem_t on POSIX semaphores.
 static bool semaInit(wsem_t *sp, uint32_t initcount)
 {
     return sem_init((sem_t *) sp, 0, initcount) == 0;
@@ -252,6 +260,13 @@ static bool semaSignal(wsem_t *sp, uint32_t count)
 //
 #define LSEMA_MAX_SPINS 10000
 
+/**
+ * @brief Try fast-path spinning before blocking on the OS semaphore.
+ *
+ * @param s Lightweight semaphore.
+ * @param timeout_usecs Timeout in microseconds (`0` means wait without timeout).
+ * @return `true` when token acquired, `false` on timeout.
+ */
 static bool _leightweightsemaphoreWaitPartialSpin(wlsem_t *s, uint64_t timeout_usecs)
 {
 #if defined(OS_WIN) && ! HAVE_STDATOMIC_H
@@ -310,22 +325,46 @@ static bool _leightweightsemaphoreWaitPartialSpin(wlsem_t *s, uint64_t timeout_u
     }
 }
 
+/**
+ * @brief Initialize lightweight semaphore state and backend semaphore.
+ *
+ * @param s Lightweight semaphore.
+ * @param initcount Initial token count.
+ * @return `true` on success.
+ */
 bool leightweightsemaphoreInit(wlsem_t *s, uint32_t initcount)
 {
     s->count = initcount;
     return semaInit(&s->sema, initcount);
 }
 
+/**
+ * @brief Dispose backend semaphore resources.
+ *
+ * @param s Lightweight semaphore.
+ */
 void leightweightsemaphoreDestroy(wlsem_t *s)
 {
     semaDispose(&s->sema);
 }
 
+/**
+ * @brief Acquire one token, spinning first and then blocking if needed.
+ *
+ * @param s Lightweight semaphore.
+ * @return `true` when token acquired.
+ */
 bool leightweightsemaphoreWait(wlsem_t *s)
 {
     return leightweightsemaphoreTryWait(s) || _leightweightsemaphoreWaitPartialSpin(s, 0);
 }
 
+/**
+ * @brief Attempt to acquire one token without blocking.
+ *
+ * @param s Lightweight semaphore.
+ * @return `true` when token acquired.
+ */
 bool leightweightsemaphoreTryWait(wlsem_t *s)
 {
 #if defined(OS_WIN) && ! HAVE_STDATOMIC_H
@@ -346,11 +385,24 @@ bool leightweightsemaphoreTryWait(wlsem_t *s)
     return false;
 }
 
+/**
+ * @brief Acquire one token with timeout.
+ *
+ * @param s Lightweight semaphore.
+ * @param timeout_usecs Timeout in microseconds.
+ * @return `true` when token acquired before timeout.
+ */
 bool leightweightsemaphoreTimedWait(wlsem_t *s, uint64_t timeout_usecs)
 {
     return leightweightsemaphoreTryWait(s) || _leightweightsemaphoreWaitPartialSpin(s, timeout_usecs);
 }
 
+/**
+ * @brief Release one or more tokens and wake waiting threads as needed.
+ *
+ * @param s Lightweight semaphore.
+ * @param count Number of tokens to release (`> 0`).
+ */
 void leightweightsemaphoreSignal(wlsem_t *s, uint32_t count)
 {
     assert(count > 0);
@@ -363,6 +415,12 @@ void leightweightsemaphoreSignal(wlsem_t *s, uint32_t count)
     }
 }
 
+/**
+ * @brief Return approximate currently available token count.
+ *
+ * @param s Lightweight semaphore.
+ * @return Non-negative approximate token count.
+ */
 size_t leightweightsemaphoreApproxAvail(wlsem_t *s)
 {
 

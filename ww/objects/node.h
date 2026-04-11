@@ -1,5 +1,9 @@
 #pragma once
 
+/*
+ * Core node definition shared by node loading, chaining, and tunnel creation.
+ */
+
 #include "shiftbuffer.h"
 #include "tunnel.h"
 #include "wlibc.h"
@@ -69,14 +73,37 @@ struct node_s
     tunnel_t *instance;
 };
 
+/**
+ * @brief Check if node is implemented as an adapter endpoint.
+ *
+ * @param node Node definition.
+ * @return true Node is an adapter.
+ * @return false Node is not an adapter.
+ */
 static inline bool nodeIsAdapter(node_t *node)
 {
     return node->is_adapter;
 }
+
+/**
+ * @brief Check whether node has no configured next node.
+ *
+ * @param node Node definition.
+ * @return true Node is terminal in chain config.
+ * @return false Node points to a next node.
+ */
 static inline bool nodeIsLastInChain(node_t *node)
 {
     return node->next == NULL;
 }
+
+/**
+ * @brief Check whether node has a configured next node.
+ *
+ * @param node Node definition.
+ * @return true Node has next node.
+ * @return false Node has no next node.
+ */
 static inline bool nodeHasNext(node_t *node)
 {
     return node->next != NULL;

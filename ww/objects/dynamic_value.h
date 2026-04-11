@@ -1,4 +1,9 @@
 #pragma once
+
+/*
+ * Lightweight tagged value holder with optional owned string memory.
+ */
+
 #include "wlibc.h"
 
 /*
@@ -24,6 +29,11 @@ typedef struct dynamic_value_s
     void    *string;
 } dynamic_value_t;
 
+/**
+ * @brief Release memory owned by a dynamic value.
+ *
+ * @param dy Value to destroy.
+ */
 static void dynamicvalueDestroy(const dynamic_value_t dy)
 {
     if (dy.string)

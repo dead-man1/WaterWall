@@ -1,3 +1,8 @@
+/**
+ * @file wproc.c
+ * @brief Platform-specific privilege helpers for process elevation checks.
+ */
+
 #include "wproc.h"
 #include "wplatform.h"
 #ifdef OS_WIN
@@ -32,6 +37,13 @@ bool isAdmin(void)
 }
 
 
+/**
+ * @brief Attempt to relaunch process with elevated privileges.
+ *
+ * @param app_name Application name (currently unused).
+ * @param fail_msg Output message on failure (currently unused).
+ * @return `true` when already elevated or relaunch succeeds.
+ */
 bool elevatePrivileges(const char *app_name, char *fail_msg)
 {
     discard app_name;
@@ -88,12 +100,24 @@ bool elevatePrivileges(const char *app_name, char *fail_msg)
 
 #else
 
+/**
+ * @brief Non-Windows fallback admin check.
+ *
+ * @return Always `true`.
+ */
 bool isAdmin(void)
 {
     return true;
 }
 
 
+/**
+ * @brief Non-Windows fallback privilege elevation.
+ *
+ * @param app_name Application name (unused).
+ * @param fail_msg Output message (unused).
+ * @return Always `true`.
+ */
 bool elevatePrivileges(const char *app_name, char *fail_msg)
 {
     discard app_name;

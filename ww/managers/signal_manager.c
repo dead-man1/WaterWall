@@ -1,9 +1,18 @@
+/*
+ * Signal handling runtime and process termination dispatch.
+ */
+
 #include "signal_manager.h"
 #include "global_state.h"
 
 static signal_manager_t *signalmanager_gstate = NULL;
 
-
+/**
+ * @brief Register one at-exit callback in reverse-priority slots.
+ *
+ * @param handle Callback function.
+ * @param userdata Callback context.
+ */
 void registerAtExitCallBack(SignalHandler handle, void *userdata)
 {
     assert(signalmanager_gstate != NULL);
@@ -26,6 +35,12 @@ void registerAtExitCallBack(SignalHandler handle, void *userdata)
     _Exit(1);
 }
 
+/**
+ * @brief Remove a previously registered at-exit callback.
+ *
+ * @param handle Callback function.
+ * @param userdata Callback context.
+ */
 void removeAtExitCallBack(SignalHandler handle, void *userdata)
 {
     assert(signalmanager_gstate != NULL);
@@ -47,6 +62,10 @@ void removeAtExitCallBack(SignalHandler handle, void *userdata)
 }
 
 static bool exit_handler_ran_once = false;
+
+/**
+ * @brief Execute all registered shutdown callbacks once.
+ */
 static void exitHandler(void)
 {
     if (exit_handler_ran_once)
@@ -76,6 +95,12 @@ static void exitHandler(void)
 
 #if defined(OS_WIN)
 
+/**
+ * @brief Windows console control dispatcher mapped to exit handler.
+ *
+ * @param CtrlType Windows control event code.
+ * @return TRUE when handled, otherwise FALSE.
+ */
 static BOOL WINAPI CtrlHandler(_In_ DWORD CtrlType)
 {
     // return TRUE;
@@ -100,6 +125,11 @@ static BOOL WINAPI CtrlHandler(_In_ DWORD CtrlType)
 }
 #endif
 
+/**
+ * @brief Multiplexed POSIX signal entry that routes to exit callbacks.
+ *
+ * @param signum Received signal number.
+ */
 static void multiplexedSignalHandler(int signum)
 {
     char    message[50];
@@ -130,6 +160,9 @@ static void multiplexedSignalHandler(int signum)
     _Exit(128 + signum);
 }
 
+/**
+ * @brief Install configured OS signal handlers.
+ */
 void signalmanagerStart(void)
 {
     assert(signalmanager_gstate != NULL);
@@ -301,6 +334,11 @@ void signalmanagerDestroy(void)
     signalmanager_gstate = NULL;
 }
 
+/**
+ * @brief Terminate process after running registered exit handlers.
+ *
+ * @param exit_code Process exit code.
+ */
 _Noreturn void terminateProgram(int exit_code)
 {
 

@@ -1,6 +1,14 @@
 #ifndef WW_SOCKET_H_
 #define WW_SOCKET_H_
 
+/**
+ * @file wsocket.h
+ * @brief Cross-platform socket helpers for address handling and connection setup.
+ *
+ * Includes wrappers for resolving hostnames, building socket addresses,
+ * creating/listening/connecting sockets, and common socket options.
+ */
+
 #include "wlibc.h"
 
 #ifdef ENABLE_UDS
@@ -18,6 +26,11 @@
 #define LOCALHOST "127.0.0.1"
 #define ANYADDR   "0.0.0.0"
 
+/**
+ * @brief Get the last socket error code from the current thread.
+ *
+ * @return Platform-specific socket error number.
+ */
 WW_INLINE int socketERRNO(void)
 {
 #ifdef OS_WIN
@@ -26,6 +39,12 @@ WW_INLINE int socketERRNO(void)
     return errno;
 #endif
 }
+/**
+ * @brief Convert a socket error code to a readable string.
+ *
+ * @param err Error code (positive or negative).
+ * @return Pointer to an error string.
+ */
 WW_EXPORT const char *socketStrError(int err);
 
 #ifdef OS_WIN
@@ -33,15 +52,33 @@ WW_EXPORT const char *socketStrError(int err);
 typedef SOCKET wsocket_t;
 typedef int    socklen_t;
 
+/**
+ * @brief Initialize WinSock once per process.
+ */
 void WSAInit(void);
+/**
+ * @brief Deinitialize WinSock when no longer needed.
+ */
 void WSADeinit(void);
 
+/**
+ * @brief Set a socket descriptor to blocking mode.
+ *
+ * @param sockfd Socket descriptor.
+ * @return `0` on success, otherwise socket error.
+ */
 WW_INLINE int blocking(int sockfd)
 {
     unsigned long nb = 0;
     return ioctlsocket(sockfd, (long) FIONBIO, &nb);
 }
 
+/**
+ * @brief Set a socket descriptor to non-blocking mode.
+ *
+ * @param sockfd Socket descriptor.
+ * @return `0` on success, otherwise socket error.
+ */
 WW_INLINE int nonBlocking(int sockfd)
 {
     unsigned long nb = 1;
@@ -71,16 +108,34 @@ typedef int wsocket_t;
 #define INVALID_SOCKET -1
 #endif
 
+/**
+ * @brief Set a socket descriptor to blocking mode.
+ *
+ * @param s Socket descriptor.
+ * @return `0` on success, otherwise `-1`.
+ */
 WW_INLINE int blocking(int s)
 {
     return fcntl(s, F_SETFL, fcntl(s, F_GETFL) & ~O_NONBLOCK);
 }
 
+/**
+ * @brief Set a socket descriptor to non-blocking mode.
+ *
+ * @param s Socket descriptor.
+ * @return `0` on success, otherwise `-1`.
+ */
 WW_INLINE int nonBlocking(int s)
 {
     return fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NONBLOCK);
 }
 
+/**
+ * @brief Close a socket descriptor using POSIX close.
+ *
+ * @param sockfd Socket descriptor.
+ * @return `0` on success, otherwise `-1`.
+ */
 WW_INLINE int closesocket(int sockfd)
 {
     return close(sockfd);
@@ -111,23 +166,82 @@ typedef union {
 } sockaddr_u;
 
 
-
-// @param host: domain or ip
-// @retval 0:succeed
+/**
+ * @brief Resolve a host string into a socket address.
+ *
+ * @param host Hostname or IP string.
+ * @param addr Output socket address.
+ * @return `0` on success, otherwise resolver error code.
+ */
 WW_EXPORT int resolveAddr(const char *host, sockaddr_u *addr);
 
+/**
+ * @brief Convert socket address IP part to text.
+ *
+ * @param addr Input socket address.
+ * @param ip Output buffer for the IP string.
+ * @param len Size of `ip` buffer.
+ * @return Pointer to `ip`.
+ */
 WW_EXPORT const char *sockaddrIp(sockaddr_u *addr, char *ip, int len);
+/**
+ * @brief Extract port from a socket address.
+ *
+ * @param addr Input socket address.
+ * @return Host-order port number.
+ */
 WW_EXPORT uint16_t    sockaddrPort(sockaddr_u *addr);
+/**
+ * @brief Set address family and IP from host string.
+ *
+ * @param addr Output socket address.
+ * @param host Hostname/IP; empty means `INADDR_ANY`.
+ * @return `0` on success, otherwise resolver error code.
+ */
 WW_EXPORT int         sockaddrSetIpAddress(sockaddr_u *addr, const char *host);
+/**
+ * @brief Set port on IPv4/IPv6 socket address.
+ *
+ * @param addr Socket address to update.
+ * @param port Host-order port.
+ */
 WW_EXPORT void        sockaddrSetPort(sockaddr_u *addr, int port);
+/**
+ * @brief Set both host/IP and port on a socket address.
+ *
+ * @param addr Output socket address.
+ * @param host Hostname/IP/path (UDS when enabled and `port < 0`).
+ * @param port Host-order port.
+ * @return `0` on success, otherwise resolver error code.
+ */
 WW_EXPORT int         sockaddrSetIpAddressPort(sockaddr_u *addr, const char *host, int port);
+/**
+ * @brief Get structure length suitable for `bind`/`connect`.
+ *
+ * @param addr Socket address.
+ * @return Size in bytes of the concrete address structure.
+ */
 WW_EXPORT socklen_t   sockaddrLen(sockaddr_u *addr);
+/**
+ * @brief Render full socket address to string.
+ *
+ * @param addr Socket address.
+ * @param buf Output buffer.
+ * @param len Output buffer size.
+ * @return Pointer to `buf`.
+ */
 WW_EXPORT const char *sockaddrStr(sockaddr_u *addr, char *buf, int len);
 
 // #define INET_ADDRSTRLEN   16
 // #define INET6_ADDRSTRLEN  46
 #ifdef ENABLE_UDS
 #define SOCKADDR_STRLEN sizeof(((struct sockaddr_un *) (NULL))->sun_path)
+/**
+ * @brief Fill a Unix domain socket address path.
+ *
+ * @param addr Output socket address.
+ * @param path Filesystem/abstract socket path.
+ */
 WW_INLINE void sockaddr_set_path(sockaddr_u *addr, const char *path)
 {
     addr->sa.sa_family = AF_UNIX;
@@ -141,6 +255,11 @@ WW_INLINE void sockaddr_set_path(sockaddr_u *addr, const char *path)
 #define SOCKADDR_STRLEN 64 // ipv4:port | [ipv6]:port
 #endif
 
+/**
+ * @brief Print a socket address to stdout.
+ *
+ * @param addr Socket address to print.
+ */
 WW_INLINE void sockaddrPrint(sockaddr_u *addr)
 {
     char buf[SOCKADDR_STRLEN] = {0};
@@ -153,40 +272,124 @@ WW_INLINE void sockaddrPrint(sockaddr_u *addr)
 #define SOCKADDR_PRINT(addr)    sockaddrPrint((sockaddr_u *) addr)
 //=====================================================================================
 
-// socket -> setsockopt -> bind
-// @param type: SOCK_STREAM(tcp) SOCK_DGRAM(udp)
-// @return sockfd
+/**
+ * @brief Create and bind a socket.
+ *
+ * @param port Port to bind.
+ * @param host Host/IP to bind (defaults to `ANYADDR`).
+ * @param type Socket type (e.g. `SOCK_STREAM`, `SOCK_DGRAM`).
+ * @return Socket fd on success, negative error on failure.
+ */
 WW_EXPORT int Bind(int port, const char *host DEFAULT(ANYADDR), int type DEFAULT(SOCK_STREAM));
 
-// Bind -> listen
-// @return listenfd
+/**
+ * @brief Create a TCP listening socket.
+ *
+ * @param port Port to listen on.
+ * @param host Host/IP to bind.
+ * @return Listening socket fd on success, negative error on failure.
+ */
 WW_EXPORT int wwListen(int port, const char *host DEFAULT(ANYADDR));
 
-// @return connfd
-// resolveAddr -> socket -> nonblocking -> connect
+/**
+ * @brief Create and connect a TCP socket.
+ *
+ * @param host Remote host/IP.
+ * @param port Remote port.
+ * @param nonblock Non-zero to keep socket non-blocking.
+ * @return Connected fd on success, negative error on failure.
+ */
 WW_EXPORT int wwConnect(const char *host, int port, int nonblock DEFAULT(0));
-// wwConnect(host, port, 1)
+/**
+ * @brief Connect in non-blocking mode.
+ *
+ * @param host Remote host/IP.
+ * @param port Remote port.
+ * @return Socket fd or negative error.
+ */
 WW_EXPORT int ConnectNonblock(const char *host, int port);
-// wwConnect(host, port, 1) -> select -> blocking
 #define DEFAULT_CONNECT_TIMEOUT 10000 // ms
+/**
+ * @brief Connect with timeout, then restore blocking mode.
+ *
+ * @param host Remote host/IP.
+ * @param port Remote port.
+ * @param ms Timeout in milliseconds.
+ * @return Connected fd on success, negative error on timeout/failure.
+ */
 WW_EXPORT int ConnectTimeout(const char *host, int port, int ms DEFAULT(DEFAULT_CONNECT_TIMEOUT));
 
 #ifdef ENABLE_UDS
+/**
+ * @brief Create and bind a Unix domain socket.
+ *
+ * @param path Unix socket path.
+ * @param type Socket type.
+ * @return Socket fd or negative error.
+ */
 WW_EXPORT int BindUnix(const char *path, int type DEFAULT(SOCK_STREAM));
+/**
+ * @brief Create a Unix domain listening socket.
+ *
+ * @param path Unix socket path.
+ * @return Listening socket fd or negative error.
+ */
 WW_EXPORT int wwListenUnix(const char *path);
+/**
+ * @brief Connect to a Unix domain socket.
+ *
+ * @param path Unix socket path.
+ * @param nonblock Non-zero for non-blocking mode.
+ * @return Connected fd or negative error.
+ */
 WW_EXPORT int ConnectUnix(const char *path, int nonblock DEFAULT(0));
+/**
+ * @brief Non-blocking Unix socket connect helper.
+ *
+ * @param path Unix socket path.
+ * @return Socket fd or negative error.
+ */
 WW_EXPORT int ConnectUnixNonblock(const char *path);
+/**
+ * @brief Unix socket connect with timeout.
+ *
+ * @param path Unix socket path.
+ * @param ms Timeout in milliseconds.
+ * @return Connected fd or negative error.
+ */
 WW_EXPORT int ConnectUnixTimeout(const char *path, int ms DEFAULT(DEFAULT_CONNECT_TIMEOUT));
 #endif
 
-// Just implement createSocketPair(AF_INET, SOCK_STREAM, 0, sv);
+/**
+ * @brief Create a connected socket pair.
+ *
+ * @param family Address family.
+ * @param type Socket type.
+ * @param protocol Protocol number.
+ * @param sv Output pair of connected socket fds.
+ * @return `0` on success, `-1` on failure.
+ */
 WW_EXPORT int createSocketPair(int family, int type, int protocol, int sv[2]);
 
+/**
+ * @brief Enable or disable `TCP_NODELAY`.
+ *
+ * @param sockfd Socket descriptor.
+ * @param on Non-zero to disable Nagle's algorithm.
+ * @return `setsockopt` result.
+ */
 WW_INLINE int tcpNoDelay(int sockfd, int on DEFAULT(1))
 {
     return setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (const char *) &on, sizeof(int));
 }
 
+/**
+ * @brief Enable TCP packet coalescing (`TCP_NOPUSH`/`TCP_CORK` where available).
+ *
+ * @param sockfd Socket descriptor.
+ * @param on Non-zero to enable option.
+ * @return `setsockopt` result or `0` when unsupported.
+ */
 WW_INLINE int tcpNoPush(int sockfd, int on DEFAULT(1))
 {
 #ifdef TCP_NOPUSH
@@ -200,6 +403,14 @@ WW_INLINE int tcpNoPush(int sockfd, int on DEFAULT(1))
 #endif
 }
 
+/**
+ * @brief Configure TCP keepalive.
+ *
+ * @param sockfd Socket descriptor.
+ * @param on Non-zero to enable keepalive.
+ * @param delay Initial idle delay in seconds.
+ * @return `setsockopt` result (or socket error code).
+ */
 WW_INLINE int tcpKeepAlive(int sockfd, int on DEFAULT(1), int delay DEFAULT(60))
 {
     if (setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, (const char *) &on, sizeof(int)) != 0)
@@ -222,11 +433,25 @@ WW_INLINE int tcpKeepAlive(int sockfd, int on DEFAULT(1), int delay DEFAULT(60))
 #endif
 }
 
+/**
+ * @brief Enable or disable UDP broadcast.
+ *
+ * @param sockfd Socket descriptor.
+ * @param on Non-zero to enable broadcast.
+ * @return `setsockopt` result.
+ */
 WW_INLINE int udpBroadCast(int sockfd, int on DEFAULT(1))
 {
     return setsockopt(sockfd, SOL_SOCKET, SO_BROADCAST, (const char *) &on, sizeof(int));
 }
 
+/**
+ * @brief Restrict an IPv6 socket to IPv6 only.
+ *
+ * @param sockfd Socket descriptor.
+ * @param on Non-zero to enable IPv6-only mode.
+ * @return `setsockopt` result or `0` when unsupported.
+ */
 WW_INLINE int ipV6Only(int sockfd, int on DEFAULT(1))
 {
 #ifdef IPV6_V6ONLY
@@ -236,7 +461,13 @@ WW_INLINE int ipV6Only(int sockfd, int on DEFAULT(1))
 #endif
 }
 
-// send timeout
+/**
+ * @brief Set send timeout.
+ *
+ * @param sockfd Socket descriptor.
+ * @param timeout Timeout in milliseconds.
+ * @return `setsockopt` result.
+ */
 WW_INLINE int socketOptionSNDTIME(int sockfd, int timeout)
 {
 #ifdef OS_WIN
@@ -247,7 +478,13 @@ WW_INLINE int socketOptionSNDTIME(int sockfd, int timeout)
 #endif
 }
 
-// recv timeout
+/**
+ * @brief Set receive timeout.
+ *
+ * @param sockfd Socket descriptor.
+ * @param timeout Timeout in milliseconds.
+ * @return `setsockopt` result.
+ */
 WW_INLINE int socketOptionRecvTime(int sockfd, int timeout)
 {
 #ifdef OS_WIN
@@ -258,18 +495,37 @@ WW_INLINE int socketOptionRecvTime(int sockfd, int timeout)
 #endif
 }
 
-// send buffer size
+/**
+ * @brief Set socket send buffer size.
+ *
+ * @param sockfd Socket descriptor.
+ * @param len Buffer size in bytes.
+ * @return `setsockopt` result.
+ */
 WW_INLINE int socketOptionSendBuf(int sockfd, int len)
 {
     return setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char *) &len, sizeof(int));
 }
 
-// recv buffer size
+/**
+ * @brief Set socket receive buffer size.
+ *
+ * @param sockfd Socket descriptor.
+ * @param len Buffer size in bytes.
+ * @return `setsockopt` result.
+ */
 WW_INLINE int socketOptionRecvBuf(int sockfd, int len)
 {
     return setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char *) &len, sizeof(int));
 }
 
+/**
+ * @brief Enable/disable `SO_REUSEADDR`.
+ *
+ * @param sockfd Socket descriptor.
+ * @param on Non-zero to enable.
+ * @return `setsockopt` result or `0` when unsupported.
+ */
 WW_INLINE int socketOptionReuseAddr(int sockfd, int on DEFAULT(1))
 {
 #ifdef SO_REUSEADDR
@@ -280,6 +536,13 @@ WW_INLINE int socketOptionReuseAddr(int sockfd, int on DEFAULT(1))
 #endif
 }
 
+/**
+ * @brief Enable/disable `SO_REUSEPORT`.
+ *
+ * @param sockfd Socket descriptor.
+ * @param on Non-zero to enable.
+ * @return `setsockopt` result or `0` when unsupported.
+ */
 WW_INLINE int socketOptionReusePort(int sockfd, int on DEFAULT(1))
 {
 #ifdef SO_REUSEPORT
@@ -292,6 +555,13 @@ WW_INLINE int socketOptionReusePort(int sockfd, int on DEFAULT(1))
 #endif
 }
 
+/**
+ * @brief Configure `SO_LINGER`.
+ *
+ * @param sockfd Socket descriptor.
+ * @param timeout Linger seconds; negative disables linger.
+ * @return `setsockopt` result or `0` when unsupported.
+ */
 WW_INLINE int socketOptionLinger(int sockfd, int timeout DEFAULT(1))
 {
 #ifdef SO_LINGER
@@ -313,6 +583,12 @@ WW_INLINE int socketOptionLinger(int sockfd, int timeout DEFAULT(1))
 #endif
 }
 
+/**
+ * @brief Copy IP bytes from one socket address to another.
+ *
+ * @param dest Destination address.
+ * @param source Source address.
+ */
 static inline void sockaddrCopy(sockaddr_u *restrict dest, const sockaddr_u *restrict source)
 {
     if (source->sa.sa_family == AF_INET)
@@ -324,11 +600,25 @@ static inline void sockaddrCopy(sockaddr_u *restrict dest, const sockaddr_u *res
                sizeof(source->sin6.sin6_addr.s6_addr));
 }
 
+/**
+ * @brief Compare two IPv4 socket addresses by IP.
+ *
+ * @param addr1 First address.
+ * @param addr2 Second address.
+ * @return `true` when IP addresses are equal.
+ */
 static inline bool sockaddrCmpIPV4(const sockaddr_u *restrict addr1, const sockaddr_u *restrict addr2)
 {
     return (addr1->sin.sin_addr.s_addr == addr2->sin.sin_addr.s_addr);
 }
 
+/**
+ * @brief Compare two IPv6 socket addresses by IP/flow/scope.
+ *
+ * @param addr1 First address.
+ * @param addr2 Second address.
+ * @return `true` when all compared IPv6 fields are equal.
+ */
 static inline bool sockaddrCmpIPV6(const sockaddr_u *restrict addr1, const sockaddr_u *restrict addr2)
 {
     int r = memcmp(addr1->sin6.sin6_addr.s6_addr, addr2->sin6.sin6_addr.s6_addr, sizeof(addr1->sin6.sin6_addr.s6_addr));
@@ -347,6 +637,13 @@ static inline bool sockaddrCmpIPV6(const sockaddr_u *restrict addr1, const socka
     return true;
 }
 
+/**
+ * @brief Compare two socket addresses by family and IP fields.
+ *
+ * @param addr1 First address.
+ * @param addr2 Second address.
+ * @return `true` when addresses match for supported families.
+ */
 static inline bool sockaddrCmpIP(const sockaddr_u *restrict addr1, const sockaddr_u *restrict addr2)
 {
 
@@ -369,6 +666,12 @@ static inline bool sockaddrCmpIP(const sockaddr_u *restrict addr1, const sockadd
     return false;
 }
 
+/**
+ * @brief Compute hash from an IP address without port.
+ *
+ * @param addr IP address.
+ * @return Hash value.
+ */
 static inline hash_t ipaddrCalcHashNoPort(const ip_addr_t addr)
 {
     hash_t result;
@@ -390,6 +693,12 @@ static inline hash_t ipaddrCalcHashNoPort(const ip_addr_t addr)
     return result;
 }
 
+/**
+ * @brief Compute hash from socket address including port.
+ *
+ * @param saddr Socket address.
+ * @return Hash value.
+ */
 static inline hash_t sockaddrCalcHashWithPort(const sockaddr_u *saddr)
 {
     hash_t result;
@@ -411,6 +720,14 @@ static inline hash_t sockaddrCalcHashWithPort(const sockaddr_u *saddr)
 }
 
 
+/**
+ * @brief Parse `ip/prefix` string and derive subnet mask.
+ *
+ * @param ip_str Input CIDR string.
+ * @param ip Output IP address.
+ * @param subnet_mask Output subnet mask.
+ * @return `4` for IPv4, `6` for IPv6, `ERR_ARG` on failure.
+ */
 static inline int parseIPWithSubnetMask(const char *ip_str, ip_addr_t *ip, ip_addr_t *subnet_mask)
 {
     char ip_part[40];
@@ -467,6 +784,14 @@ static inline int parseIPWithSubnetMask(const char *ip_str, ip_addr_t *ip, ip_ad
     return ERR_ARG;
 }
 
+/**
+ * @brief Check whether an IPv4 address is inside a subnet.
+ *
+ * @param test_addr Address to test.
+ * @param base_addr Subnet base address.
+ * @param subnet_mask Subnet mask.
+ * @return `1` when in range, otherwise `0`.
+ */
 static inline int checkIPRange4(const ip4_addr_t test_addr, const ip4_addr_t base_addr, const ip4_addr_t subnet_mask)
 {
     if ((test_addr.addr & subnet_mask.addr) == (base_addr.addr & subnet_mask.addr))
@@ -476,6 +801,14 @@ static inline int checkIPRange4(const ip4_addr_t test_addr, const ip4_addr_t bas
     return 0;
 }
 
+/**
+ * @brief Check whether an IPv6 address is inside a subnet.
+ *
+ * @param test_addr Address to test.
+ * @param base_addr Subnet base address.
+ * @param subnet_mask Subnet mask.
+ * @return `1` when in range, otherwise `0`.
+ */
 static inline int checkIPRange6(const ip6_addr_t test_addr, const ip6_addr_t base_addr, const ip6_addr_t subnet_mask)
 {
 
@@ -513,6 +846,10 @@ static inline int checkIPRange6(const ip6_addr_t test_addr, const ip6_addr_t bas
 
 /**
  * @brief Copy sockaddr (IPv4 or IPv6) to ip_addr_t.
+ *
+ * @param src Source socket address.
+ * @param dest Output IP address.
+ * @return `true` when conversion is supported and successful.
  */
 static inline bool sockaddrToIpAddr(const sockaddr_u *src, ip_addr_t *dest)
 {
@@ -535,9 +872,29 @@ static inline bool sockaddrToIpAddr(const sockaddr_u *src, ip_addr_t *dest)
     return false;
 }
 
+/**
+ * @brief Validate `ip:port` string format.
+ *
+ * @param ipc Input string to validate.
+ * @return `true` when the value is valid.
+ */
 bool verifyIPPort(const char *ipc);
+/**
+ * @brief Validate CIDR string in `ip/prefix` format.
+ *
+ * @param ipc Input CIDR string.
+ * @return `true` when the value is valid.
+ */
 bool verifyIPCdir(const char *ipc);
 
+/**
+ * @brief Get IPv4 address for a local network interface.
+ *
+ * @param if_name Interface name.
+ * @param ip_buffer Output IPv4 address.
+ * @param buflen Size constraint used by platform branches.
+ * @return `true` on success, otherwise `false`.
+ */
 bool getInterfaceIp(const char *if_name, ip4_addr_t *ip_buffer, size_t buflen);
 
 
