@@ -1,4 +1,9 @@
 #pragma once
+
+/*
+ * Core tunnel interface, callback types, and default tunnel behavior.
+ */
+
 #include "address_context.h"
 #include "buffer_pool.h"
 #include "chain.h"

@@ -1,5 +1,9 @@
 #pragma once
 
+/*
+ * Defines listener socket filter options, port ranges, and ACL lists.
+ */
+
 #include "wlibc.h"
 #include "widle_table.h"
 
@@ -44,5 +48,16 @@ typedef struct socket_filter_option_s
 
 } socket_filter_option_t;
 
+/**
+ * @brief Initialize a socket filter option with default values and vectors.
+ *
+ * @param sfo Filter option object to initialize.
+ */
 void socketfilteroptionInit(socket_filter_option_t *sfo);
+
+/**
+ * @brief Release dynamically managed resources in a socket filter option.
+ *
+ * @param sfo Filter option object to deinitialize.
+ */
 void socketfilteroptionDeInit(socket_filter_option_t *sfo);

@@ -1,5 +1,9 @@
 #include "socket_filter_option.h"
 
+/*
+ * Initializes and tears down socket filter option dynamic members.
+ */
+
 void socketfilteroptionInit(socket_filter_option_t *sfo)
 {
     memorySet(sfo, 0, sizeof(*sfo));

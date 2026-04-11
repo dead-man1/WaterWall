@@ -1,5 +1,8 @@
 #pragma once
 
+/*
+ * Helpers and constants for gRPC message framing and protobuf wire tags.
+ */
 
 // Length-Prefixed-Message
 
@@ -19,6 +22,12 @@
         unsigned char *message;
     } grpc_message;
 
+    /**
+     * @brief Pack a gRPC message header into its 5-byte wire format.
+     *
+     * @param hd Source header containing flags and payload length.
+     * @param buf Output buffer with at least `GRPC_MESSAGE_HDLEN` bytes.
+     */
     static inline void grpcMessageHdPack(const grpc_message_hd *restrict hd, unsigned char *restrict buf)
     {
         unsigned char *p = buf;
@@ -32,6 +41,12 @@
         *p++                = length & 0xFF;
     }
 
+    /**
+     * @brief Unpack a gRPC wire-format header into a structured header.
+     *
+     * @param hd Destination header.
+     * @param buf Input buffer containing a packed 5-byte header.
+     */
     static inline void grpcMessageHdUnpack(grpc_message_hd *restrict hd, const unsigned char *restrict buf)
     {
         const unsigned char *p = buf;
@@ -83,4 +98,3 @@
 #define PROTOBUF_MAKE_TAG(field_number, wire_type) ((field_number) << 3 | (wire_type))
 #define PROTOBUF_FILED_NUMBER(tag)                 ((tag) >> 3)
 #define PROTOBUF_WIRE_TYPE(tag)                    ((tag) &0x07)
-

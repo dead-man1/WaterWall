@@ -1,4 +1,9 @@
 #include "packet_tunnel.h"
+
+/*
+ * Implements default packet-tunnel flow routines and packet tunnel creation.
+ */
+
 #include "line.h"
 #include "loggers/internal_logger.h"
 

@@ -1,5 +1,9 @@
 #pragma once
 
+/*
+ * Shared master pool interface used by worker-local pools for burst allocation.
+ */
+
 #include "wlibc.h"
 #include "wmutex.h"
 
@@ -175,10 +179,13 @@ void masterpoolInstallCallBacks(master_pool_t *pool, MasterPoolItemCreateHandle 
  */
 master_pool_t *masterpoolCreateWithCapacity(uint32_t pool_width);
 
-/*
-* remove everything from the pool, but does not destroy it
-*/
-void masterpoolMakeEmpty(master_pool_t *pool,void *userdata);
+/**
+ * @brief Remove all items from the pool without destroying the pool object.
+ *
+ * @param pool Master pool instance.
+ * @param userdata User data forwarded to destroy callback.
+ */
+void masterpoolMakeEmpty(master_pool_t *pool, void *userdata);
 
 /**
  * Destroys the master pool and frees its resources.

@@ -1,4 +1,9 @@
 #pragma once
+
+/*
+ * Declares cross-worker pipe tunnel APIs and message size helpers.
+ */
+
 #include "tunnel.h"
 #include "shiftbuffer.h"
 

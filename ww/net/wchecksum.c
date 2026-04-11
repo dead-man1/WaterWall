@@ -1,5 +1,9 @@
 #include "wchecksum.h"
 
+/*
+ * Selects checksum backend and recomputes IPv4/L4 checksums for packets.
+ */
+
 #include "wlibc.h"
 
 extern uint16_t checksumAVX2(const uint8_t *data, uint16_t len, uint32_t initial);

@@ -1,4 +1,9 @@
 #include "adapter.h"
+
+/*
+ * Implements adapter tunnel defaults for chain edges and blocked routines.
+ */
+
 #include "line.h"
 #include "loggers/internal_logger.h"
 #include "managers/node_manager.h"
@@ -28,6 +33,13 @@ void adapterDefaultOnIndexDownEnd(tunnel_t *t, uint16_t index, uint16_t *mem_off
   
 }
 
+/**
+ * @brief Guard routine used to block invalid payload calls on adapters.
+ *
+ * @param t Adapter tunnel.
+ * @param line Line instance.
+ * @param payload Payload argument.
+ */
 static void disabledPayloadRoutine(tunnel_t *t, line_t *line, sbuf_t *payload)
 {
     discard t;
@@ -37,6 +49,12 @@ static void disabledPayloadRoutine(tunnel_t *t, line_t *line, sbuf_t *payload)
     terminateProgram(1);
 }
 
+/**
+ * @brief Guard routine used to block invalid non-payload calls on adapters.
+ *
+ * @param t Adapter tunnel.
+ * @param line Line instance.
+ */
 static void disabledRoutine(tunnel_t *t, line_t *line)
 {
     discard t;

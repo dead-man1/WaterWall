@@ -1,4 +1,10 @@
 #pragma once
+
+/*
+ * Defines the connection line object and helpers for line lifetime, state,
+ * routing metadata, and worker-thread task scheduling.
+ */
+
 #include "wlibc.h"
 
 #include "address_context.h"
@@ -50,6 +56,14 @@ typedef struct line_s
 
 } line_t;
 
+/**
+ * @brief Allocate and initialize a line in a specific worker pool.
+ *
+ * @param current Worker whose pool is used for allocation.
+ * @param pools Per-worker line pools.
+ * @param wid Owner worker id written into the line.
+ * @return line_t* Initialized line.
+ */
 static inline line_t *lineCreateForWorker(wid_t current, generic_pool_t **pools, wid_t wid)
 {
 
@@ -217,50 +231,114 @@ static inline void lineClearState(void *state, size_t size)
     discard state;
 }
 
+/**
+ * @brief Get the owner worker id of a line.
+ *
+ * @param line Line instance.
+ * @return wid_t Worker id.
+ */
 static inline wid_t lineGetWID(const line_t *const line)
 {
     return line->wid;
 }
 
+/**
+ * @brief Get the buffer pool that belongs to the line owner worker.
+ *
+ * @param line Line instance.
+ * @return buffer_pool_t* Worker-local buffer pool.
+ */
 static inline buffer_pool_t *lineGetBufferPool(const line_t *const line)
 {
     return getWorkerBufferPool(lineGetWID(line));
 }
 
+/**
+ * @brief Reuse a buffer using the line's worker buffer pool.
+ *
+ * @param line Line instance.
+ * @param b Buffer to return.
+ * @return void* Unused return placeholder.
+ */
 static inline void *lineReuseBuffer(const line_t *const line, sbuf_t *b)
 {
     bufferpoolReuseBuffer(lineGetBufferPool(line), b);
 }
 
+/**
+ * @brief Mark a line as established.
+ *
+ * @param line Line instance.
+ */
 static inline void lineMarkEstablished(line_t *const line)
 {
     assert(! line->established);
     line->established = true;
 }
+
+/**
+ * @brief Check whether a line is established.
+ *
+ * @param line Line instance.
+ * @return true Line is established.
+ * @return false Line is not established.
+ */
 static inline bool lineIsEstablished(const line_t *const line)
 {
     return line->established;
 }
 
+/**
+ * @brief Set the packet checksum recalculation flag on a line.
+ *
+ * @param line Line instance.
+ * @param recalculate New flag value.
+ */
 static inline void lineSetRecalculateChecksum(line_t *const line, bool recalculate)
 {
     line->recalculate_checksum = recalculate;
 }
+
+/**
+ * @brief Get the packet checksum recalculation flag from a line.
+ *
+ * @param line Line instance.
+ * @return true Recalculation is requested.
+ * @return false Recalculation is disabled.
+ */
 static inline bool lineGetRecalculateChecksum(const line_t *const line)
 {
     return line->recalculate_checksum;
 }
 
+/**
+ * @brief Access routing metadata attached to a line.
+ *
+ * @param line Line instance.
+ * @return routing_context_t* Routing context.
+ */
 static inline routing_context_t *lineGetRoutingContext(line_t *const line)
 {
     return &line->routing_context;
 }
 
+/**
+ * @brief Access source address context of a line.
+ *
+ * @param line Line instance.
+ * @return address_context_t* Source address context.
+ */
 static inline address_context_t *lineGetSourceAddressContext(line_t *const line)
 {
     return &line->routing_context.src_ctx;
 }
 
+/**
+ * @brief Access destination address context of a line.
+ *
+ * @param line Line instance.
+ * @return address_context_t* Destination address context.
+ */
 static inline address_context_t *lineGetDestinationAddressContext(line_t *const line)
 {
     return &line->routing_context.dest_ctx;
@@ -269,22 +347,57 @@ static inline address_context_t *lineGetDestinationAddressContext(line_t *const 
 typedef void (*LineTaskFnWithBuf)(tunnel_t *t, line_t *l, sbuf_t *buf);
 typedef void (*LineTaskFnNoBuf)(tunnel_t *t, line_t *l);
 
-/*
- *  Scheduling a task on line will be executed on next eventloop interation
+/**
+ * @brief Schedule a no-buffer task on the line's next event-loop iteration.
+ *
+ * @param line Target line.
+ * @param task Task callback.
+ * @param t Tunnel argument forwarded to callback.
  */
 void lineScheduleTask(line_t *const line, LineTaskFnNoBuf task, tunnel_t *t);
 
+/**
+ * @brief Schedule a task with a payload buffer on the line's worker loop.
+ *
+ * @param line Target line.
+ * @param task Task callback.
+ * @param t Tunnel argument forwarded to callback.
+ * @param buf Buffer argument forwarded to callback.
+ */
 void lineScheduleTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, tunnel_t *t, sbuf_t *buf);
 
-/*
- *  Scheduling a delayed task on line will be executed on the line's worker thread after at least delay_ms milliseconds
+/**
+ * @brief Schedule a delayed no-buffer task on the line's worker thread.
+ *
+ * @param line Target line.
+ * @param task Task callback.
+ * @param delay_ms Minimum delay before execution.
+ * @param t Tunnel argument forwarded to callback.
  */
 void lineScheduleDelayedTask(line_t *const line, LineTaskFnNoBuf task, uint32_t delay_ms, tunnel_t *t);
 
+/**
+ * @brief Schedule a delayed task with a buffer on the line's worker thread.
+ *
+ * @param line Target line.
+ * @param task Task callback.
+ * @param delay_ms Minimum delay before execution.
+ * @param t Tunnel argument forwarded to callback.
+ * @param buf Buffer argument forwarded to callback.
+ */
 void lineScheduleDelayedTaskWithBuf(line_t *const line, LineTaskFnWithBuf task, uint32_t delay_ms, tunnel_t *t,
                                     sbuf_t *buf);
 
 
+/**
+ * @brief Run a no-buffer task while holding a temporary line reference.
+ *
+ * @param line Target line.
+ * @param task Callback to execute.
+ * @param t Tunnel argument.
+ * @return true Line remains alive after callback.
+ * @return false Line was destroyed during callback.
+ */
 static inline bool withLineLocked(line_t *const line,LineTaskFnNoBuf task, tunnel_t *t)
 {
     lineLock(line);
@@ -299,6 +412,16 @@ static inline bool withLineLocked(line_t *const line,LineTaskFnNoBuf task, tunne
     return true;
 }
 
+/**
+ * @brief Run a buffered task while holding a temporary line reference.
+ *
+ * @param line Target line.
+ * @param task Callback to execute.
+ * @param t Tunnel argument.
+ * @param buf Buffer argument.
+ * @return true Line remains alive after callback.
+ * @return false Line was destroyed during callback.
+ */
 static inline bool withLineLockedWithBuf(line_t *const line,LineTaskFnWithBuf task, tunnel_t *t, sbuf_t *buf)
 {
     lineLock(line);

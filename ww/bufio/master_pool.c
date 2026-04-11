@@ -1,3 +1,7 @@
+/*
+ * Implements mutex-based master pool operations shared across worker pools.
+ */
+
 #include "master_pool.h"
 
 /**

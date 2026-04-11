@@ -1,3 +1,7 @@
+/*
+ * Implements FIFO queue operations for context_t pointers.
+ */
+
 #include "context_queue.h"
 #include "buffer_pool.h"
 #include "stc/common.h"

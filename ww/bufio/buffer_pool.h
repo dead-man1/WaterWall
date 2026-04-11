@@ -1,4 +1,9 @@
 #pragma once
+
+/*
+ * Growable two-tier buffer pool for large/small sbuf_t allocations.
+ */
+
 #include "master_pool.h"
 #include "generic_pool.h"
 #include "shiftbuffer.h"
@@ -41,6 +46,11 @@ typedef struct buffer_pool_s buffer_pool_t;
 buffer_pool_t *bufferpoolCreate(master_pool_t *mp_large, master_pool_t *mp_small, uint32_t bufcount,
                                 uint32_t large_buffer_size, uint32_t small_buffer_size);
 
+/**
+ * @brief Destroy a buffer pool and free all pooled buffers.
+ *
+ * @param pool Buffer pool instance.
+ */
 void bufferpoolDestroy(buffer_pool_t *pool);
 
 /**
@@ -79,6 +89,13 @@ void bufferpoolUpdateAllocationPaddings(buffer_pool_t *pool, uint16_t large_buff
  * @return The size of large buffers.
  */
 uint32_t bufferpoolGetLargeBufferSize(buffer_pool_t *pool);
+
+/**
+ * @brief Get configured left padding for large buffers.
+ *
+ * @param pool Buffer pool instance.
+ * @return uint16_t Left padding in bytes.
+ */
 uint16_t bufferpoolGetLargeBufferPadding(buffer_pool_t *pool);
 
 
@@ -88,6 +105,13 @@ uint16_t bufferpoolGetLargeBufferPadding(buffer_pool_t *pool);
  * @return The size of small buffers.
  */
 uint32_t bufferpoolGetSmallBufferSize(buffer_pool_t *pool);
+
+/**
+ * @brief Get configured left padding for small buffers.
+ *
+ * @param pool Buffer pool instance.
+ * @return uint16_t Left padding in bytes.
+ */
 uint16_t bufferpoolGetSmallBufferPadding(buffer_pool_t *pool);
 
 /**

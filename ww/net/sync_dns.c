@@ -1,4 +1,9 @@
 #include "sync_dns.h"
+
+/*
+ * Performs synchronous DNS resolution for domain-based address contexts.
+ */
+
 #include "loggers/dns_logger.h"
 #include "wlibc.h"
 #include "wsocket.h"

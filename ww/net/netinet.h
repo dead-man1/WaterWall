@@ -1,6 +1,10 @@
 #ifndef WW_NETINET_H_
 #define WW_NETINET_H_
 
+/*
+ * Lightweight network header structs and checksum helper used across tunnels.
+ */
+
 #include "wlibc.h"
 
 /*
@@ -176,6 +180,13 @@ typedef struct icmp_s {
 } icmp_t;
 //#endif
 
+/**
+ * @brief Compute a 16-bit one's-complement checksum over a buffer.
+ *
+ * @param buf Input bytes.
+ * @param len Number of bytes in the buffer.
+ * @return uint16_t Calculated checksum.
+ */
 static inline uint16_t checksum(uint8_t* buf, int len) {
     unsigned int sum = 0;
     uint16_t* ptr = (uint16_t*)buf;

@@ -1,5 +1,9 @@
 #include "line.h"
 
+/*
+ * Implements worker-thread task scheduling helpers for line-bound callbacks.
+ */
+
 #include "loggers/internal_logger.h"
 
 typedef struct line_task_msg_no_buf_s
@@ -24,6 +28,14 @@ typedef struct line_task_msg_with_buf_s
 static_assert(sizeof(line_task_msg_with_buf_t) == sizeof(worker_msg_t),
               "line_task_msg_with_buf_t size should match worker_msg_t size");
 
+/**
+ * @brief Execute a scheduled no-buffer line task on the worker thread.
+ *
+ * @param worker Worker context (unused).
+ * @param arg1 Line pointer.
+ * @param arg2 Packed task message.
+ * @param arg3 Unused.
+ */
 static void lineRunScheduledtaskNoBuf(worker_t *worker, void *arg1, void *arg2, void *arg3)
 {
     discard                 worker;
@@ -42,6 +54,14 @@ static void lineRunScheduledtaskNoBuf(worker_t *worker, void *arg1, void *arg2, 
     masterpoolReuseItems(GSTATE.masterpool_messages, (void **) &msg, 1, NULL);
 }
 
+/**
+ * @brief Execute a scheduled buffered line task on the worker thread.
+ *
+ * @param worker Worker context (unused).
+ * @param arg1 Line pointer.
+ * @param arg2 Packed task message.
+ * @param arg3 Unused.
+ */
 static void lineRunScheduledtaskWithBuf(worker_t *worker, void *arg1, void *arg2, void *arg3)
 {
     discard                   worker;

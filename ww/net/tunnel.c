@@ -1,4 +1,9 @@
 #include "tunnel.h"
+
+/*
+ * Implements tunnel binding, default flow forwarding, and tunnel lifecycle.
+ */
+
 #include "loggers/internal_logger.h"
 #include "managers/node_manager.h"
 

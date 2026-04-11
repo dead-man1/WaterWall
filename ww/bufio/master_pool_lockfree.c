@@ -1,5 +1,5 @@
 /**
- * @file master_pool.c
+ * @file master_pool_lockfree.c
  * @brief Implementation of the lock-free master object pool.
  */
 

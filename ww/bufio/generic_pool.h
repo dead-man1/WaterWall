@@ -1,4 +1,9 @@
 #pragma once
+
+/*
+ * Generic object pool with master-pool fallback and optional thread checks.
+ */
+
 #include "master_pool.h"
 #include "wlibc.h"
 #include "wthread.h"

@@ -1,4 +1,9 @@
 #include "pipe_tunnel.h"
+
+/*
+ * Implements pipe tunnel behavior for forwarding line events across workers.
+ */
+
 #include "context.h"
 #include "generic_pool.h"
 #include "loggers/internal_logger.h"
@@ -18,6 +23,12 @@ typedef struct pipetunnel_msg_event_s
 
 } pipetunnel_msg_event_t;
 
+/**
+ * @brief Return the parent tunnel that owns this piped child.
+ *
+ * @param t Child tunnel.
+ * @return tunnel_t* Parent tunnel.
+ */
 static tunnel_t *getParentTunnel(tunnel_t *t)
 {
     return t->prev;

@@ -1,3 +1,7 @@
+/*
+ * Implements sbuf creation, duplication, slicing, and concatenation routines.
+ */
+
 #include "shiftbuffer.h"
 #include "wlibc.h"
 

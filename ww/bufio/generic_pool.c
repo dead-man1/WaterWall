@@ -1,3 +1,7 @@
+/*
+ * Implements generic pooled allocation with master-pool fallback.
+ */
+
 #include "generic_pool.h"
 #include "global_state.h"
 
@@ -69,6 +73,16 @@ static void poolFirstCharge(generic_pool_t *pool)
     genericpoolReCharge(pool);
 }
 
+/**
+ * @brief Allocate and initialize a generic pool instance.
+ *
+ * @param mp Backing master pool.
+ * @param item_size Item size for default allocator mode.
+ * @param pool_width Requested pool width before internal scaling.
+ * @param create_h Item creation callback.
+ * @param destroy_h Item destruction callback.
+ * @return generic_pool_t* Initialized pool object.
+ */
 static generic_pool_t *allocateGenericPool(master_pool_t *mp, uint32_t item_size, uint32_t pool_width,
                                            PoolItemCreateHandle create_h, PoolItemDestroyHandle destroy_h)
 {

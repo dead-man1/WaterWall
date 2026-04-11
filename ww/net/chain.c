@@ -1,4 +1,9 @@
 #include "chain.h"
+
+/*
+ * Implements tunnel chain construction, finalization, merging, and teardown.
+ */
+
 #include "global_state.h"
 #include "line.h"
 #include "objects/node.h"

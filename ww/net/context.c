@@ -1,5 +1,9 @@
 #include "context.h"
 
+/*
+ * Dispatches context events to upstream or downstream tunnel callbacks.
+ */
+
 void contextApplyOnTunnelU(context_t *c, tunnel_t *t)
 {
     if (c->payload)

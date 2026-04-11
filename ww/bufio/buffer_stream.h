@@ -1,4 +1,9 @@
 #pragma once
+
+/*
+ * Stream-like container for staged reads over queued pooled buffers.
+ */
+
 #include "wlibc.h"
 
 #include "buffer_pool.h"

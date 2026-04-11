@@ -1,9 +1,19 @@
 #include "wlibc.h"
 
+/*
+ * SSE3-optimized checksum backend compatible with checksumDefault semantics.
+ */
 
 uint16_t checksumSSE3(const uint8_t *addr, uint16_t len, uint32_t csum);
 
-// Note: This function works internally in big endian
+/**
+ * @brief Compute checksum using SSE3 vectorized accumulation.
+ *
+ * @param addr Input bytes.
+ * @param len Number of bytes.
+ * @param csum Initial running sum seed.
+ * @return uint16_t One's-complement checksum in network byte order.
+ */
 uint16_t checksumSSE3(const uint8_t *addr, uint16_t len, uint32_t csum)
 {
     uint_fast64_t  acc;

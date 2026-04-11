@@ -1,5 +1,9 @@
 #include "wlibc.h"
 
+/*
+ * Portable checksum backend used when SIMD implementations are unavailable.
+ */
+
 
 extern uint16_t checksumDefault(const uint8_t *data, uint16_t len, uint32_t initial);
 
@@ -140,7 +144,14 @@ static uint16_t cChecksum(const uint8_t *data, uint16_t len, uint32_t initial)
     return lwip_htons(finalizeChecksum(sum));
 }
 
-// returns checksum in big endian
+/**
+ * @brief Compute checksum using the portable C implementation.
+ *
+ * @param data Input bytes.
+ * @param len Number of bytes.
+ * @param initial Initial running sum seed.
+ * @return uint16_t One's-complement checksum in network byte order.
+ */
 uint16_t checksumDefault(const uint8_t *data, uint16_t len, uint32_t initial)
 {
     return cChecksum(data, len, initial);

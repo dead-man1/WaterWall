@@ -1,5 +1,9 @@
 #pragma once
 
+/*
+ * sbuf_t API for padded, shiftable byte buffers used across bufio components.
+ */
+
 #include "wlibc.h"
 
 /*
@@ -32,7 +36,13 @@ typedef struct sbuf_s sbuf_t;
 
 static_assert(SIZEOF_STRUCT_SBUF == 32, "sbuf_s size should be 32 bytes, buf array is flexible");
 
-// Small byte-wise copy helper for unaligned, tiny copies to avoid calling memoryCopy
+/**
+ * @brief Copy a small byte range without relying on aligned copy routines.
+ *
+ * @param dst Destination memory.
+ * @param src Source memory.
+ * @param n Number of bytes to copy.
+ */
 static inline void sbufByteCopy(void *restrict dst, const void *restrict src, const uint32_t n)
 {
     uint8_t       *d = (uint8_t *) dst;
@@ -44,12 +54,16 @@ static inline void sbufByteCopy(void *restrict dst, const void *restrict src, co
 }
 
 /**
- * Destroys the shift buffer and frees its memory.
+ * @brief Destroy a non-temporary buffer and free its allocation.
+ *
+ * @param b Buffer to destroy.
  */
 void sbufDestroy(sbuf_t *b);
 
 /**
- * Resets the shift buffer to initial state for reuse.
+ * @brief Reset a buffer for pool reuse.
+ *
+ * @param b Buffer to reset.
  */
 static inline void sbufReset(sbuf_t *b)
 {
@@ -59,37 +73,63 @@ static inline void sbufReset(sbuf_t *b)
 }
 
 /**
- * Creates a new shift buffer with specified capacity and left padding.
+ * @brief Create a new buffer with explicit payload capacity and left padding.
+ *
+ * @param minimum_capacity Minimum payload capacity excluding left padding.
+ * @param pad_left Requested left padding in bytes.
+ * @return sbuf_t* Newly allocated buffer.
  */
 sbuf_t *sbufCreateWithPadding(uint32_t minimum_capacity, uint16_t pad_left);
 
 /**
- * Creates a new shift buffer with specified capacity.
+ * @brief Create a new buffer with zero left padding.
+ *
+ * @param minimum_capacity Minimum payload capacity.
+ * @return sbuf_t* Newly allocated buffer.
  */
 sbuf_t *sbufCreate(uint32_t minimum_capacity);
 
 /**
- * Concatenates two shift buffers.
+ * @brief Append one buffer's payload to another.
+ *
+ * @param root Destination buffer that receives data.
+ * @param buf Source buffer to append.
+ * @return sbuf_t* Destination buffer (may be reallocated).
  */
 sbuf_t *sbufConcat(sbuf_t *restrict root, const sbuf_t *restrict buf);
 
 /**
- * Moves data from source buffer to destination buffer.
+ * @brief Move bytes from source payload head into destination tail.
+ *
+ * @param dest Destination buffer.
+ * @param source Source buffer.
+ * @param bytes Number of bytes to move.
+ * @return sbuf_t* Destination buffer.
  */
 sbuf_t *sbufMoveTo(sbuf_t *restrict dest, sbuf_t *restrict source, uint32_t bytes);
 
 /**
- * Slices the buffer by specified number of bytes.
+ * @brief Extract a leading slice into a new buffer.
+ *
+ * @param b Source buffer.
+ * @param bytes Number of bytes to slice.
+ * @return sbuf_t* New buffer containing sliced bytes.
  */
 sbuf_t *sbufSlice(sbuf_t *b, uint32_t bytes);
 
 /**
- * Duplicates the shift buffer.
+ * @brief Duplicate a buffer including its padding configuration.
+ *
+ * @param b Source buffer.
+ * @return sbuf_t* New duplicated buffer.
  */
 sbuf_t *sbufDuplicate(sbuf_t *b);
 
 /**
- * Copy the full content of the buffer to a new buffer with exact capacity (no padding).
+ * @brief Copy payload and cursor layout into an existing destination buffer.
+ *
+ * @param b Source buffer.
+ * @param dest Destination buffer.
  */
 void sbufDuplicateTo(sbuf_t *b, sbuf_t *dest);
 
@@ -414,7 +454,10 @@ static inline void sbufWriteUI16(sbuf_t *const b, const uint16_t data)
 #ifdef DEBUG
 
 /**
- * Duplicates buffer and destroys original to catch use-after-free errors.
+ * @brief Duplicate and destroy a buffer in debug builds to catch stale usage.
+ *
+ * @param b Buffer to replace.
+ * @return sbuf_t* Duplicated replacement buffer.
  */
 static sbuf_t *debugBufferWontBeReused(sbuf_t *b)
 {

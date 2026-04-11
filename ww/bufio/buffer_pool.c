@@ -1,3 +1,7 @@
+/*
+ * Implements buffer pool allocation, reuse, and adaptive recharge/shrink logic.
+ */
+
 #include "buffer_pool.h"
 #include "loggers/internal_logger.h"
 #include "shiftbuffer.h"

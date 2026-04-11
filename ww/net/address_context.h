@@ -1,5 +1,9 @@
 #pragma once
 
+/*
+ * Unified address context utilities for IP/domain endpoints and protocol flags.
+ */
+
 #include "wlibc.h"
 #include "wsocket.h"
 
@@ -261,6 +265,13 @@ static inline bool addresscontextIsValid(const address_context_t *context)
     return addresscontextIsIp(context) || addresscontextIsDomain(context);
 }
 
+/**
+ * @brief Check whether a domain context has already been resolved to IP.
+ *
+ * @param context Address context to inspect.
+ * @return true Domain has a resolved IP.
+ * @return false Domain is not resolved yet.
+ */
 static inline bool addresscontextIsDomainResolved(const address_context_t *context)
 {
     return context->domain_resolved;
@@ -320,6 +331,12 @@ static inline void addresscontextAddrCopy(address_context_t *dest, const address
 // Address Conversion Functions
 // ============================================================================
 
+/**
+ * @brief Populate an address context from a sockaddr container.
+ *
+ * @param dest Destination context.
+ * @param src Source socket address.
+ */
 static inline void addresscontextFromSockAddr(address_context_t *dest, const sockaddr_u *src)
 {
 

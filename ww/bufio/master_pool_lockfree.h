@@ -1,9 +1,13 @@
 #pragma once
 
+/*
+ * Lock-free master pool API for cross-thread pooled object exchange.
+ */
+
 #include "wlibc.h"
 
 /**
- * @file master_pool.h
+ * @file master_pool_lockfree.h
  * @brief Lock-free implementation of a master object pool for sharing resources across worker threads.
  * 
  * The master pool provides a thread-safe way to allocate and recycle objects without

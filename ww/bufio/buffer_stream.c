@@ -1,3 +1,7 @@
+/*
+ * Implements queued stream-style reads over pooled sbuf_t buffers.
+ */
+
 #include "buffer_stream.h"
 #include "buffer_pool.h"
 #include "shiftbuffer.h"
