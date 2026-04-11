@@ -6,6 +6,33 @@
 #include "tricks/sniblender/trick.h"
 #include "tricks/tcpbitchange/trick.h"
 
+static bool parseTcpBitActionField(enum tcp_bit_action_dynamic_value *dest, const cJSON *settings, const char *key)
+{
+    dynamic_value_t action =
+        parseDynamicStrValueFromJsonObject(settings, key, 11, "off", "on", "toggle", "packet->cwr", "packet->ece",
+                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
+                                           "packet->fin");
+
+    if (action.status == kDvsConstant)
+    {
+        if (action.string != NULL && (stringCompare((const char *) action.string, "flip") == 0 ||
+                                      stringCompare((const char *) action.string, "switch") == 0))
+        {
+            *dest = kDvsToggle;
+            dynamicvalueDestroy(action);
+            return true;
+        }
+
+        LOGF("IpManipulator: settings->%s has invalid value", key);
+        dynamicvalueDestroy(action);
+        return false;
+    }
+
+    *dest = (enum tcp_bit_action_dynamic_value) action.status;
+    dynamicvalueDestroy(action);
+    return true;
+}
+
 tunnel_t *ipmanipulatorCreate(node_t *node)
 {
     tunnel_t *t = packettunnelCreate(node, sizeof(ipmanipulator_tstate_t), 0);
@@ -17,48 +44,42 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
     t->onDestroy  = &ipmanipulatorDestroy;
 
     ipmanipulator_tstate_t *state = tunnelGetState(t);
+    const cJSON            *settings = node->node_settings_json;
 
-    // these default values help identify if they are sot
     state->trick_proto_swap_tcp_number = -1;
+    state->trick_proto_swap_tcp_number_2 = -1;
     state->trick_proto_swap_udp_number = -1;
+    state->trick_proto_swap_tcp_toggle_up = 0;
+    state->trick_proto_swap_tcp_toggle_down = 0;
 
-    const cJSON *settings = node->node_settings_json;
+    bool has_proto_swap = false;
+    has_proto_swap |= getIntFromJsonObject(&state->trick_proto_swap_tcp_number, settings, "protoswap");
+    has_proto_swap |= getIntFromJsonObject(&state->trick_proto_swap_tcp_number, settings, "protoswap-tcp");
+    has_proto_swap |= getIntFromJsonObject(&state->trick_proto_swap_udp_number, settings, "protoswap-udp");
+    getIntFromJsonObjectOrDefault(&state->trick_proto_swap_tcp_number_2, settings, "protoswap-tcp-2", -1);
+    state->trick_proto_swap = has_proto_swap;
 
-    getIntFromJsonObjectOrDefault(&state->trick_proto_swap_tcp_number_2, settings, "protoswap-tcp-2",-1);
-
-    state->trick_proto_swap |= getIntFromJsonObject(&state->trick_proto_swap_tcp_number, settings, "protoswap");
-    state->trick_proto_swap |= getIntFromJsonObject(&state->trick_proto_swap_tcp_number, settings, "protoswap-tcp");
-    state->trick_proto_swap |= getIntFromJsonObject(&state->trick_proto_swap_udp_number, settings, "protoswap-udp");
-
-
-    if (state->trick_proto_swap)
-    {
-        t->fnPayloadU = &protoswaptrickUpStreamPayload;
-        t->fnPayloadD = &protoswaptrickDownStreamPayload;
-        return t;
-    }
-
-    bool proto_sni_blender_enabled = false;
-    getBoolFromJsonObject(&proto_sni_blender_enabled, settings, "sni-blender");
-    if (proto_sni_blender_enabled)
+    bool sni_blender_enabled = false;
+    getBoolFromJsonObject(&sni_blender_enabled, settings, "sni-blender");
+    if (sni_blender_enabled)
     {
         if (! getIntFromJsonObject(&state->trick_sni_blender_packets_count, settings, "sni-blender-packets"))
         {
-            LOGF("IpManipolator: sni-blender is enabled but field \"sni-blender-packets\" is not set");
+            LOGF("IpManipulator: sni-blender is enabled but field \"sni-blender-packets\" is not set");
             tunnelDestroy(t);
             return NULL;
         }
 
         if (state->trick_sni_blender_packets_count <= 0)
         {
-            LOGF("IpManipolator: sni-blender-packets cannot be negative number");
+            LOGF("IpManipulator: sni-blender-packets must be greater than zero");
             tunnelDestroy(t);
             return NULL;
         }
 
         if (state->trick_sni_blender_packets_count > kSniBlenderTrickMaxPacketsCount)
         {
-            LOGF("IpManipolator: sni-blender-packets cannot be more than %d", kSniBlenderTrickMaxPacketsCount);
+            LOGF("IpManipulator: sni-blender-packets cannot be more than %d", kSniBlenderTrickMaxPacketsCount);
             tunnelDestroy(t);
             return NULL;
         }
@@ -66,117 +87,47 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
         state->trick_sni_blender = true;
     }
 
-    if (state->trick_sni_blender)
+    bool tcp_parse_ok = true;
+    tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_cwr_action, settings, "up-tcp-bit-cwr");
+    tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_ece_action, settings, "up-tcp-bit-ece");
+    tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_urg_action, settings, "up-tcp-bit-urg");
+    tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_ack_action, settings, "up-tcp-bit-ack");
+    tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_psh_action, settings, "up-tcp-bit-psh");
+    tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_rst_action, settings, "up-tcp-bit-rst");
+    tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_syn_action, settings, "up-tcp-bit-syn");
+    tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_fin_action, settings, "up-tcp-bit-fin");
+
+    tcp_parse_ok &= parseTcpBitActionField(&state->down_tcp_bit_cwr_action, settings, "dw-tcp-bit-cwr");
+    tcp_parse_ok &= parseTcpBitActionField(&state->down_tcp_bit_ece_action, settings, "dw-tcp-bit-ece");
+    tcp_parse_ok &= parseTcpBitActionField(&state->down_tcp_bit_urg_action, settings, "dw-tcp-bit-urg");
+    tcp_parse_ok &= parseTcpBitActionField(&state->down_tcp_bit_ack_action, settings, "dw-tcp-bit-ack");
+    tcp_parse_ok &= parseTcpBitActionField(&state->down_tcp_bit_psh_action, settings, "dw-tcp-bit-psh");
+    tcp_parse_ok &= parseTcpBitActionField(&state->down_tcp_bit_rst_action, settings, "dw-tcp-bit-rst");
+    tcp_parse_ok &= parseTcpBitActionField(&state->down_tcp_bit_syn_action, settings, "dw-tcp-bit-syn");
+    tcp_parse_ok &= parseTcpBitActionField(&state->down_tcp_bit_fin_action, settings, "dw-tcp-bit-fin");
+
+    if (! tcp_parse_ok)
     {
-        t->fnPayloadU = &sniblendertrickUpStreamPayload;
-        t->fnPayloadD = &sniblendertrickDownStreamPayload;
-        return t;
+        tunnelDestroy(t);
+        return NULL;
     }
 
-    state->up_tcp_bit_cwr_action =
-        parseDynamicStrValueFromJsonObject(settings, "up-tcp-bit-cwr", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
+    state->trick_tcp_bit_changes =
+        (state->down_tcp_bit_cwr_action != kDvsNoAction || state->down_tcp_bit_ece_action != kDvsNoAction ||
+         state->down_tcp_bit_urg_action != kDvsNoAction || state->down_tcp_bit_ack_action != kDvsNoAction ||
+         state->down_tcp_bit_psh_action != kDvsNoAction || state->down_tcp_bit_rst_action != kDvsNoAction ||
+         state->down_tcp_bit_syn_action != kDvsNoAction || state->down_tcp_bit_fin_action != kDvsNoAction ||
+         state->up_tcp_bit_cwr_action != kDvsNoAction || state->up_tcp_bit_ece_action != kDvsNoAction ||
+         state->up_tcp_bit_urg_action != kDvsNoAction || state->up_tcp_bit_ack_action != kDvsNoAction ||
+         state->up_tcp_bit_psh_action != kDvsNoAction || state->up_tcp_bit_rst_action != kDvsNoAction ||
+         state->up_tcp_bit_syn_action != kDvsNoAction || state->up_tcp_bit_fin_action != kDvsNoAction);
 
-    state->up_tcp_bit_ece_action =
-        parseDynamicStrValueFromJsonObject(settings, "up-tcp-bit-ece", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-
-    state->up_tcp_bit_urg_action =
-        parseDynamicStrValueFromJsonObject(settings, "up-tcp-bit-urg", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->up_tcp_bit_ack_action =
-        parseDynamicStrValueFromJsonObject(settings, "up-tcp-bit-ack", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->up_tcp_bit_psh_action =
-        parseDynamicStrValueFromJsonObject(settings, "up-tcp-bit-psh", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->up_tcp_bit_rst_action =
-        parseDynamicStrValueFromJsonObject(settings, "up-tcp-bit-rst", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->up_tcp_bit_syn_action =
-        parseDynamicStrValueFromJsonObject(settings, "up-tcp-bit-syn", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->up_tcp_bit_fin_action =
-        parseDynamicStrValueFromJsonObject(settings, "up-tcp-bit-fin", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-
-    state->down_tcp_bit_cwr_action =
-        parseDynamicStrValueFromJsonObject(settings, "dw-tcp-bit-cwr", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-
-    state->down_tcp_bit_ece_action =
-        parseDynamicStrValueFromJsonObject(settings, "dw-tcp-bit-ece", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-
-    state->down_tcp_bit_urg_action =
-        parseDynamicStrValueFromJsonObject(settings, "dw-tcp-bit-urg", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->down_tcp_bit_ack_action =
-        parseDynamicStrValueFromJsonObject(settings, "dw-tcp-bit-ack", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->down_tcp_bit_psh_action =
-        parseDynamicStrValueFromJsonObject(settings, "dw-tcp-bit-psh", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->down_tcp_bit_rst_action =
-        parseDynamicStrValueFromJsonObject(settings, "dw-tcp-bit-rst", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->down_tcp_bit_syn_action =
-        parseDynamicStrValueFromJsonObject(settings, "dw-tcp-bit-syn", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-    state->down_tcp_bit_fin_action =
-        parseDynamicStrValueFromJsonObject(settings, "dw-tcp-bit-fin", 10, "off", "on", "packet->cwr", "packet->ece",
-                                           "packet->urg", "packet->ack", "packet->psh", "packet->rst", "packet->syn",
-                                           "packet->fin")
-            .status;
-
-    if (state->down_tcp_bit_cwr_action != kDvsNoAction || state->down_tcp_bit_ece_action != kDvsNoAction ||
-        state->down_tcp_bit_urg_action != kDvsNoAction || state->down_tcp_bit_ack_action != kDvsNoAction ||
-        state->down_tcp_bit_psh_action != kDvsNoAction || state->down_tcp_bit_rst_action != kDvsNoAction ||
-        state->down_tcp_bit_syn_action != kDvsNoAction || state->down_tcp_bit_fin_action != kDvsNoAction ||
-        state->up_tcp_bit_cwr_action != kDvsNoAction || state->up_tcp_bit_ece_action != kDvsNoAction ||
-        state->up_tcp_bit_urg_action != kDvsNoAction || state->up_tcp_bit_ack_action != kDvsNoAction ||
-        state->up_tcp_bit_psh_action != kDvsNoAction || state->up_tcp_bit_rst_action != kDvsNoAction ||
-        state->up_tcp_bit_syn_action != kDvsNoAction || state->up_tcp_bit_fin_action != kDvsNoAction
-
-    )
+    if (! (state->trick_proto_swap || state->trick_sni_blender || state->trick_tcp_bit_changes))
     {
-        state->trick_tcp_bit_changes = true;
-        t->fnPayloadU                = &tcpbitchangetrickUpStreamPayload;
-        t->fnPayloadD                = &tcpbitchangetrickDownStreamPayload;
-        return t;
+        LOGF("IpManipulator: no tricks are enabled, nothing to do");
+        tunnelDestroy(t);
+        return NULL;
     }
 
-    LOGF("IpManipolator : No tricks are enabled, nothing to do");
-    tunnelDestroy(t);
-    return NULL;
+    return t;
 }

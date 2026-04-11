@@ -7,6 +7,7 @@ enum tcp_bit_action_dynamic_value
     kDvsNoAction = kDvsEmpty,
     kDvsOff      = kDvsFirstOption,
     kDvsOn,
+    kDvsToggle,
     kDvsPacketCwr,
     kDvsPacketEce,
     kDvsPacketUrg,
@@ -25,6 +26,8 @@ typedef struct ipmanipulator_tstate_s
 
     int trick_proto_swap_tcp_number;
     int trick_proto_swap_tcp_number_2;
+    int trick_proto_swap_tcp_toggle_up;
+    int trick_proto_swap_tcp_toggle_down;
 
     int trick_proto_swap_udp_number;
 
