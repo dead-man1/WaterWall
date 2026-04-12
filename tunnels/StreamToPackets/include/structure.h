@@ -45,5 +45,8 @@ void streamtopacketsTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 void streamtopacketsTunnelDownStreamPause(tunnel_t *t, line_t *l);
 void streamtopacketsTunnelDownStreamResume(tunnel_t *t, line_t *l);
 
-void streamtopacketsLinestateInitialize(streamtopackets_lstate_t *ls);
+void streamtopacketsLinestateInitialize(streamtopackets_lstate_t *ls, buffer_pool_t *pool);
 void streamtopacketsLinestateDestroy(streamtopackets_lstate_t *ls);
+
+bool streamtopacketsReadStreamIsOverflowed(buffer_stream_t *read_stream);
+bool streamtopacketsTryReadIPv4Packet(buffer_stream_t *stream, sbuf_t **packet_out);

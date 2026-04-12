@@ -4,16 +4,20 @@
 
 void streamtopacketsTunnelUpStreamInit(tunnel_t *t, line_t *l)
 {
-    streamtopackets_lstate_t *ls = lineGetState(tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)), t);
-    
-    if(ls->line != NULL)
-    {
-        // this can happen and is ok, it means that the line already has a state
-        // LOGD("StreamToPackets: Upstream init called on a line that already has a state, the received packets will be sent to older line");
-        return;
-    }
-    ls->paused = false;
-    ls->line = l;
-    ls->read_stream = bufferstreamCreate(lineGetBufferPool(l), 0);
+    line_t                 *packet_line = tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l));
+    streamtopackets_lstate_t *ls        = lineGetState(packet_line, t);
 
+    if (ls->read_stream.pool == NULL)
+    {
+        streamtopacketsLinestateInitialize(ls, lineGetBufferPool(l));
+    }
+
+    if (ls->line != NULL && ls->line != l)
+    {
+        LOGW("StreamToPackets: replacing active upstream line on worker %u", (unsigned int) lineGetWID(l));
+        bufferstreamEmpty(&ls->read_stream);
+    }
+
+    ls->paused = false;
+    ls->line   = l;
 }

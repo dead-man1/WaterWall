@@ -4,8 +4,11 @@
 
 void streamtopacketsTunnelUpStreamPause(tunnel_t *t, line_t *l)
 {
+    line_t                 *packet_line = tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l));
+    streamtopackets_lstate_t *ls        = lineGetState(packet_line, t);
 
-    streamtopackets_lstate_t *ls = lineGetState(tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)), t);
-
-    ls->paused = true; // packets will be dropped till we resume
+    if (ls->line == l)
+    {
+        ls->paused = true;
+    }
 }

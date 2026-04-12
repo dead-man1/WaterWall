@@ -16,11 +16,15 @@
 #include "tunnels/PacketToConnection/include/interface.h"
 #endif
 
-#ifdef INCLUDE_PACKET_AS_DATA
+#ifdef INCLUDE__PACKETS_TO_STREAM
 #include "tunnels/PacketsToStream/include/interface.h"
 #endif
 
-#ifdef INCLUDE_DATA_AS_PACKET
+#ifdef INCLUDE_PACKET_SPLIT_STREAM
+#include "tunnels/PacketSplitStream/include/interface.h"
+#endif
+
+#ifdef INCLUDE_STREAM_TO_PACKETS
 #include "tunnels/StreamToPackets/include/interface.h"
 #endif
 
@@ -231,11 +235,15 @@ void loadImportedTunnelsIntoCore(void)
     USING(PacketToConnection);
 #endif
 
-#ifdef INCLUDE_PACKET_AS_DATA
+#ifdef INCLUDE__PACKETS_TO_STREAM
     USING(PacketsToStream);
 #endif
 
-#ifdef INCLUDE_DATA_AS_PACKET
+#ifdef INCLUDE_PACKET_SPLIT_STREAM
+    USING(PacketSplitStream);
+#endif
+
+#ifdef INCLUDE_STREAM_TO_PACKETS
     USING(StreamToPackets);
 #endif
 

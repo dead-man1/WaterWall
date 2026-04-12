@@ -4,7 +4,11 @@
 
 void packetstostreamTunnelDownStreamResume(tunnel_t *t, line_t *l)
 {
-    packetstostream_lstate_t *ls = lineGetState(tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)), t);
+    line_t                 *packet_line = tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l));
+    packetstostream_lstate_t *ls        = lineGetState(packet_line, t);
 
-    ls->paused = false;
+    if (ls->line == l)
+    {
+        ls->paused = false;
+    }
 }

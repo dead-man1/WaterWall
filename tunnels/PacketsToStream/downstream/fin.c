@@ -4,21 +4,22 @@
 
 void packetstostreamTunnelDownStreamFinish(tunnel_t *t, line_t *l)
 {
-    packetstostream_lstate_t *ls = lineGetState(tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)), t);
+    line_t                   *packet_line = tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l));
+    packetstostream_lstate_t *ls          = lineGetState(packet_line, t);
 
-    assert(ls->line);
-    assert(ls->line == l);
+    if (ls->line == l)
+    {
+        LOGD("PacketsToStream: got fin, recreating line");
+        lineDestroy(l);
+        ls->line   = NULL;
+        ls->paused = false;
 
-    LOGD("PacketsToStream: got fin, recreating line");
+        packetstostreamEnsureOutputLine(t, packet_line, ls);
+        return;
+    }
 
-    line_t *nl = lineCreate(tunnelchainGetLinePools(tunnelGetChain(t)), lineGetWID(l));
-
-    lineDestroy(ls->line);
-    ls->line = NULL;
-
-    ls->paused = false;
-    ls->line   = nl;
-    bufferstreamEmpty(&ls->read_stream);
-
-    tunnelNextUpStreamInit(t, nl);
+    if (lineIsAlive(l))
+    {
+        lineDestroy(l);
+    }
 }

@@ -135,8 +135,9 @@ endif()
 option(INCLUDE_TEMPLATE                 "link Template staticly to the core"             TRUE)
 option(INCLUDE_WIREGUARD_DEVICE         "link WireGuardDevice staticly to the core"      TRUE)
 option(INCLUDE_PACKET_TO_CONNECTION     "link PacketToConnection staticly to the core"   TRUE)
-option(INCLUDE_DATA_AS_PACKET           "link StreamToPackets staticly to the core"         TRUE)
-option(INCLUDE_PACKET_AS_DATA           "link PacketsToStream staticly to the core"         TRUE)
+option(INCLUDE_STREAM_TO_PACKETS           "link StreamToPackets staticly to the core"         TRUE)
+option(INCLUDE__PACKETS_TO_STREAM           "link PacketsToStream staticly to the core"         TRUE)
+option(INCLUDE_PACKET_SPLIT_STREAM      "link PacketSplitStream staticly to the core"       TRUE)
 option(INCLUDE_LAYER3_IP_ROUTING_TABLE  "link Layer3IpRoutingTable staticly to the core" FALSE)
 option(INCLUDE_IP_OVERRIDER             "link IpOverrider staticly to the core"          TRUE)
 option(INCLUDE_IP_MANIPULATOR           "link IPManipulator staticly to the core"        TRUE)
@@ -267,19 +268,27 @@ if(INCLUDE_PACKET_TO_CONNECTION)
 endif()
 
 #data as packet
-if(INCLUDE_DATA_AS_PACKET)
-  target_compile_definitions(Waterwall PUBLIC INCLUDE_DATA_AS_PACKET=1)
+if(INCLUDE_STREAM_TO_PACKETS)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_STREAM_TO_PACKETS=1)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/StreamToPackets)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/StreamToPackets)
   target_link_libraries(Waterwall StreamToPackets)
 endif()
 
 #packet as data
-if(INCLUDE_PACKET_AS_DATA)
-  target_compile_definitions(Waterwall PUBLIC INCLUDE_PACKET_AS_DATA=1)
+if(INCLUDE__PACKETS_TO_STREAM)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE__PACKETS_TO_STREAM=1)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/PacketsToStream)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/PacketsToStream)
   target_link_libraries(Waterwall PacketsToStream)
+endif()
+
+#packet split stream
+if(INCLUDE_PACKET_SPLIT_STREAM)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_PACKET_SPLIT_STREAM=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/PacketSplitStream)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/PacketSplitStream)
+  target_link_libraries(Waterwall PacketSplitStream)
 endif()
 
 #raw socket

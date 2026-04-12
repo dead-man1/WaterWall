@@ -4,17 +4,16 @@
 
 void packetstostreamTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
-    packetstostream_lstate_t *ls = (packetstostream_lstate_t *) lineGetState(l, t);
+    packetstostream_lstate_t *ls = lineGetState(l, t);
+    line_t                   *stream_line;
 
-    if (ls->line == NULL)
-    {
-        LOGF("PacketsToStream: in upstream we are supposed to have line");
-        terminateProgram(1);
-    }
-    if (ls->paused)
+    stream_line = packetstostreamEnsureOutputLine(t, l, ls);
+
+    if (stream_line == NULL || ls->paused)
     {
         lineReuseBuffer(l, buf);
         return;
     }
-    tunnelNextUpStreamPayload(t, ls->line, buf);
+
+    tunnelNextUpStreamPayload(t, stream_line, buf);
 }
