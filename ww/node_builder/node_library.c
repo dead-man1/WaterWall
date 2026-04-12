@@ -159,23 +159,34 @@ static void dynCloseLibrary(void *lib_handle)
 }
 
 /**
- * @brief Resolve a symbol from a dynamic library handle.
+ * @brief Resolve a symbol from a dynamic library handle into caller storage.
  *
  * @param lib_handle Library handle.
  * @param symbol_name Symbol to resolve.
- * @return void* Symbol address, or NULL.
+ * @param out_symbol Destination for the resolved symbol bytes.
+ * @param out_symbol_size Size of @p out_symbol in bytes.
+ * @return true Symbol resolved and copied into caller storage.
+ * @return false Input invalid or symbol not found.
  */
-static void *dynGetSymbol(void *lib_handle, const char *symbol_name)
+static bool dynGetSymbol(void *lib_handle, const char *symbol_name, void *out_symbol, size_t out_symbol_size)
 {
-    if (lib_handle == NULL || symbol_name == NULL || *symbol_name == '\0')
+    if (lib_handle == NULL || symbol_name == NULL || *symbol_name == '\0' || out_symbol == NULL || out_symbol_size == 0)
     {
-        return NULL;
+        return false;
     }
 #ifdef OS_WIN
-    return (void *) GetProcAddress((HMODULE) lib_handle, symbol_name);
+    FARPROC symbol_addr = GetProcAddress((HMODULE) lib_handle, symbol_name);
 #else
-    return dlsym(lib_handle, symbol_name);
+    void *symbol_addr = dlsym(lib_handle, symbol_name);
 #endif
+
+    if (symbol_addr == NULL)
+    {
+        return false;
+    }
+
+    memoryCopy(out_symbol, &symbol_addr, out_symbol_size);
+    return true;
 }
 
 /**
@@ -208,15 +219,10 @@ static node_get_fn dynResolveNodeGetter(void *lib_handle, hash_t htype)
 
     for (size_t i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++)
     {
-        void *symbol_addr = dynGetSymbol(lib_handle, symbols[i]);
-        if (symbol_addr != NULL)
+        node_get_fn getter = NULL;
+        if (dynGetSymbol(lib_handle, symbols[i], &getter, sizeof(getter)) && getter != NULL)
         {
-            node_get_fn getter = NULL;
-            memoryCopy(&getter, &symbol_addr, sizeof(getter));
-            if (getter != NULL)
-            {
-                return getter;
-            }
+            return getter;
         }
     }
     return NULL;
