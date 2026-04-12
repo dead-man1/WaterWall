@@ -13,10 +13,7 @@ void packetstostreamTunnelDestroy(tunnel_t *t)
             line_t                  *packet_line = tunnelchainGetWorkerPacketLine(chain, wi);
             packetstostream_lstate_t *ls         = lineGetState(packet_line, t);
 
-            if (ls->line != NULL && lineIsAlive(ls->line))
-            {
-                lineDestroy(ls->line);
-            }
+       
 
             if (ls->read_stream.pool != NULL)
             {
