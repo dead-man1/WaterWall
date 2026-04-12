@@ -1,4 +1,5 @@
 #include "wevent.h"
+#include "global_state.h"
 #include "loggers/internal_logger.h"
 #include "watomic.h"
 #include "werr.h"
@@ -206,7 +207,7 @@ void wioFree(wio_t *io)
     wioClose(io);
     EVENTLOOP_FREE(io->localaddr);
     EVENTLOOP_FREE(io->peeraddr);
-    genericpoolReuseItem(getWorkerWiosPool(io->loop->wid), io);
+    threadsafegenericpoolReuseItem(getWorkerWiosPool(io->loop->wid), io);
 }
 
 bool wioIsOpened(wio_t *io)

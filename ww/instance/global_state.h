@@ -4,6 +4,7 @@
 
 #include "buffer_pool.h"
 #include "generic_pool.h"
+#include "threadsafe_generic_pool.h"
 #include "wloop.h"
 #include "worker.h"
 
@@ -29,52 +30,52 @@ typedef void (*WorkerMessageCalback)(void *, void *, void *, void *);
 typedef struct worker_msg_s
 {
     WorkerMessageCalback callback;
-    void                 *arg1;
-    void                 *arg2;
-    void                 *arg3;
+    void                *arg1;
+    void                *arg2;
+    void                *arg3;
 } worker_msg_t;
 
 typedef struct ww_global_state_s
 {
-    wloop_t                  **shortcut_loops;
-    buffer_pool_t            **shortcut_buffer_pools;
-    generic_pool_t           **shortcut_wios_pools;
-    generic_pool_t           **shortcut_context_pools;
-    generic_pool_t           **shortcut_pipetunnel_msg_pools;
-    master_pool_t             *masterpool_buffer_pools_large;
-    master_pool_t             *masterpool_buffer_pools_small;
-    master_pool_t             *masterpool_wios;
-    master_pool_t             *masterpool_context_pools;
-    master_pool_t             *masterpool_pipetunnel_msg_pools;
-    master_pool_t             *masterpool_messages;
-    worker_t                  *workers;
-    struct signal_manager_s   *signal_manager;
-    struct socket_manager_s   *socekt_manager;
-    struct node_manager_s     *node_manager;
-    struct logger_s           *core_logger;
-    struct logger_s           *network_logger;
-    struct logger_s           *dns_logger;
-    struct logger_s           *internal_logger;
-    struct dedicated_memory_s *openssl_dedicated_memory;
-    LwipV4Hook                 lwip_process_v4_hook;
-    void                      *wintun_dll_handle;
-    void                      *windivert_dll_handle;
-    uint32_t                   workers_count;
-    uint32_t                   ram_profile;
-    uint64_t                   main_thread_id;
-    wid_t                      lwip_wid;
-    atomic_wid_t               distribute_wid;
-    uint16_t                   buffer_allocation_padding;
-    uint16_t                   capturedevice_queue_start_number;
-    uint16_t                   mtu_size;
-    uint8_t                    flag_initialized : 1;
-    uint8_t                    flag_buffers_calculated : 1;
-    uint8_t                    flag_tundev_windows_initialized : 1;
-    uint8_t                    flag_openssl_initialized : 1;
-    uint8_t                    flag_libsodium_initialized : 1;
-    uint8_t                    flag_lwip_initialized : 1;
-    atomic_bool                application_stopping_flag; // prevent threads sending messages to each other
-    atomic_bool                workers_run_flag;          // main thread sets this to true when it started its loop
+    wloop_t                   **shortcut_loops;
+    buffer_pool_t             **shortcut_buffer_pools;
+    threadsafe_generic_pool_t **shortcut_wios_pools;
+    generic_pool_t            **shortcut_context_pools;
+    generic_pool_t            **shortcut_pipetunnel_msg_pools;
+    master_pool_t              *masterpool_buffer_pools_large;
+    master_pool_t              *masterpool_buffer_pools_small;
+    master_pool_t              *masterpool_wios;
+    master_pool_t              *masterpool_context_pools;
+    master_pool_t              *masterpool_pipetunnel_msg_pools;
+    master_pool_t              *masterpool_messages;
+    worker_t                   *workers;
+    struct signal_manager_s    *signal_manager;
+    struct socket_manager_s    *socekt_manager;
+    struct node_manager_s      *node_manager;
+    struct logger_s            *core_logger;
+    struct logger_s            *network_logger;
+    struct logger_s            *dns_logger;
+    struct logger_s            *internal_logger;
+    struct dedicated_memory_s  *openssl_dedicated_memory;
+    LwipV4Hook                  lwip_process_v4_hook;
+    void                       *wintun_dll_handle;
+    void                       *windivert_dll_handle;
+    uint32_t                    workers_count;
+    uint32_t                    ram_profile;
+    uint64_t                    main_thread_id;
+    wid_t                       lwip_wid;
+    atomic_wid_t                distribute_wid;
+    uint16_t                    buffer_allocation_padding;
+    uint16_t                    capturedevice_queue_start_number;
+    uint16_t                    mtu_size;
+    uint8_t                     flag_initialized : 1;
+    uint8_t                     flag_buffers_calculated : 1;
+    uint8_t                     flag_tundev_windows_initialized : 1;
+    uint8_t                     flag_openssl_initialized : 1;
+    uint8_t                     flag_libsodium_initialized : 1;
+    uint8_t                     flag_lwip_initialized : 1;
+    atomic_bool                 application_stopping_flag; // prevent threads sending messages to each other
+    atomic_bool                 workers_run_flag;          // main thread sets this to true when it started its loop
 
 } ww_global_state_t;
 
@@ -150,7 +151,7 @@ static inline buffer_pool_t *getWorkerBufferPool(wid_t wid)
  * @param wid The worker ID.
  * @return A pointer to the Wios pool.
  */
-static inline generic_pool_t *getWorkerWiosPool(wid_t wid)
+static inline threadsafe_generic_pool_t *getWorkerWiosPool(wid_t wid)
 {
     return GSTATE.shortcut_wios_pools[wid];
 }
@@ -266,11 +267,8 @@ WW_EXPORT void initTcpIpStack(void);
  */
 WW_EXPORT void destroyGlobalState(void);
 
-
-
 /**
  * Recycles a buffer by returning it to the appropriate pool based on its size, and worker id.
  * @param b The buffer to recycle.
  */
 WW_EXPORT void reuseBuffer(sbuf_t *b);
-

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "generic_pool.h"
+#include "threadsafe_generic_pool.h"
 #include "watomic.h"
 #include "wlibc.h"
 #include "wloop.h"
@@ -14,9 +14,13 @@ typedef _Atomic(wid_t) atomic_wid_t;
  */
 typedef struct worker_s
 {
+
+    // Thread-safe pool for managing WIO objects.
+    // functions like wloopPostEvent allocate WIO from target wid loop.
+    threadsafe_generic_pool_t *wios_pool;
+
     wloop_t        *loop;                // Event loop associated with the worker.
     buffer_pool_t  *buffer_pool;         // Buffer pool for managing memory buffers.
-    generic_pool_t *wios_pool;           // Generic pool for managing WIO objects.
     generic_pool_t *context_pool;        // Generic pool for managing context objects.
     generic_pool_t *pipetunnel_msg_pool; // Generic pool for managing pipe tunnel messages.
     wthread_t       thread;              // Thread associated with the worker.

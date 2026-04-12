@@ -883,7 +883,7 @@ wio_t *wioGet(wloop_t *loop, int fd)
     wio_t *io = __wio_get(loop, fd);
     if (io == NULL)
     {
-        io = genericpoolGetItem(getWorkerWiosPool(loop->wid));
+        io = threadsafegenericpoolGetItem(getWorkerWiosPool(loop->wid));
         memoryZero(io, sizeof(wio_t));
         wioInit(io);
         io->event_type    = WEVENT_TYPE_IO;
@@ -1164,16 +1164,16 @@ wio_t *wioCreateSocket(wloop_t *loop, const char *host, int port, wio_type_e typ
 
     if (type == WIO_TYPE_UDP)
     {
-        int size = 4 * 1024 * 1024; // 4MB
+        int size   = 4 * 1024 * 1024; // 4MB
         int so_ret = socketOptionSendBuf(sockfd, size);
-        if(so_ret != 0)
+        if (so_ret != 0)
         {
             printError("set socket send buffer failed, call: setsockopt , value: %d\n", so_ret);
             closesocket(sockfd);
             return NULL;
         }
         so_ret = socketOptionRecvBuf(sockfd, size);
-        if(so_ret != 0)
+        if (so_ret != 0)
         {
             printError("set socket recv buffer failed, call: setsockopt , value: %d\n", so_ret);
             closesocket(sockfd);

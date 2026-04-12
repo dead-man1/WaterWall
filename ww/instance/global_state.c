@@ -74,7 +74,7 @@ static void initializeShortCuts(void)
 
     GSTATE.shortcut_loops                = (wloop_t **) (space + (0 * total_workers));
     GSTATE.shortcut_buffer_pools         = (buffer_pool_t **) (space + (1 * total_workers));
-    GSTATE.shortcut_wios_pools           = (generic_pool_t **) (space + (2 * total_workers));
+    GSTATE.shortcut_wios_pools           = (threadsafe_generic_pool_t **) (space + (2 * total_workers));
     GSTATE.shortcut_context_pools        = (generic_pool_t **) (space + (3 * total_workers));
     GSTATE.shortcut_pipetunnel_msg_pools = (generic_pool_t **) (space + (4 * total_workers));
 
@@ -417,11 +417,7 @@ void sendWorkerMessageTimed(wid_t wid, WorkerMessageCalback cb, uint32_t delay_m
     worker_msg_t *queue_msg;
     masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(queue_msg), 1, NULL);
     *queue_msg = (worker_msg_t) {
-        .callback = (WorkerMessageCalback) setupTimedTask,
-        .arg1     = (void *) delay_ms_uiptr,
-        .arg2     = msg,
-        .arg3     = NULL
-    };
+        .callback = (WorkerMessageCalback) setupTimedTask, .arg1 = (void *) delay_ms_uiptr, .arg2 = msg, .arg3 = NULL};
 
     wevent_t ev;
     memorySet(&ev, 0, sizeof(ev));

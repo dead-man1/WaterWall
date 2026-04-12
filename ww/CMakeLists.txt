@@ -56,6 +56,7 @@ add_library(ww STATIC
     bufio/context_queue.c
     bufio/buffer_queue.c
     bufio/generic_pool.c
+    bufio/threadsafe_generic_pool.c
     bufio/master_pool.c
     bufio/shiftbuffer.c
     
