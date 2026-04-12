@@ -215,6 +215,48 @@ typedef struct WaitQ
 
 #endif
 
+#ifdef COMPILER_MSVC
+inline static Thr *atomicLoadThrPtr(Thr *const *p, memory_order order)
+{
+    return (Thr *) atomicLoadExplicit((intptr_t *) p, order);
+}
+
+inline static void atomicStoreThrPtr(Thr **p, Thr *v, memory_order order)
+{
+    atomicStoreExplicit((intptr_t *) p, (intptr_t) v, order);
+}
+
+inline static void *atomicLoadVoidPtr(void *const *p, memory_order order)
+{
+    return (void *) atomicLoadExplicit((intptr_t *) p, order);
+}
+
+inline static void atomicStoreVoidPtr(void **p, void *v, memory_order order)
+{
+    atomicStoreExplicit((intptr_t *) p, (intptr_t) v, order);
+}
+#else
+inline static Thr *atomicLoadThrPtr(_Atomic(Thr *) *p, memory_order order)
+{
+    return atomicLoadExplicit(p, order);
+}
+
+inline static void atomicStoreThrPtr(_Atomic(Thr *) *p, Thr *v, memory_order order)
+{
+    atomicStoreExplicit(p, v, order);
+}
+
+inline static void *atomicLoadVoidPtr(_Atomic(void *) *p, memory_order order)
+{
+    return atomicLoadExplicit(p, order);
+}
+
+inline static void atomicStoreVoidPtr(_Atomic(void *) *p, void *v, memory_order order)
+{
+    atomicStoreExplicit(p, v, order);
+}
+#endif
+
 typedef MSVC_ATTR_ALIGNED_LINE_CACHE struct wchan_s
 {
     // These fields don't change after wchan_Open
@@ -288,25 +330,25 @@ inline static void thr_wait(Thr *t)
 static void wq_enqueue(WaitQ *wq, Thr *t)
 {
     // note: atomic loads & stores for cache reasons, not thread safety; c->lock is held.
-    if (atomicLoadExplicit((_Atomic(Thr *)*)&wq->first, memory_order_acquire))
+    if (atomicLoadThrPtr(&wq->first, memory_order_acquire))
     {
         // Note: compare first instead of last as we don't clear wq->last in wq_dequeue
-        ((Thr*)atomicLoadExplicit((_Atomic(Thr *)*)&wq->last, memory_order_acquire))->next = t;        
+        atomicLoadThrPtr(&wq->last, memory_order_acquire)->next = t;
     }
     else
     {
-        atomicStoreExplicit((_Atomic(Thr *)*)&wq->first, t, memory_order_release);
+        atomicStoreThrPtr(&wq->first, t, memory_order_release);
     }
-    atomicStoreExplicit((_Atomic(Thr *)*)&wq->last, t, memory_order_release);
+    atomicStoreThrPtr(&wq->last, t, memory_order_release);
 }
 
 // Dequeues one waiting participant from a channel wait queue.
 static inline Thr *wq_dequeue(WaitQ *wq)
 {
-    Thr *t = atomicLoadExplicit((_Atomic(Thr *)*)&wq->first, memory_order_acquire);
+    Thr *t = atomicLoadThrPtr(&wq->first, memory_order_acquire);
     if (t)
     {
-        atomicStoreExplicit((_Atomic(Thr *)*)&wq->first, t->next, memory_order_release);
+        atomicStoreThrPtr(&wq->first, t->next, memory_order_release);
         t->next = NULL;
         // Note: intentionally not clearing wq->last in case wq->first==wq->last as we can
         // avoid that branch by not checking wq->last in wq_enqueue.
@@ -325,7 +367,7 @@ static Thr *chan_park(wchan_t *c, WaitQ *wq, void *elemptr)
 {
     // caller must hold lock on channel that owns wq
     Thr *t = thr_current();
-    atomicStoreExplicit((_Atomic(void *)*)&t->elemptr, elemptr, memory_order_relaxed);
+    atomicStoreVoidPtr(&t->elemptr, elemptr, memory_order_relaxed);
     // dlog_chan("park: elemptr %p", elemptr);
     wq_enqueue(wq, t);
     chan_unlock(&c->lock);
@@ -338,7 +380,7 @@ inline static bool chan_full(wchan_t *c)
     // c.qcap is immutable (never written after the channel is created)
     // so it is safe to read at any time during channel operation.
     if (c->qcap == 0)
-        return atomicLoadExplicit((_Atomic(Thr *)*)&c->recvq.first, memory_order_relaxed) == NULL;
+        return atomicLoadThrPtr(&c->recvq.first, memory_order_relaxed) == NULL;
     return atomicLoadExplicit(&c->qlen, memory_order_relaxed) == c->qcap;
 }
 
@@ -351,12 +393,12 @@ static bool chan_send_direct(wchan_t *c, void *srcelemptr, Thr *recvt)
     // wchan_nel c must be empty and locked. This function unlocks c with chan_unlock.
     // recvt must already be dequeued from c.
 
-    void *dstelemptr = atomicLoadExplicit((_Atomic(void *)*)&recvt->elemptr, memory_order_acquire);
+    void *dstelemptr = atomicLoadVoidPtr(&recvt->elemptr, memory_order_acquire);
     assert(dstelemptr != NULL);
     // dlog_send("direct send of srcelemptr %p to [%zu] (dstelemptr %p)", srcelemptr, recvt->id, dstelemptr);
     //  store to address provided with chan_recv call
     memoryCopy(dstelemptr, srcelemptr, c->elemsize);
-    atomicStoreExplicit((_Atomic(void *)*)&recvt->elemptr, NULL, memory_order_relaxed); // clear pointer (TODO: is this really needed?)
+    atomicStoreVoidPtr(&recvt->elemptr, NULL, memory_order_relaxed); // clear pointer (TODO: is this really needed?)
 
     chan_unlock(&c->lock);
     thr_signal(recvt); // wake up chan_recv caller
@@ -453,7 +495,7 @@ inline static bool chan_empty(wchan_t *c)
 {
     // Note: qcap is immutable
     if (c->qcap == 0)
-        return atomicLoadExplicit((_Atomic(Thr *)*)&c->sendq.first, memory_order_relaxed) == NULL;
+        return atomicLoadThrPtr(&c->sendq.first, memory_order_relaxed) == NULL;
     return atomicLoadExplicit(&c->qlen, memory_order_relaxed) == 0;
 }
 
@@ -600,7 +642,7 @@ static bool chan_recv_direct(wchan_t *c, void *dstelemptr, Thr *sendert)
     if (atomicLoadExplicit(&c->qlen, memory_order_relaxed) == 0)
     {
         // Copy data from sender
-        void *srcelemptr = atomicLoadExplicit((_Atomic(void *)*)&sendert->elemptr, memory_order_consume);
+        void *srcelemptr = atomicLoadVoidPtr(&sendert->elemptr, memory_order_consume);
         // dlog_recv("direct recv of srcelemptr %p from [%zu] (dstelemptr %p, buffer empty)", srcelemptr, sendert->id,
         // dstelemptr);
         assert(srcelemptr != NULL);
@@ -633,7 +675,7 @@ static bool chan_recv_direct(wchan_t *c, void *dstelemptr, Thr *sendert)
         // dlog_recv("dequeue srcelemptr %p from buf[%u]", bufelemptr, i);
 
         // copy *sendert->elemptr -> c->buf[i]
-        void *srcelemptr = atomicLoadExplicit((_Atomic(void *)*)&sendert->elemptr, memory_order_consume);
+        void *srcelemptr = atomicLoadVoidPtr(&sendert->elemptr, memory_order_consume);
         assert(srcelemptr != NULL);
         memoryCopy(bufelemptr, srcelemptr, c->elemsize);
         // dlog_recv("enqueue srcelemptr %p to buf[%u]", srcelemptr, i);
@@ -702,7 +744,7 @@ void chanClose(wchan_t *c)
     }
     atomic_thread_fence(memory_order_seq_cst);
 
-    Thr *t = atomicLoadExplicit((_Atomic(Thr *)*)&c->recvq.first, memory_order_acquire);
+    Thr *t = atomicLoadThrPtr(&c->recvq.first, memory_order_acquire);
     while (t)
     {
         // dlog_chan("close: wake recv [%zu]", t->id);
@@ -712,7 +754,7 @@ void chanClose(wchan_t *c)
         t = next;
     }
 
-    t = atomicLoadExplicit((_Atomic(Thr *)*)&c->sendq.first, memory_order_acquire);
+    t = atomicLoadThrPtr(&c->sendq.first, memory_order_acquire);
     while (t)
     {
         // dlog_chan("close: wake send [%zu]", t->id);
