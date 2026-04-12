@@ -26,10 +26,6 @@ void contextqueueDestroy(context_queue_t *self)
 {
     c_foreach(i, ww_context_queue_t, self->q)
     {
-        if ((*i.ref)->payload != NULL)
-        {
-            contextReusePayload(*i.ref);
-        }
         contextDestroy((*i.ref));
     }
 

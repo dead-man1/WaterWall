@@ -229,8 +229,9 @@ static inline void contextDestroy(context_t *c)
     {
         contextReusePayload(c);
     }
+    wid_t wid = lineGetWID(contextGetLine(c));
     lineUnlock(c->line);
-    genericpoolReuseItem(getWorkerContextPool(lineGetWID(contextGetLine(c))), c);
+    genericpoolReuseItem(getWorkerContextPool(wid), c);
 }
 
 /**
