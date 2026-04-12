@@ -158,17 +158,23 @@ static void validateTunnelChains(tunnel_t **t_array, int tunnels_count)
 }
 
 /**
- * @brief Invoke preparation callback for all tunnels.
+ * @brief Invoke preparation callback for every tunnel in every finalized chain.
  *
- * @param t_array Tunnel instance array.
- * @param tunnels_count Number of tunnel instances.
+ * @param cfg Node manager config.
  */
-static void prepareTunnels(tunnel_t **t_array, int tunnels_count)
+static void prepareTunnels(node_manager_config_t *cfg)
 {
-    for (int i = 0; i < tunnels_count; i++)
+    c_foreach(chain, vec_chains_t, cfg->chains)
     {
-        assert(t_array[i] != NULL);
-        t_array[i]->onPrepare(t_array[i]);
+        tunnel_chain_t *tunnel_chain = *chain.ref;
+        assert(tunnel_chain != NULL);
+
+        for (uint16_t i = 0; i < tunnel_chain->tunnels.len; i++)
+        {
+            tunnel_t *tunnel = tunnel_chain->tunnels.tuns[i];
+            assert(tunnel != NULL);
+            tunnel->onPrepare(tunnel);
+        }
     }
 }
 
@@ -241,7 +247,7 @@ static void runNodes(node_manager_config_t *cfg)
     assignChainsToTunnels(t_array, tunnels_count);
     finalizeTunnelChains(cfg, t_array, tunnels_count);
     validateTunnelChains(t_array, tunnels_count);
-    prepareTunnels(t_array, tunnels_count);
+    prepareTunnels(cfg);
     startTunnels(t_array, tunnels_count);
     initializePacketTunnels(t_array, tunnels_count);
 }
