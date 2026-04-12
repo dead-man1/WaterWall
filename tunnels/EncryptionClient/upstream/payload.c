@@ -44,21 +44,13 @@ void encryptionclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
     uint32_t ciphertext_len = plaintext_len + kEncryptionTagSize;
     uint32_t frame_len      = kEncryptionFramePrefixSize + ciphertext_len;
-    uint32_t tail_growth    = ciphertext_len - plaintext_len;
 
-    if (sbufGetMaximumWriteableSize(buf) < tail_growth)
+    if (sbufGetMaximumWriteableSize(buf) < ciphertext_len)
     {
-        buf = sbufReserveSpace(buf, tail_growth);
+        buf = sbufReserveSpace(buf, ciphertext_len);
     }
 
-    if (sbufGetLeftCapacity(buf) < kEncryptionFramePrefixSize)
-    {
-        sbuf_t *framed = sbufCreateWithPadding(plaintext_len + tail_growth, kEncryptionFramePrefixSize);
-        sbufSetLength(framed, plaintext_len);
-        sbufWriteBuf(framed, buf, plaintext_len);
-        lineReuseBuffer(l, buf);
-        buf = framed;
-    }
+    assert(sbufGetLeftCapacity(buf) >= kEncryptionFramePrefixSize);
 
     sbufShiftLeft(buf, kEncryptionFramePrefixSize);
 

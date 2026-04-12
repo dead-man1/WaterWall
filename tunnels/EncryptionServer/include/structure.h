@@ -21,7 +21,6 @@ typedef struct encryptionserver_lstate_s
     buffer_stream_t read_stream;
     bool            next_finished;
     bool            prev_finished;
-    bool            initialized;
 } encryptionserver_lstate_t;
 
 enum
