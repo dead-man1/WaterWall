@@ -47,16 +47,72 @@ static void wireguardifSendHandshakeCookie(wireguard_device_t *device, const uin
 
     // Send this packet out!
     buf = bufferpoolGetSmallBuffer(getWorkerBufferPool(getWID()));
-
-    sbufSetLength(buf, sizeof(message_cookie_reply_t));
-    sbufWrite(buf, &packet, sizeof(message_cookie_reply_t));
-    wireguardifDeviceOutput(device, buf, addr, port);
+    if (buf != NULL)
+    {
+        sbufSetLength(buf, sizeof(message_cookie_reply_t));
+        sbufWrite(buf, &packet, sizeof(message_cookie_reply_t));
+        wireguardifDeviceOutput(device, buf, addr, port);
+    }
 }
 
 static void updatePeerAddr(wireguard_peer_t *peer, const ip_addr_t *addr, uint16_t port)
 {
     peer->ip   = *addr;
     peer->port = port;
+}
+
+static bool wireguarddeviceGetPlaintextPacketMetadata(const sbuf_t *buf, ip_addr_t *source, uint16_t *packet_len)
+{
+    const uint8_t *data = sbufGetRawPtr(buf);
+    uint32_t       len  = sbufGetLength(buf);
+    uint8_t        version;
+
+    if (len < sizeof(ip4_hdr_t))
+    {
+        return false;
+    }
+
+    version = IP_HDR_GET_VERSION(data);
+
+    if (version == 4)
+    {
+        const ip4_hdr_t *iphdr          = (const ip4_hdr_t *) data;
+        uint16_t         total_len      = PP_NTOHS(IPH_LEN(iphdr));
+        uint16_t         minimum_header = (uint16_t) (IPH_HL_BYTES(iphdr));
+
+        if ((minimum_header < sizeof(ip4_hdr_t)) || (total_len < minimum_header) || (total_len > len))
+        {
+            return false;
+        }
+
+        ipAddrCopyFromIp4(*source, iphdr->src);
+        *packet_len = total_len;
+        return true;
+    }
+
+    if (version == 6)
+    {
+        if (len < sizeof(ip6_hdr_t))
+        {
+            return false;
+        }
+
+        const ip6_hdr_t *ip6hdr    = (const ip6_hdr_t *) data;
+        ip6_addr_t       src_addr;
+        uint16_t         total_len = (uint16_t) (sizeof(ip6_hdr_t) + PP_NTOHS(ip6hdr->_plen));
+
+        if ((total_len < sizeof(ip6_hdr_t)) || (total_len > len))
+        {
+            return false;
+        }
+
+        memoryCopy(&src_addr, &ip6hdr->src, sizeof(src_addr));
+        ipAddrCopyFromIp6(*source, src_addr);
+        *packet_len = total_len;
+        return true;
+    }
+
+    return false;
 }
 
 static void wireguardifProcessDataMessage(wireguard_device_t *device, wireguard_peer_t *peer,
@@ -68,12 +124,9 @@ static void wireguardifProcessDataMessage(wireguard_device_t *device, wireguard_
     uint8_t             *src;
     uint32_t             src_len;
     sbuf_t              *buf = NULL;
-    ip4_hdr_t           *iphdr;
-    ip_addr_t            dest;
-    bool                 dest_ok = false;
-    int                  x;
+    ip_addr_t            source;
     uint32_t             now;
-    uint16_t             header_len = 0xFFFF;
+    uint16_t             packet_len = 0;
     uint32_t             idx        = data_hdr->receiver;
 
     keypair = getPeerKeypairForIdx(peer, idx);
@@ -89,6 +142,11 @@ static void wireguardifProcessDataMessage(wireguard_device_t *device, wireguard_
             nonce   = U8TO64_LITTLE(data_hdr->counter);
             src     = &data_hdr->enc_packet[0];
             src_len = (uint32_t) data_len;
+
+            if (src_len < WIREGUARD_AUTHTAG_LEN)
+            {
+                goto finish;
+            }
 
             // We don't know the unpadded size until we have decrypted the packet and validated/inspected the IP header
             buf = bufferpoolGetSmallBuffer(getWorkerBufferPool(getWID()));
@@ -110,84 +168,38 @@ static void wireguardifProcessDataMessage(wireguard_device_t *device, wireguard_
 
                     // Might need to shuffle next key --> current keypair
                     keypairUpdate(peer, keypair);
+                    keypair = getPeerKeypairForIdx(peer, idx);
 
-                    // Check to see if we should rekey
-                    if (keypair->initiator &&
-                        wireguardExpired(keypair->keypair_millis,
-                                         REJECT_AFTER_TIME - peer->keepalive_interval - REKEY_TIMEOUT))
+                    if ((keypair != NULL) && (sbufGetLength(buf) > 0))
                     {
-                        peer->send_handshake = true;
-                    }
-
-                    // Make sure that link is reported as up
-                    device->status_connected = true;
-
-                    if (sbufGetLength(buf) > 0)
-                    {
-                        // 4a. Once the packet payload is decrypted, the interface has a plaintext packet. If this is
-                        // not an IP packet, it is dropped.
-                        iphdr = (ip4_hdr_t *) sbufGetMutablePtr(buf);
                         // Check for packet replay / dupes
                         if (wireguardCheckReplay(keypair, nonce))
                         {
-
-                            // 4b. Otherwise, WireGuard checks to see if the source IP address of the plaintext
-                            // inner-packet routes correspondingly in the cryptokey routing table Also check packet
-                            // length!
-#if LWIP_IPV4
-                            if (IPH_V(iphdr) == 4)
+                            // Check to see if we should rekey
+                            if (keypair->initiator &&
+                                wireguardExpired(keypair->keypair_millis,
+                                                 REJECT_AFTER_TIME - peer->keepalive_interval - REKEY_TIMEOUT))
                             {
-                                ipAddrCopyFromIp4(dest, iphdr->dest);
-                                for (x = 0; x < WIREGUARD_MAX_SRC_IPS; x++)
-                                {
-                                    if (peer->allowed_source_ips[x].valid)
-                                    {
-                                        if (ip4AddrNetcmp(ip_2_ip4(&dest), ip_2_ip4(&peer->allowed_source_ips[x].ip),
-                                                          ip_2_ip4(&peer->allowed_source_ips[x].mask)))
-                                        {
-                                            dest_ok    = true;
-                                            header_len = PP_NTOHS(IPH_LEN(iphdr));
-                                            break;
-                                        }
-                                    }
-                                }
+                                peer->send_handshake = true;
                             }
-#endif /* LWIP_IPV4 */
-#if LWIP_IPV6
-                            if (IPH_V(iphdr) == 6)
-                            {
-                                // TODO: IPV6 support for route filtering
-                                header_len = PP_NTOHS(IPH_LEN(iphdr));
-                                dest_ok    = true;
-                            }
-#endif /* LWIP_IPV6 */
-                            if (header_len <= sbufGetLength(buf))
-                            {
 
-                                // 5. If the plaintext packet has not been dropped, it is inserted into the receive
-                                // queue of the wg0 interface.
-                                if (dest_ok)
-                                {
-                                    // Send packet to be process by LWIP
-                                    // ip_input(buf, device->ts);
+                            // Make sure that link is reported as up
+                            device->status_connected = true;
 
-                                    wgd_tstate_t *ts     = (wgd_tstate_t *) device;
-                                    if (ts->locked)
-                                    {
-                                        ts->locked = false;
-                                        mutexUnlock(&ts->mutex);
-                                    }
-                                    tunnel_t     *tunnel = ts->tunnel;
-                                    line_t       *line   = tunnelchainGetWorkerPacketLine(tunnel->chain, getWID());
-                                    tunnelPrevDownStreamPayload(tunnel, line, buf);
-
-                                    // buf is owned by IP layer now
-                                    buf = NULL;
-                                }
-                            }
-                            else
+                            if (wireguarddeviceGetPlaintextPacketMetadata(buf, &source, &packet_len) &&
+                                wireguarddeviceCheckPeerAllowedIp(peer, &source))
                             {
-                                // IP header is corrupt or lied about packet size
+                                wgd_tstate_t *ts     = (wgd_tstate_t *) device;
+                                tunnel_t     *tunnel = ts->tunnel;
+                                line_t       *line   = tunnelchainGetWorkerPacketLine(tunnel->chain, getWID());
+
+                                sbufSetLength(buf, packet_len);
+                                wireguarddeviceStateUnlock(ts);
+                                tunnelPrevDownStreamPayload(tunnel, line, buf);
+                                wireguarddeviceStateLock(ts);
+
+                                // buf is owned by previous packet layer now
+                                buf = NULL;
                             }
                         }
                         else
@@ -222,6 +234,7 @@ static void wireguardifProcessDataMessage(wireguard_device_t *device, wireguard_
     {
         // Could not locate valid keypair for remote index
     }
+finish:
     if (buf != NULL)
     {
         bufferpoolReuseBuffer(getWorkerBufferPool(getWID()), buf);
@@ -239,10 +252,9 @@ static void wireguardifProcessResponseMessage(wireguard_device_t *device, wiregu
         updatePeerAddr(peer, addr, port);
 
         wireguardStartSession(peer, true);
-        wireguardifSendKeepalive(device, peer);
-
         // Set the IF-UP flag on ts
         device->status_connected = 1;
+        wireguardifSendKeepalive(device, peer);
     }
     else
     {
@@ -449,16 +461,10 @@ static void wireguardifNetworkRx(wireguard_device_t *device, sbuf_t *p, const ip
 void wireguarddeviceTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     wgd_tstate_t *state = tunnelGetState(t);
-    mutexLock(&state->mutex);
-    state->locked = true;
+    wireguarddeviceStateLock(state);
 
     wireguardifNetworkRx((wireguard_device_t *) tunnelGetState(t), buf, &l->routing_context.src_ctx.ip_address,
                          l->routing_context.src_ctx.port);
 
-    if (state->locked)
-    {
-        state->locked = false;
-        mutexUnlock(&state->mutex);
-    }
-    mutexUnlock(&state->mutex);
+    wireguarddeviceStateUnlock(state);
 }

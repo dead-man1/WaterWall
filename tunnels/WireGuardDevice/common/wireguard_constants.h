@@ -8,8 +8,8 @@
 #define WIREGUARDIF_DEFAULT_PORT      (51820)
 #define WIREGUARDIF_KEEPALIVE_DEFAULT (0xFFFF)
 
-#define WIREGUARD_MAX_PEERS   1
-#define WIREGUARD_MAX_SRC_IPS 2
+#define WIREGUARD_MAX_PEERS   32
+#define WIREGUARD_MAX_SRC_IPS 16
 
 // Per device limit on accepting (valid) initiation requests - per peer
 #define MAX_INITIATIONS_PER_SECOND (2)

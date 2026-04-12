@@ -2,37 +2,162 @@
 
 #include "loggers/network_logger.h"
 
+static uint8_t wireguarddeviceCountMaskBits32(uint32_t value)
+{
+    uint8_t bits = 0;
+
+    while (value != 0)
+    {
+        value &= (value - 1U);
+        bits++;
+    }
+
+    return bits;
+}
+
+static bool wireguarddeviceAllowedIpMatches(const wireguard_allowed_ip_t *allowed, const ip_addr_t *ipaddr)
+{
+    if ((! allowed->valid) || (ipaddr == NULL))
+    {
+        return false;
+    }
+
+    if ((ipaddr->type == IPADDR_TYPE_V4) && (allowed->ip.type == IPADDR_TYPE_V4))
+    {
+        return ip4AddrNetcmp(ip_2_ip4(ipaddr), ip_2_ip4(&allowed->ip), ip_2_ip4(&allowed->mask)) != 0;
+    }
+
+    if ((ipaddr->type == IPADDR_TYPE_V6) && (allowed->ip.type == IPADDR_TYPE_V6))
+    {
+        return ip6AddrNetcmp(ip_2_ip6(ipaddr), ip_2_ip6(&allowed->ip), ip_2_ip6(&allowed->mask)) != 0;
+    }
+
+    return false;
+}
+
+static uint8_t wireguarddeviceAllowedIpPrefixBits(const wireguard_allowed_ip_t *allowed)
+{
+    if (! allowed->valid)
+    {
+        return 0;
+    }
+
+    if (allowed->mask.type == IPADDR_TYPE_V4)
+    {
+        return wireguarddeviceCountMaskBits32(ip_2_ip4(&allowed->mask)->addr);
+    }
+
+    if (allowed->mask.type == IPADDR_TYPE_V6)
+    {
+        uint8_t bits = 0;
+
+        for (int i = 0; i < 4; ++i)
+        {
+            bits += wireguarddeviceCountMaskBits32(ip_2_ip6(&allowed->mask)->addr[i]);
+        }
+
+        return bits;
+    }
+
+    return 0;
+}
+
+void wireguarddeviceStateLock(wgd_tstate_t *state)
+{
+    assert(state != NULL);
+
+    mutexLock(&state->mutex);
+}
+
+void wireguarddeviceStateUnlock(wgd_tstate_t *state)
+{
+    assert(state != NULL);
+
+    mutexUnlock(&state->mutex);
+}
+
+wireguard_peer_t *wireguarddevicePeerLookupByAllowedIp(wireguard_device_t *device, const ip_addr_t *ipaddr)
+{
+    wireguard_peer_t *result      = NULL;
+    uint8_t           best_prefix = 0;
+
+    for (int x = 0; x < WIREGUARD_MAX_PEERS; ++x)
+    {
+        wireguard_peer_t *peer = &device->peers[x];
+
+        if (! peer->valid)
+        {
+            continue;
+        }
+
+        for (int y = 0; y < WIREGUARD_MAX_SRC_IPS; ++y)
+        {
+            wireguard_allowed_ip_t *allowed = &peer->allowed_source_ips[y];
+
+            if (! wireguarddeviceAllowedIpMatches(allowed, ipaddr))
+            {
+                continue;
+            }
+
+            uint8_t prefix_bits = wireguarddeviceAllowedIpPrefixBits(allowed);
+
+            if ((result == NULL) || (prefix_bits > best_prefix))
+            {
+                result      = peer;
+                best_prefix = prefix_bits;
+            }
+        }
+    }
+
+    return result;
+}
+
+bool wireguarddeviceCheckPeerAllowedIp(const wireguard_peer_t *peer, const ip_addr_t *ipaddr)
+{
+    if ((peer == NULL) || (ipaddr == NULL))
+    {
+        return false;
+    }
+
+    for (int x = 0; x < WIREGUARD_MAX_SRC_IPS; ++x)
+    {
+        if (wireguarddeviceAllowedIpMatches(&peer->allowed_source_ips[x], ipaddr))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 err_t wireguardifPeerOutput(wireguard_device_t *device, sbuf_t *q, wireguard_peer_t *peer)
 {
     // Send to last know port, not the connect port
     // TODO: Support DSCP and ECN - lwip requires this set on PCB globally, not per packet
-    wgd_tstate_t *ts = (wgd_tstate_t *) device;
+    wgd_tstate_t *ts            = (wgd_tstate_t *) device;
+    ip_addr_t     endpoint_ip   = peer->ip;
+    uint16_t      endpoint_port = peer->port;
+    tunnel_t     *tunnel        = ts->tunnel;
+    line_t       *line          = tunnelchainGetWorkerPacketLine(tunnel->chain, getWID());
 
-    if (ts->locked)
-    {
-        ts->locked = false;
-        mutexUnlock(&ts->mutex);
-    }
-    tunnel_t *tunnel = ts->tunnel;
-    line_t   *line   = tunnelchainGetWorkerPacketLine(tunnel->chain, getWID());
-    addresscontextSetIpPort(&(line->routing_context.dest_ctx), &peer->ip, peer->port);
+    addresscontextSetIpPort(&(line->routing_context.dest_ctx), &endpoint_ip, endpoint_port);
+    wireguarddeviceStateUnlock(ts);
     tunnelNextUpStreamPayload(tunnel, line, q);
+    wireguarddeviceStateLock(ts);
     return ERR_OK;
     // return udpSendTo(device->udp_pcb, q, &peer->ip, peer->port);
 }
 
 err_t wireguardifDeviceOutput(wireguard_device_t *device, sbuf_t *q, const ip_addr_t *ipaddr, uint16_t port)
 {
-    wgd_tstate_t *ts = (wgd_tstate_t *) device;
-    if (ts->locked)
-    {
-        ts->locked = false;
-        mutexUnlock(&ts->mutex);
-    }
-    tunnel_t *tunnel = ts->tunnel;
-    line_t   *line   = tunnelchainGetWorkerPacketLine(tunnel->chain, getWID());
+    wgd_tstate_t *ts     = (wgd_tstate_t *) device;
+    tunnel_t     *tunnel = ts->tunnel;
+    line_t       *line   = tunnelchainGetWorkerPacketLine(tunnel->chain, getWID());
+
     addresscontextSetIpPort(&(line->routing_context.dest_ctx), ipaddr, port);
+    wireguarddeviceStateUnlock(ts);
     tunnelNextUpStreamPayload(tunnel, line, q);
+    wireguarddeviceStateLock(ts);
     return ERR_OK;
     // return udpSendTo(device->udp_pcb, q, ipaddr, port);
 }
@@ -70,6 +195,8 @@ static bool peerAddIp(wireguard_peer_t *peer, ip_addr_t ip, ip_addr_t mask)
     }
     return result;
 }
+
+static err_t wireguardifLookupPeer(wireguard_device_t *device, uint8_t peer_index, wireguard_peer_t **out);
 
 err_t wireguardifAddPeer(wireguard_device_t *device, wireguard_peer_init_data_t *p, uint8_t *peer_index)
 {
@@ -111,10 +238,17 @@ err_t wireguardifAddPeer(wireguard_device_t *device, wireguard_peer_init_data_t 
                 {
                     peer->keepalive_interval = p->keep_alive;
                 }
-                peerAddIp(peer, p->allowed_ip, p->allowed_mask);
-                memoryCopy(peer->greatest_timestamp, p->greatest_timestamp, sizeof(peer->greatest_timestamp));
-
-                result = ERR_OK;
+                if (! peerAddIp(peer, p->allowed_ip, p->allowed_mask))
+                {
+                    wCryptoZero(peer, sizeof(*peer));
+                    peer->valid = false;
+                    result = ERR_MEM;
+                }
+                else
+                {
+                    memoryCopy(peer->greatest_timestamp, p->greatest_timestamp, sizeof(peer->greatest_timestamp));
+                    result = ERR_OK;
+                }
             }
             else
             {
@@ -145,11 +279,32 @@ err_t wireguardifAddPeer(wireguard_device_t *device, wireguard_peer_init_data_t 
     return result;
 }
 
+err_t wireguardifAddAllowedIp(wireguard_device_t *device, uint8_t peer_index, const ip_addr_t *ip, const ip_addr_t *mask)
+{
+    wireguard_peer_t *peer;
+    err_t             result = wireguardifLookupPeer(device, peer_index, &peer);
+
+    if (result != ERR_OK)
+    {
+        return result;
+    }
+
+    if ((ip == NULL) || (mask == NULL))
+    {
+        return ERR_ARG;
+    }
+
+    return peerAddIp(peer, *ip, *mask) ? ERR_OK : ERR_MEM;
+}
+
 void wireguardifSendKeepalive(wireguard_device_t *device, wireguard_peer_t *peer)
 {
     // Send a NULL packet as a keep-alive
     sbuf_t *empty_buf = bufferpoolGetSmallBuffer(getWorkerBufferPool(getWID()));
-    wireguardifOutputToPeer(device, empty_buf, NULL, peer);
+    if (empty_buf != NULL)
+    {
+        wireguardifOutputToPeer(device, empty_buf, NULL, peer);
+    }
 }
 
 static err_t wireguardifLookupPeer(wireguard_device_t *device, uint8_t peer_index, wireguard_peer_t **out)

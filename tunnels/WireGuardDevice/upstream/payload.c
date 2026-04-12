@@ -2,51 +2,6 @@
 
 #include "loggers/network_logger.h"
 
-
-
-static wireguard_peer_t *peerLookupByAllowedIp(wireguard_device_t *device, const ip_addr_t *ipaddr)
-{
-    wireguard_peer_t *result = NULL;
-    wireguard_peer_t *tmp;
-    int x, y;
-    for (x = 0; (!result) && (x < WIREGUARD_MAX_PEERS); x++)
-    {
-        tmp = &device->peers[x];
-        if (tmp->valid)
-        {
-            for (y = 0; y < WIREGUARD_MAX_SRC_IPS; y++)
-            {
-                if (tmp->allowed_source_ips[y].valid)
-                {
-                    if ((ipaddr->type == IPADDR_TYPE_V4) &&
-                        (tmp->allowed_source_ips[y].ip.type == IPADDR_TYPE_V4))
-                    {
-                        if (ip4AddrNetcmp(ip_2_ip4(ipaddr),
-                                           ip_2_ip4(&tmp->allowed_source_ips[y].ip),
-                                           ip_2_ip4(&tmp->allowed_source_ips[y].mask)))
-                        {
-                            result = tmp;
-                            break;
-                        }
-                    }
-                    else if ((ipaddr->type == IPADDR_TYPE_V6) &&
-                             (tmp->allowed_source_ips[y].ip.type == IPADDR_TYPE_V6))
-                    {
-                        if (ip6AddrNetcmp(ip_2_ip6(ipaddr),
-                                           ip_2_ip6(&tmp->allowed_source_ips[y].ip),
-                                           ip_2_ip6(&tmp->allowed_source_ips[y].mask)))
-                        {
-                            result = tmp;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return result;
-}
-
 err_t wireguardifOutputToPeer(wireguard_device_t *device, sbuf_t *q, const ip_addr_t *ipaddr, wireguard_peer_t *peer)
 {
     assert(q);
@@ -87,10 +42,22 @@ err_t wireguardifOutputToPeer(wireguard_device_t *device, sbuf_t *q, const ip_ad
                 // This is a keep-alive
                 unpadded_len = 0;
             }
-            padded_len = (unpadded_len + 15) & 0xFFFFFFF0; // Round up to next 16 byte boundary
-            assert(padded_len + WIREGUARD_AUTHTAG_LEN <= 1516);
-            assert(padded_len + WIREGUARD_AUTHTAG_LEN <= SMALL_BUFFER_SIZE);
+            padded_len = (unpadded_len + 15U) & 0xFFFFFFF0U; // Round up to next 16 byte boundary
+
+            if (sbufGetLeftCapacity(q) < header_len)
+            {
+                LOGW("WireGuardDevice: dropping packet without enough left padding for transport header");
+                result = ERR_BUF;
+                goto finish;
+            }
+
+            q = sbufReserveSpace(q, (padded_len + WIREGUARD_AUTHTAG_LEN) - unpadded_len);
             sbufSetLength(q, padded_len + WIREGUARD_AUTHTAG_LEN); // 1500 is the max packet size which is divided by 16
+
+            if (padded_len > unpadded_len)
+            {
+                memorySet(sbufGetMutablePtr(q) + unpadded_len, 0, padded_len - unpadded_len);
+            }
 
             // The buffer needs to be allocated from "transport" pool to leave room for LwIP generated IP headers
             // The IP packet consists of 16 byte header (struct message_transport_data), data padded upto 16 byte
@@ -127,15 +94,9 @@ err_t wireguardifOutputToPeer(wireguard_device_t *device, sbuf_t *q, const ip_ad
             // Then encrypt
             wireguardEncryptPacket(dst, dst, padded_len, keypair);
 
-            result = wireguardifPeerOutput(device, q, peer);
-            q      = NULL; // buffer is consumed by wireguardifPeerOutput
-
-            if (result == ERR_OK)
-            {
-                now              = getTickMS();
-                peer->last_tx    = now;
-                keypair->last_tx = now;
-            }
+            now              = getTickMS();
+            peer->last_tx    = now;
+            keypair->last_tx = now;
 
             // Check to see if we should rekey
             if (keypair->sending_counter >= REKEY_AFTER_MESSAGES)
@@ -146,6 +107,9 @@ err_t wireguardifOutputToPeer(wireguard_device_t *device, sbuf_t *q, const ip_ad
             {
                 peer->send_handshake = true;
             }
+
+            result = wireguardifPeerOutput(device, q, peer);
+            q      = NULL; // buffer is consumed by wireguardifPeerOutput
         }
         else
         {
@@ -161,6 +125,7 @@ err_t wireguardifOutputToPeer(wireguard_device_t *device, sbuf_t *q, const ip_ad
         // No valid keys!
         result = ERR_CONN;
     }
+finish:
     if (q != NULL)
     {
         bufferpoolReuseBuffer(getWorkerBufferPool(getWID()), q);
@@ -173,7 +138,7 @@ err_t wireguardifOutputToPeer(wireguard_device_t *device, sbuf_t *q, const ip_ad
 static err_t wireguardifOutput(wireguard_device_t *device, sbuf_t *q, const ip_addr_t *ipaddr)
 {
     // Send to peer that matches dest IP
-    wireguard_peer_t *peer = peerLookupByAllowedIp(device, ipaddr);
+    wireguard_peer_t *peer = wireguarddevicePeerLookupByAllowedIp(device, ipaddr);
     if (peer)
     {
         return wireguardifOutputToPeer(device, q, ipaddr, peer);
@@ -185,7 +150,10 @@ void wireguarddeviceTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     discard l;
 
-    if (sbufGetLength(buf) < sizeof(ip4_hdr_t))
+    uint32_t buf_len = sbufGetLength(buf);
+    uint8_t  version;
+
+    if (buf_len < sizeof(ip4_hdr_t))
     {
         bufferpoolReuseBuffer(getWorkerBufferPool(getWID()), buf);
         return;
@@ -193,29 +161,35 @@ void wireguarddeviceTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     wgd_tstate_t       *state = tunnelGetState(t);
     wireguard_device_t *dev   = tunnelGetState(t);
     uint8_t            *data  = sbufGetMutablePtr(buf);
+    version                  = IP_HDR_GET_VERSION(data);
 
-    mutexLock(&state->mutex);
-    state->locked = true;
+    if ((version == 6) && (buf_len < sizeof(ip6_hdr_t)))
+    {
+        bufferpoolReuseBuffer(getWorkerBufferPool(getWID()), buf);
+        return;
+    }
+
+    wireguarddeviceStateLock(state);
 
     wireguard_peer_t *peer = NULL;
     ip_addr_t dest;
 
-    if (IP_HDR_GET_VERSION(data) == 4)
+    if (version == 4)
     {
         ip4_hdr_t *header = (ip4_hdr_t *) data;
         ipAddrCopyFromIp4(dest, header->dest);
-        peer = peerLookupByAllowedIp(dev, &dest);
+        peer = wireguarddevicePeerLookupByAllowedIp(dev, &dest);
     }
-    else if (IP_HDR_GET_VERSION(data) == 6)
+    else if (version == 6)
     {
         ip6_hdr_t *header = (ip6_hdr_t *) data;
         ip6_addr_t dest_ip6;
         ip6AddrCopyFromPacket(dest_ip6, header->dest);
         ipAddrCopyFromIp6(dest, dest_ip6);
-        peer = peerLookupByAllowedIp(dev, &dest);
+        peer = wireguarddevicePeerLookupByAllowedIp(dev, &dest);
     }
 
-    if(peer)
+    if (peer)
     {
         wireguardifOutputToPeer(dev, buf, &dest, peer);
     }
@@ -225,10 +199,5 @@ void wireguarddeviceTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         bufferpoolReuseBuffer(getWorkerBufferPool(getWID()), buf);
     }
 
-    if (state->locked)
-    {
-        state->locked = false;
-        mutexUnlock(&state->mutex);
-    
-    }
+    wireguarddeviceStateUnlock(state);
 }

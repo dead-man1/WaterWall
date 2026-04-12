@@ -50,6 +50,22 @@ static bool validatePrivateKeyLength(const char *private_key)
     return true;
 }
 
+static bool decodeOptionalPresharedKey(const char *preshared_key_b64, uint8_t *decoded_key)
+{
+    if (preshared_key_b64 == NULL)
+    {
+        return true;
+    }
+
+    if (stringLength(preshared_key_b64) != BASE64_ENCODE_OUT_SIZE(WIREGUARD_SESSION_KEY_LEN))
+    {
+        return false;
+    }
+
+    return wwBase64Decode(preshared_key_b64, (unsigned int) stringLength(preshared_key_b64), decoded_key) ==
+           WIREGUARD_SESSION_KEY_LEN;
+}
+
 static bool decodeAndInitializeDevice(wireguard_device_t *device, const char *private_key)
 {
     uint8_t decoded_key[WIREGUARD_PRIVATE_KEY_LEN];
@@ -85,73 +101,119 @@ static tunnel_t *createBaseTunnel(node_t *node)
     return t;
 }
 
-static bool parseAllowedIps(const char *allowed_ips, wireguard_peer_init_data_t *peer, int peer_index)
+static bool parseAllowedIps(const char *allowed_ips, ip_addr_t *allowed_ip_list, ip_addr_t *allowed_mask_list,
+                            uint8_t *allowed_ip_count, int peer_index)
 {
     char *allowed_ips_nospace = stringNewWithoutSpace(allowed_ips);
-    char *comma_ptr = stringChr(allowed_ips_nospace, ',');
 
-    if (!comma_ptr)
+    if ((allowed_ips_nospace == NULL) || (allowed_ips_nospace[0] == '\0'))
     {
-        LOGF("Error: peer_allowed_ips_nospace does not contain a ','");
         memoryFree(allowed_ips_nospace);
         return false;
     }
 
-    comma_ptr[0] = '\0';
-    char *ipv4_part = allowed_ips_nospace;
-    char *ipv6_part = comma_ptr + 1;
+    uint8_t count  = 0;
+    char   *cursor = allowed_ips_nospace;
 
-    if (!verifyIPCdir(ipv4_part))
+    while (cursor != NULL)
     {
-        LOGF("JSON Error: WireGuardDevice->settings->peers [ index %d  ]->allowedips (string field) (ipv4 part) : The data was empty or invalid", peer_index);
-        memoryFree(allowed_ips_nospace);
-        return false;
+        char *comma_ptr = stringChr(cursor, ',');
+        if (comma_ptr != NULL)
+        {
+            *comma_ptr = '\0';
+        }
+
+        if ((cursor[0] == '\0') || (! verifyIPCdir(cursor)))
+        {
+            LOGF("JSON Error: WireGuardDevice->settings->peers [ index %d  ]->allowedips entry is invalid", peer_index);
+            memoryFree(allowed_ips_nospace);
+            return false;
+        }
+
+        if (count >= WIREGUARD_MAX_SRC_IPS)
+        {
+            LOGF("JSON Error: WireGuardDevice->settings->peers [ index %d  ]->allowedips exceeds WIREGUARD_MAX_SRC_IPS", peer_index);
+            memoryFree(allowed_ips_nospace);
+            return false;
+        }
+
+        if (parseIPWithSubnetMask(cursor, &allowed_ip_list[count], &allowed_mask_list[count]) == ERR_ARG)
+        {
+            LOGF("JSON Error: WireGuardDevice->settings->peers [ index %d  ]->allowedips entry could not be parsed", peer_index);
+            memoryFree(allowed_ips_nospace);
+            return false;
+        }
+
+        count++;
+        cursor = (comma_ptr != NULL) ? (comma_ptr + 1) : NULL;
     }
 
-    if (!verifyIPCdir(ipv6_part))
-    {
-        LOGF("JSON Error: WireGuardDevice->settings->peers [ index %d  ]->allowedips (string field) (ipv6 part): The data was empty or invalid", peer_index);
-        memoryFree(allowed_ips_nospace);
-        return false;
-    }
-
-    /* TODO: currently only supports ipv4 */
-    parseIPWithSubnetMask(ipv4_part, &peer->allowed_ip, &peer->allowed_mask);
+    *allowed_ip_count = count;
     memoryFree(allowed_ips_nospace);
-    return true;
+    return count > 0;
 }
 
 static bool parseEndpoint(const char *endpoint, wireguard_peer_init_data_t *peer)
 {
     char *endpoint_copy = stringDuplicate(endpoint);
-    char *colon_ptr = stringChr(endpoint_copy, ':');
+    char *host_ptr = endpoint_copy;
+    char *colon_ptr;
     
-    if (!colon_ptr)
+    if ((endpoint_copy == NULL) || (endpoint_copy[0] == '\0'))
     {
-        LOGF("Error: peer_endpoint does not contain a ':'");
         memoryFree(endpoint_copy);
         return false;
     }
 
-    colon_ptr[0] = '\0';
-    char *endpoint_ip = endpoint_copy;
-    char *endpoint_port = colon_ptr + 1;
-    uint16_t port = (uint16_t) atoi(endpoint_port);
-    
-    if (port == 0)
+    if (endpoint_copy[0] == '[')
     {
-        LOGF("Error: peer_endpoint_port is not a valid port number");
+        char *closing_bracket = stringChr(endpoint_copy, ']');
+
+        if ((closing_bracket == NULL) || (closing_bracket[1] != ':'))
+        {
+            memoryFree(endpoint_copy);
+            return false;
+        }
+
+        *closing_bracket = '\0';
+        host_ptr         = endpoint_copy + 1;
+        colon_ptr        = closing_bracket + 1;
+    }
+    else
+    {
+        colon_ptr = strrchr(endpoint_copy, ':');
+        if (colon_ptr == NULL)
+        {
+            memoryFree(endpoint_copy);
+            return false;
+        }
+    }
+
+    *colon_ptr = '\0';
+
+    char *endpoint_port = colon_ptr + 1;
+    long  parsed_port   = atol(endpoint_port);
+
+    if ((host_ptr[0] == '\0') || (parsed_port <= 0) || (parsed_port > UINT16_MAX))
+    {
         memoryFree(endpoint_copy);
         return false;
     }
 
     sockaddr_u temp;
-    resolveAddr(endpoint_ip, &temp);
-    ip4_addr_t ipaddr;
-    ip4_addr_set_u32(&ipaddr, temp.sin.sin_addr.s_addr);
+    if (resolveAddr(host_ptr, &temp) != 0)
+    {
+        memoryFree(endpoint_copy);
+        return false;
+    }
 
-    ip_addr_copy_from_ip4(peer->endpoint_ip, ipaddr);
-    peer->endpoint_port = port;
+    if (! sockaddrToIpAddr(&temp, &peer->endpoint_ip))
+    {
+        memoryFree(endpoint_copy);
+        return false;
+    }
+
+    peer->endpoint_port = (uint16_t) parsed_port;
     
     memoryFree(endpoint_copy);
     return true;
@@ -186,11 +248,17 @@ static bool extractPeerFields(cJSON *peer_object, char **public_key, char **pres
 
 static bool processPeer(cJSON *peer_object, wireguard_device_t *device, int peer_index)
 {
-    char *peer_public_key = NULL;
-    char *peer_preshared_key = NULL;
-    char *peer_allowed_ips = NULL;
-    char *peer_endpoint = NULL;
-    int persistentkeepalive = 0;
+    char    *peer_public_key       = NULL;
+    char    *peer_preshared_key    = NULL;
+    char    *peer_allowed_ips      = NULL;
+    char    *peer_endpoint         = NULL;
+    int      persistentkeepalive   = 0;
+    bool     ok                    = false;
+    uint8_t  peer_index_on_device  = WIREGUARDIF_INVALID_INDEX;
+    uint8_t  allowed_ip_count      = 0;
+    ip_addr_t allowed_ip_list[WIREGUARD_MAX_SRC_IPS];
+    ip_addr_t allowed_mask_list[WIREGUARD_MAX_SRC_IPS];
+    uint8_t  decoded_preshared_key[WIREGUARD_SESSION_KEY_LEN];
 
     if (!extractPeerFields(peer_object, &peer_public_key, &peer_preshared_key, 
                           &peer_allowed_ips, &peer_endpoint, &persistentkeepalive, peer_index))
@@ -201,27 +269,76 @@ static bool processPeer(cJSON *peer_object, wireguard_device_t *device, int peer
     wireguard_peer_init_data_t peer = {0};
     wireguardifPeerInit(&peer);
     peer.public_key = (const uint8_t *) peer_public_key;
-    peer.preshared_key = (const uint8_t *) peer_preshared_key;
 
-    if (!parseAllowedIps(peer_allowed_ips, &peer, peer_index))
+    if ((persistentkeepalive < 0) || (persistentkeepalive > UINT16_MAX))
     {
-        memoryFree(peer_allowed_ips);
-        return false;
+        LOGF("JSON Error: WireGuardDevice->settings->peers [ index %d  ]->persistentkeepalive must be between 0 and 65535", peer_index);
+        goto cleanup;
     }
-    memoryFree(peer_allowed_ips);
+
+    peer.keep_alive = (uint16_t) persistentkeepalive;
 
     if (!parseEndpoint(peer_endpoint, &peer))
     {
-        return false;
+        goto cleanup;
     }
 
-    if (wireguardifAddPeer(device, &peer, NULL) != ERR_OK)
+    if (!parseAllowedIps(peer_allowed_ips, allowed_ip_list, allowed_mask_list, &allowed_ip_count, peer_index))
+    {
+        goto cleanup;
+    }
+
+    peer.allowed_ip   = allowed_ip_list[0];
+    peer.allowed_mask = allowed_mask_list[0];
+
+    if (! decodeOptionalPresharedKey(peer_preshared_key, decoded_preshared_key))
+    {
+        LOGF("JSON Error: WireGuardDevice->settings->peers [ index %d  ]->presharedkey must be a base64-encoded 32-byte key", peer_index);
+        goto cleanup;
+    }
+
+    if (peer_preshared_key != NULL)
+    {
+        peer.preshared_key = decoded_preshared_key;
+    }
+
+    if (wireguardifAddPeer(device, &peer, &peer_index_on_device) != ERR_OK)
     {
         LOGF("Error: wireguardifAddPeer failed");
-        return false;
+        goto cleanup;
     }
 
-    return true;
+    for (uint8_t i = 1; i < allowed_ip_count; ++i)
+    {
+        if (wireguardifAddAllowedIp(device, peer_index_on_device, &allowed_ip_list[i], &allowed_mask_list[i]) != ERR_OK)
+        {
+            LOGF("Error: wireguardifAddAllowedIp failed");
+            wireguardifRemovePeer(device, peer_index_on_device);
+            goto cleanup;
+        }
+    }
+
+    ok = true;
+
+cleanup:
+    if (peer_public_key != NULL)
+    {
+        memoryFree(peer_public_key);
+    }
+    if (peer_preshared_key != NULL)
+    {
+        memoryFree(peer_preshared_key);
+    }
+    if (peer_allowed_ips != NULL)
+    {
+        memoryFree(peer_allowed_ips);
+    }
+    if (peer_endpoint != NULL)
+    {
+        memoryFree(peer_endpoint);
+    }
+    wCryptoZero(decoded_preshared_key, sizeof(decoded_preshared_key));
+    return ok;
 }
 
 static bool validatePeersArray(const cJSON *peers_array)

@@ -471,9 +471,13 @@ static uint32_t wireguardGenerateUniqueIndex(wireguard_device_t *device)
         existing = false;
         for (x = 0; x < WIREGUARD_MAX_PEERS; x++)
         {
-            peer     = &device->peers[x];
-            existing = (result == peer->curr_keypair.local_index) || (result == peer->prev_keypair.local_index) ||
-                       (result == peer->next_keypair.local_index) || (result == peer->handshake.local_index);
+            peer = &device->peers[x];
+            if ((result == peer->curr_keypair.local_index) || (result == peer->prev_keypair.local_index) ||
+                (result == peer->next_keypair.local_index) || (result == peer->handshake.local_index))
+            {
+                existing = true;
+                break;
+            }
         }
     } while (existing);
 
@@ -729,7 +733,8 @@ wireguard_peer_t *wireguardProcessInitiationMessage(wireguard_device_t *device, 
                     // per peer every 5 seconds max?)
                     replay     = (memcmp(t, peer->greatest_timestamp, WIREGUARD_TAI64N_LEN) <=
                               0); // tai64n is big endian so we can use memcmp to compare
-                    rate_limit = (peer->last_initiation_rx - now) < (1000 / MAX_INITIATIONS_PER_SECOND);
+                    rate_limit = (peer->last_initiation_rx != 0) &&
+                                 ((now - peer->last_initiation_rx) < (1000 / MAX_INITIATIONS_PER_SECOND));
 
                     if (! replay && ! rate_limit)
                     {
@@ -1182,7 +1187,7 @@ bool wireguardDeviceInit(wireguard_device_t *device, const uint8_t *private_key)
     memoryCopy(device->private_key, private_key, WIREGUARD_PRIVATE_KEY_LEN);
     // Ensure private key is correctly "clamped"
     wireguardClampPrivateKey(device->private_key);
-    device->valid = wireguardGeneratePublicKey(device->public_key, private_key);
+    device->valid = wireguardGeneratePublicKey(device->public_key, device->private_key);
     if (device->valid)
     {
         generateCookieSecret(device);

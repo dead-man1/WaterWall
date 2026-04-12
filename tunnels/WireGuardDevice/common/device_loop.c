@@ -42,11 +42,11 @@ static err_t wireguardStartHandshake(wireguard_device_t *device, wireguard_peer_
     buf = wireguarddeviceCreateiateHandshake(device, peer, &msg, &result);
     if (buf)
     {
-        result                   = wireguardifPeerOutput(device, buf, peer);
         peer->send_handshake     = false;
         peer->last_initiation_tx = getTickMS();
         memoryCopy(peer->handshake_mac1, msg.mac1, WIREGUARD_COOKIE_LEN);
         peer->handshake_mac1_valid = true;
+        result                   = wireguardifPeerOutput(device, buf, peer);
     }
     return result;
 }
@@ -117,8 +117,11 @@ static bool shouldResetPeer(wireguard_peer_t *peer)
 
 void wireguarddeviceLoop(wireguard_device_t *device)
 {
+    wgd_tstate_t     *state = (wgd_tstate_t *) device;
     wireguard_peer_t *peer;
     int               x;
+
+    wireguarddeviceStateLock(state);
 
     // Check periodic things
     bool link_up = false;
@@ -151,8 +154,7 @@ void wireguarddeviceLoop(wireguard_device_t *device)
             }
             if (shouldSendInitiation(peer))
             {
-                LOGD("Sending handshake to peer %d.%d.%d.%d", ip4_addr1(ip_2_ip4(&peer->ip)),
-                     ip4_addr2(ip_2_ip4(&peer->ip)), ip4_addr3(ip_2_ip4(&peer->ip)), ip4_addr4(ip_2_ip4(&peer->ip)));
+                LOGD("Sending handshake to peer %s", ipAddrNetworkToAddress(&peer->ip));
                 wireguardStartHandshake(device, peer);
             }
 
@@ -168,4 +170,6 @@ void wireguarddeviceLoop(wireguard_device_t *device)
         // Clear the IF-UP flag on netif
         device->status_connected = false;
     }
+
+    wireguarddeviceStateUnlock(state);
 }
