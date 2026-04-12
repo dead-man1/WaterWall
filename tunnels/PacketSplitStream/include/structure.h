@@ -10,20 +10,10 @@ typedef struct packetsplitstream_tstate_s
     tunnel_t *down_tunnel;
 } packetsplitstream_tstate_t;
 
-typedef enum packetsplitstream_role_e
-{
-    kPacketSplitStreamRoleNone = 0,
-    kPacketSplitStreamRolePacket,
-    kPacketSplitStreamRoleUpload,
-    kPacketSplitStreamRoleDownload
-} packetsplitstream_role_t;
 
 typedef struct packetsplitstream_lstate_s
 {
-    line_t                   *packet_line;
-    line_t                   *upload_line;
-    line_t                   *download_line;
-    packetsplitstream_role_t  role;
+    int unused;
 } packetsplitstream_lstate_t;
 
 enum
@@ -37,6 +27,8 @@ WW_EXPORT tunnel_t    *packetsplitstreamTunnelCreate(node_t *node);
 WW_EXPORT api_result_t packetsplitstreamTunnelApi(tunnel_t *instance, sbuf_t *message);
 
 void packetsplitstreamTunnelOnChain(tunnel_t *t, tunnel_chain_t *chain);
+void packetsplitstreamTunnelOnStart(tunnel_t *t);
+void packetsplitstreamTunnelOnPrepair(tunnel_t *t);
 
 void packetsplitstreamTunnelUpStreamInit(tunnel_t *t, line_t *l);
 void packetsplitstreamTunnelUpStreamEst(tunnel_t *t, line_t *l);
@@ -52,9 +44,8 @@ void packetsplitstreamTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *bu
 void packetsplitstreamTunnelDownStreamPause(tunnel_t *t, line_t *l);
 void packetsplitstreamTunnelDownStreamResume(tunnel_t *t, line_t *l);
 
-void packetsplitstreamLinestateInitializePacket(packetsplitstream_lstate_t *ls, line_t *packet_line);
-void packetsplitstreamLinestateInitializeChild(packetsplitstream_lstate_t *ls, line_t *packet_line,
-                                               packetsplitstream_role_t role);
+void packetsplitstreamLinestateInitializePacket(packetsplitstream_lstate_t *ls);
+
 void packetsplitstreamLinestateDestroy(packetsplitstream_lstate_t *ls);
 
 line_t *packetsplitstreamEnsureUploadLine(tunnel_t *t, line_t *packet_line, packetsplitstream_lstate_t *packet_ls);

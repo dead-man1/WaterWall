@@ -2,7 +2,6 @@
 
 void packetsplitstreamTunnelUpStreamInit(tunnel_t *t, line_t *l)
 {
-    packetsplitstream_lstate_t *ls = lineGetState(l, t);
-
-    packetsplitstreamEnsureSplitLines(t, l, ls);
+    packetsplitstream_tstate_t *ts = tunnelGetState(t);
+    tunnelUpStreamInit(ts->up_tunnel, l);
 }
