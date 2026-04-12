@@ -7,6 +7,15 @@ static inline bool asciiCaseEqual(char a, char b)
     return (char) tolower((unsigned char) a) == (char) tolower((unsigned char) b);
 }
 
+static inline char *httpserverNextToken(char *str, const char *delim, char **saveptr)
+{
+#ifdef COMPILER_MSVC
+    return strtok_s(str, delim, saveptr);
+#else
+    return strtok_r(str, delim, saveptr);
+#endif
+}
+
 bool httpserverStringCaseEquals(const char *a, const char *b)
 {
     if (a == NULL || b == NULL)
@@ -79,7 +88,8 @@ bool httpserverStringCaseContainsToken(const char *value, const char *token)
     bool  found   = false;
     char *saveptr = NULL;
 
-    for (char *part = strtok_r(tmp, ",", &saveptr); part != NULL; part = strtok_r(NULL, ",", &saveptr))
+    for (char *part = httpserverNextToken(tmp, ",", &saveptr); part != NULL;
+         part = httpserverNextToken(NULL, ",", &saveptr))
     {
         while (*part == ' ' || *part == '\t')
         {
