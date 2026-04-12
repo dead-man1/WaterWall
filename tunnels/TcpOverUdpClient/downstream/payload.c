@@ -6,6 +6,12 @@ void tcpoverudpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
 {
     tcpoverudpclient_lstate_t *ls = lineGetState(l, t);
 
+    if (UNLIKELY(ls->k_handle == NULL))
+    {
+        lineReuseBuffer(l, buf);
+        return;
+    }
+
     // any recv indicates that connection is still alive
     ls->last_recv = wloopNowMS(getWorkerLoop(lineGetWID(l)));
     ls->ping_sent = false;
@@ -54,7 +60,10 @@ void tcpoverudpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
 
             tcpoverudpclientLinestateDestroy(ls);
             tunnelNextUpStreamFinish(t, l);
-            tunnelPrevDownStreamFinish(t, l);
+            if (lineIsAlive(l))
+            {
+                tunnelPrevDownStreamFinish(t, l);
+            }
             break;
         }
         else if (frame_flag == kFrameFlagPing)
@@ -70,7 +79,7 @@ void tcpoverudpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
             break;
         }
 
-        if (! lineIsAlive(l))
+        if (! lineIsAlive(l) || ls->k_handle == NULL)
         {
             break; // Exit the loop if the line is no longer alive
         }

@@ -16,6 +16,12 @@ void tcpoverudpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     tcpoverudpclient_lstate_t *ls = lineGetState(l, t);
 
+    if (UNLIKELY(ls->k_handle == NULL))
+    {
+        lineReuseBuffer(l, buf);
+        return;
+    }
+
     if (ikcp_waitsnd(ls->k_handle) > KCP_SEND_WINDOW_LIMIT)
     {
         ls->write_paused = true;

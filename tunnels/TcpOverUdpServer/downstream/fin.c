@@ -6,10 +6,21 @@ void tcpoverudpserverTunnelDownStreamFinish(tunnel_t *t, line_t *l)
 {
     tcpoverudpserver_lstate_t *ls = lineGetState(l, t);
 
+    if (UNLIKELY(ls->k_handle == NULL))
+    {
+        return;
+    }
+
+    lineLock(l);
+
     if (UNLIKELY(GSTATE.application_stopping_flag))
     {
         tcpoverudpserverLinestateDestroy(ls);
-        tunnelPrevDownStreamFinish(t, l);
+        if (lineIsAlive(l))
+        {
+            tunnelPrevDownStreamFinish(t, l);
+        }
+        lineUnlock(l);
         return;
     }
 
@@ -21,10 +32,15 @@ void tcpoverudpserverTunnelDownStreamFinish(tunnel_t *t, line_t *l)
     if (tcpoverudpserverUpdateKcp(ls, true))
     {
         tcpoverudpserverLinestateDestroy(ls);
-        tunnelPrevDownStreamFinish(t, l);
+        if (lineIsAlive(l))
+        {
+            tunnelPrevDownStreamFinish(t, l);
+        }
     }
     else
     {
         tcpoverudpserverLinestateDestroy(ls);
     }
+
+    lineUnlock(l);
 }

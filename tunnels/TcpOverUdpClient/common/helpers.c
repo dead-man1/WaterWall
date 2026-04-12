@@ -4,7 +4,7 @@
 
 bool tcpoverudpclientUpdateKcp(tcpoverudpclient_lstate_t *ls, bool flush)
 {
-    assert(ls != NULL && ls->line != NULL && lineIsAlive(ls->line));
+    assert(ls != NULL && ls->k_handle != NULL && ls->line != NULL && lineIsAlive(ls->line));
 
     line_t   *l            = ls->line;
     tunnel_t *t            = ls->tunnel;
@@ -20,14 +20,14 @@ bool tcpoverudpclientUpdateKcp(tcpoverudpclient_lstate_t *ls, bool flush)
     }
     ikcp_update(ls->k_handle, (IUINT32) current_time);
 
-    while (lineIsAlive(l) && contextqueueLen(&ls->cq_u) > 0)
+    while (lineIsAlive(l) && ls->k_handle != NULL && contextqueueLen(&ls->cq_u) > 0)
     {
         context_t *c = contextqueuePop(&ls->cq_u);
         contextApplyOnNextTunnelU(c, t);
         contextDestroy(c);
     }
 
-    while (lineIsAlive(l) && contextqueueLen(&ls->cq_d) > 0)
+    while (lineIsAlive(l) && ls->k_handle != NULL && contextqueueLen(&ls->cq_d) > 0)
     {
         context_t *c = contextqueuePop(&ls->cq_d);
         if (ls->can_downstream)
@@ -36,7 +36,7 @@ bool tcpoverudpclientUpdateKcp(tcpoverudpclient_lstate_t *ls, bool flush)
         }
         contextDestroy(c);
     }
-    ret = lineIsAlive(l);
+    ret = lineIsAlive(l) && ls->k_handle != NULL;
 
     lineUnlock(l);
     return ret;
@@ -47,7 +47,7 @@ void tcpoverudpclientKcpLoopIntervalCallback(wtimer_t *timer)
 
     tcpoverudpclient_lstate_t *ls = weventGetUserdata(timer);
 
-    if (ls == NULL || ls->line == NULL || ! lineIsAlive(ls->line))
+    if (ls == NULL || ls->k_handle == NULL || ls->line == NULL || ! lineIsAlive(ls->line))
     {
         return;
     }
@@ -70,8 +70,14 @@ void tcpoverudpclientKcpLoopIntervalCallback(wtimer_t *timer)
 
             tunnel_t *t = ls->tunnel;
             line_t   *l = ls->line;
+
+            lineLock(l);
             tunnelUpStreamFin(t, l);
-            tunnelPrevDownStreamFinish(t, l);
+            if (lineIsAlive(l))
+            {
+                tunnelPrevDownStreamFinish(t, l);
+            }
+            lineUnlock(l);
             return;
         }
     }
@@ -89,7 +95,7 @@ int tcpoverudpclientKUdpOutput(const char *data, int len, ikcpcb *kcp, void *use
 
     tcpoverudpclient_lstate_t *ls = (tcpoverudpclient_lstate_t *) user;
 
-    if (ls == NULL || ls->line == NULL || ! lineIsAlive(ls->line))
+    if (ls == NULL || ls->k_handle == NULL || ls->line == NULL || ! lineIsAlive(ls->line))
     {
         return -1;
     }

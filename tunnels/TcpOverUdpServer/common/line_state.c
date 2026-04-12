@@ -57,12 +57,24 @@ void tcpoverudpserverLinestateInitialize(tcpoverudpserver_lstate_t *ls, line_t *
 
 void tcpoverudpserverLinestateDestroy(tcpoverudpserver_lstate_t *ls)
 {
-    weventSetUserData(ls->k_timer, NULL);
-    wtimerDelete(ls->k_timer);
+    if (ls->k_handle == NULL)
+    {
+        return;
+    }
+
+    if (ls->k_timer != NULL)
+    {
+        weventSetUserData(ls->k_timer, NULL);
+        wtimerDelete(ls->k_timer);
+    }
 
     contextqueueDestroy(&ls->cq_u);
     contextqueueDestroy(&ls->cq_d);
 
-    ikcp_release(ls->k_handle);
+    if (ls->k_handle != NULL)
+    {
+        ikcp_release(ls->k_handle);
+    }
+
     memoryZeroAligned32(ls, sizeof(tcpoverudpserver_lstate_t));
 }

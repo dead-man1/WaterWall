@@ -6,7 +6,7 @@ void tcpoverudpclientTunnelDownStreamFinish(tunnel_t *t, line_t *l)
 {
 
     tcpoverudpclient_lstate_t *ls = lineGetState(l, t);
-    if (UNLIKELY(! ls->can_downstream))
+    if (UNLIKELY(ls->k_handle == NULL || ! ls->can_downstream))
     {
         return;
     }

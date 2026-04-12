@@ -6,10 +6,21 @@ void tcpoverudpclientTunnelUpStreamFinish(tunnel_t *t, line_t *l)
 {
     tcpoverudpclient_lstate_t *ls = lineGetState(l, t);
 
+    if (UNLIKELY(ls->k_handle == NULL))
+    {
+        return;
+    }
+
+    lineLock(l);
+
     if (UNLIKELY(GSTATE.application_stopping_flag))
     {
         tcpoverudpclientLinestateDestroy(ls);
-        tunnelNextUpStreamFinish(t, l);
+        if (lineIsAlive(l))
+        {
+            tunnelNextUpStreamFinish(t, l);
+        }
+        lineUnlock(l);
         return;
     }
 
@@ -21,10 +32,15 @@ void tcpoverudpclientTunnelUpStreamFinish(tunnel_t *t, line_t *l)
     if (tcpoverudpclientUpdateKcp(ls, true))
     {
         tcpoverudpclientLinestateDestroy(ls);
-        tunnelNextUpStreamFinish(t, l);
+        if (lineIsAlive(l))
+        {
+            tunnelNextUpStreamFinish(t, l);
+        }
     }
     else
     {
         tcpoverudpclientLinestateDestroy(ls);
     }
+
+    lineUnlock(l);
 }
