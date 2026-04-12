@@ -291,7 +291,7 @@ static void wq_enqueue(WaitQ *wq, Thr *t)
     if (atomicLoadExplicit((_Atomic(Thr *)*)&wq->first, memory_order_acquire))
     {
         // Note: compare first instead of last as we don't clear wq->last in wq_dequeue
-        atomicLoadExplicit((_Atomic(Thr *)*)&wq->last, memory_order_acquire)->next = t;
+        ((Thr*)atomicLoadExplicit((_Atomic(Thr *)*)&wq->last, memory_order_acquire))->next = t;        
     }
     else
     {
