@@ -7,7 +7,18 @@ static bool ipoverriderShouldSkipRule(const ipoverrider_rule_t *rule)
     return rule->skip_chance != -1 && (fastRand32() % 100) < (uint32_t) rule->skip_chance;
 }
 
-static void ipoverriderApplyRule(const ipoverrider_rule_t *rule, line_t *l, sbuf_t *buf, bool replace_source)
+static uint32_t ipoverriderSelectIpv4(ipoverrider_rule_t *rule)
+{
+    if (rule->ov_4_count == 0)
+    {
+        return rule->ov_4;
+    }
+
+    const uint32_t index = (uint32_t) atomicIncRelaxed(&(rule->ov_4_rr_cursor)) % rule->ov_4_count;
+    return rule->ov_4_list[index];
+}
+
+static void ipoverriderApplyRule(ipoverrider_rule_t *rule, line_t *l, sbuf_t *buf, bool replace_source)
 {
     if (! rule->enabled || ipoverriderShouldSkipRule(rule))
     {
@@ -25,13 +36,15 @@ static void ipoverriderApplyRule(const ipoverrider_rule_t *rule, line_t *l, sbuf
             return;
         }
 
+        const uint32_t selected_ipv4 = ipoverriderSelectIpv4(rule);
+
         if (replace_source)
         {
-            memoryCopy(&(ipheader->src.addr), &(rule->ov_4), sizeof(rule->ov_4));
+            memoryCopy(&(ipheader->src.addr), &(selected_ipv4), sizeof(selected_ipv4));
         }
         else
         {
-            memoryCopy(&(ipheader->dest.addr), &(rule->ov_4), sizeof(rule->ov_4));
+            memoryCopy(&(ipheader->dest.addr), &(selected_ipv4), sizeof(selected_ipv4));
         }
 
         l->recalculate_checksum = true;

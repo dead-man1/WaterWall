@@ -2,20 +2,85 @@
 
 #include "loggers/network_logger.h"
 
-static bool ipoverriderParseRuleAddress(ipoverrider_rule_t *rule, const cJSON *settings, const char *json_path)
+static bool ipoverriderParseIpv4String(uint32_t *dest, const char *ipbuf, const char *json_path)
 {
-    char *ipbuf = NULL;
+    ip4_addr_t parsed_ipv4;
 
-    if (getStringFromJsonObject(&ipbuf, settings, "ipv4"))
+    if (ip4AddrAddressToNetwork(ipbuf, &parsed_ipv4) == 0)
     {
-        sockaddr_u sa;
-        rule->support4 = true;
-        sockaddrSetIpAddress(&(sa), ipbuf);
-        memoryCopy(&(rule->ov_4), &(sa.sin.sin_addr.s_addr), sizeof(sa.sin.sin_addr.s_addr));
-        memoryFree(ipbuf);
-        return true;
+        LOGF("JSON Error: %s (string field) : expected a single IPv4 address, not CIDR or hostname", json_path);
+        return false;
     }
 
+    *dest = ip4AddrGetU32(&parsed_ipv4);
+    return true;
+}
+
+static bool ipoverriderParseRuleIpv4(ipoverrider_rule_t *rule, const cJSON *ipv4_json, const char *json_path)
+{
+    rule->support4 = true;
+
+    if (cJSON_IsString(ipv4_json) && ipv4_json->valuestring != NULL)
+    {
+        return ipoverriderParseIpv4String(&(rule->ov_4), ipv4_json->valuestring, json_path);
+    }
+
+    if (! cJSON_IsArray(ipv4_json))
+    {
+        LOGF("JSON Error: %s (string or array field) : expected a single IPv4 string or an array of IPv4 strings",
+             json_path);
+        return false;
+    }
+
+    const int array_size = cJSON_GetArraySize(ipv4_json);
+    if (array_size <= 0)
+    {
+        LOGF("JSON Error: %s (array field) : the IPv4 array must not be empty", json_path);
+        return false;
+    }
+
+    rule->ov_4_list = memoryAllocate((size_t) array_size * sizeof(*(rule->ov_4_list)));
+    rule->ov_4_count = (uint32_t) array_size;
+    atomicStoreRelaxed(&(rule->ov_4_rr_cursor), 0);
+
+    for (int i = 0; i < array_size; ++i)
+    {
+        const cJSON *ipv4_item = cJSON_GetArrayItem(ipv4_json, i);
+        char         ipv4_item_json_path[320];
+        snprintf(ipv4_item_json_path, sizeof(ipv4_item_json_path), "%s[%d]", json_path, i);
+
+        if (! (cJSON_IsString(ipv4_item) && ipv4_item->valuestring != NULL))
+        {
+            LOGF("JSON Error: %s[%d] (string field) : each IPv4 array item must be a string", json_path, i);
+            memoryFree(rule->ov_4_list);
+            rule->ov_4_list  = NULL;
+            rule->ov_4_count = 0;
+            return false;
+        }
+
+        if (! ipoverriderParseIpv4String(&(rule->ov_4_list[i]), ipv4_item->valuestring, ipv4_item_json_path))
+        {
+            memoryFree(rule->ov_4_list);
+            rule->ov_4_list  = NULL;
+            rule->ov_4_count = 0;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool ipoverriderParseRuleAddress(ipoverrider_rule_t *rule, const cJSON *settings, const char *json_path)
+{
+    const cJSON *ipv4_json = cJSON_GetObjectItemCaseSensitive(settings, "ipv4");
+    if (ipv4_json != NULL)
+    {
+        char ipv4_json_path[256];
+        snprintf(ipv4_json_path, sizeof(ipv4_json_path), "%s->ipv4", json_path);
+        return ipoverriderParseRuleIpv4(rule, ipv4_json, ipv4_json_path);
+    }
+
+    char *ipbuf = NULL;
     if (getStringFromJsonObject(&ipbuf, settings, "ipv6"))
     {
         sockaddr_u sa;
@@ -155,6 +220,7 @@ tunnel_t *ipoverriderCreate(node_t *node)
     if (! (cJSON_IsObject(settings) && settings->child != NULL))
     {
         LOGF("JSON Error: IpOverrider->settings (object field) : The object was empty or invalid");
+        ipoverriderDestroy(t);
         return NULL;
     }
 
@@ -163,11 +229,13 @@ tunnel_t *ipoverriderCreate(node_t *node)
     {
         if (! ipoverriderParseDirectionalSettings(state, settings))
         {
+            ipoverriderDestroy(t);
             return NULL;
         }
     }
     else if (! ipoverriderParseLegacySettings(state, settings))
     {
+        ipoverriderDestroy(t);
         return NULL;
     }
 

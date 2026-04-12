@@ -32,6 +32,9 @@ typedef struct ipoverrider_rule_s
 {
     struct in6_addr ov_6;
     uint32_t        ov_4;
+    uint32_t       *ov_4_list;
+    atomic_uint     ov_4_rr_cursor;
+    uint32_t        ov_4_count;
     int             skip_chance;
     bool            enabled;
     bool            only120;
