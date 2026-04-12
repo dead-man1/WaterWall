@@ -216,25 +216,10 @@ typedef struct WaitQ
 #endif
 
 #ifdef COMPILER_MSVC
-inline static Thr *atomicLoadThrPtr(Thr *const *p, memory_order order)
-{
-    return (Thr *) atomicLoadExplicit((intptr_t *) p, order);
-}
-
-inline static void atomicStoreThrPtr(Thr **p, Thr *v, memory_order order)
-{
-    atomicStoreExplicit((intptr_t *) p, (intptr_t) v, order);
-}
-
-inline static void *atomicLoadVoidPtr(void *const *p, memory_order order)
-{
-    return (void *) atomicLoadExplicit((intptr_t *) p, order);
-}
-
-inline static void atomicStoreVoidPtr(void **p, void *v, memory_order order)
-{
-    atomicStoreExplicit((intptr_t *) p, (intptr_t) v, order);
-}
+#define atomicLoadThrPtr(p, order)      ((Thr *) atomicLoadExplicit((intptr_t *) (p), order))
+#define atomicStoreThrPtr(p, v, order)  atomicStoreExplicit((intptr_t *) (p), (intptr_t) (v), order)
+#define atomicLoadVoidPtr(p, order)     ((void *) atomicLoadExplicit((intptr_t *) (p), order))
+#define atomicStoreVoidPtr(p, v, order) atomicStoreExplicit((intptr_t *) (p), (intptr_t) (v), order)
 #else
 inline static Thr *atomicLoadThrPtr(_Atomic(Thr *) *p, memory_order order)
 {
