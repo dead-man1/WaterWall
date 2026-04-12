@@ -87,9 +87,8 @@ static bool handlePipeToWorker(tunnel_t *t, line_t *l, sbuf_t *buf, wid_t target
 }
 
 static bool handleUploadConnectionFound(tunnel_t *t, line_t *l, sbuf_t *buf, halfduplexserver_tstate_t *ts,
-                                        halfduplexserver_lstate_t *ls, hash_t hash)
+                                        halfduplexserver_lstate_t *ls, hmap_cons_t_iter f_iter)
 {
-    hmap_cons_t_iter           f_iter           = hmap_cons_t_find(&(ts->download_line_map), hash);
     halfduplexserver_lstate_t *download_line_ls = (halfduplexserver_lstate_t *) ((*f_iter.ref).second);
 
     wid_t wid_download_line = lineGetWID(download_line_ls->download_line);
@@ -150,9 +149,8 @@ static bool handleUploadConnectionNotFound(tunnel_t *t, line_t *l, sbuf_t *buf, 
 }
 
 static bool handleDownloadConnectionFound(tunnel_t *t, line_t *l, sbuf_t *buf, halfduplexserver_tstate_t *ts,
-                                          halfduplexserver_lstate_t *ls, hash_t hash)
+                                          halfduplexserver_lstate_t *ls, hmap_cons_t_iter f_iter)
 {
-    hmap_cons_t_iter           f_iter         = hmap_cons_t_find(&(ts->upload_line_map), hash);
     halfduplexserver_lstate_t *upload_line_ls = (halfduplexserver_lstate_t *) ((*f_iter.ref).second);
 
     wid_t wid_upload_line = lineGetWID(upload_line_ls->upload_line);
@@ -236,7 +234,7 @@ static bool handleUnknownState(tunnel_t *t, line_t *l, sbuf_t *buf, halfduplexse
 
         if (found)
         {
-            return handleUploadConnectionFound(t, l, buf, ts, ls, hash);
+            return handleUploadConnectionFound(t, l, buf, ts, ls, f_iter);
         }
         return handleUploadConnectionNotFound(t, l, buf, ts, ls, hash);
     }
@@ -247,7 +245,7 @@ static bool handleUnknownState(tunnel_t *t, line_t *l, sbuf_t *buf, halfduplexse
 
     if (found)
     {
-        return handleDownloadConnectionFound(t, l, buf, ts, ls, hash);
+        return handleDownloadConnectionFound(t, l, buf, ts, ls, f_iter);
     }
     return handleDownloadConnectionNotFound(t, l, buf, ts, ls, hash);
 }
