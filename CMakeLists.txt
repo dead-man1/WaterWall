@@ -167,6 +167,8 @@ option(INCLUDE_HEADER_SERVER            "link HeaderServer staticly to the core"
 option(INCLUDE_HEADER_CLIENT            "link HeaderClient staticly to the core"         FALSE)
 option(INCLUDE_OBFUSCATOR_CLIENT        "link ObfuscatorClient staticly to the core"     TRUE)
 option(INCLUDE_OBFUSCATOR_SERVER        "link ObfuscatorServer staticly to the core"     TRUE)
+option(INCLUDE_ENCRYPTION_CLIENT        "link EncryptionClient staticly to the core"     TRUE)
+option(INCLUDE_ENCRYPTION_SERVER        "link EncryptionServer staticly to the core"     TRUE)
 option(INCLUDE_PRECONNECT_SERVER        "link PreConnectServer staticly to the core"     FALSE)
 option(INCLUDE_PRECONNECT_CLIENT        "link PreConnectClient staticly to the core"     FALSE)
 option(INCLUDE_SOCKS_5_SERVER           "link Socks5Server staticly to the core"         FALSE)
@@ -536,6 +538,22 @@ if(INCLUDE_OBFUSCATOR_SERVER)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/ObfuscatorServer)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/ObfuscatorServer)
   target_link_libraries(Waterwall ObfuscatorServer)
+endif()
+
+#encryption client
+if(INCLUDE_ENCRYPTION_CLIENT)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_ENCRYPTION_CLIENT=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/EncryptionClient)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/EncryptionClient)
+  target_link_libraries(Waterwall EncryptionClient)
+endif()
+
+#encryption server
+if(INCLUDE_ENCRYPTION_SERVER)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_ENCRYPTION_SERVER=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/EncryptionServer)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/EncryptionServer)
+  target_link_libraries(Waterwall EncryptionServer)
 endif()
 
 #preconnect server

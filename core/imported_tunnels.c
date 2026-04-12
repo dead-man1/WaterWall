@@ -164,6 +164,14 @@
 #include "tunnels/ObfuscatorServer/include/interface.h"
 #endif
 
+#ifdef INCLUDE_ENCRYPTION_CLIENT
+#include "tunnels/EncryptionClient/include/interface.h"
+#endif
+
+#ifdef INCLUDE_ENCRYPTION_SERVER
+#include "tunnels/EncryptionServer/include/interface.h"
+#endif
+
 #ifdef INCLUDE_PRECONNECT_SERVER
 #include "tunnels/server/preconnect/preconnect_server.h"
 #endif
@@ -369,6 +377,14 @@ void loadImportedTunnelsIntoCore(void)
 
 #ifdef INCLUDE_OBFUSCATOR_SERVER
     USING(ObfuscatorServer);
+#endif
+
+#ifdef INCLUDE_ENCRYPTION_CLIENT
+    USING(EncryptionClient);
+#endif
+
+#ifdef INCLUDE_ENCRYPTION_SERVER
+    USING(EncryptionServer);
 #endif
 
 #ifdef INCLUDE_PRECONNECT_SERVER
