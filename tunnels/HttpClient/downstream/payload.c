@@ -2,7 +2,7 @@
 
 #include "loggers/network_logger.h"
 
-static void failAndClose(tunnel_t *t, line_t *l, httpclient_lstate_t *ls)
+static void failAndCloseD(tunnel_t *t, line_t *l, httpclient_lstate_t *ls)
 {
     httpclientLinestateDestroy(ls);
     tunnelNextUpStreamFinish(t, l);
@@ -17,7 +17,7 @@ void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     {
         if (! httpclientTransportFeedHttp2Input(t, l, ls, buf))
         {
-            failAndClose(t, l, ls);
+            failAndCloseD(t, l, ls);
         }
         return;
     }
@@ -26,7 +26,7 @@ void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
     if (! httpclientTransportHandleHttp1ResponseHeaderPhase(t, l, ls))
     {
-        failAndClose(t, l, ls);
+        failAndCloseD(t, l, ls);
         return;
     }
 
@@ -37,7 +37,7 @@ void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             sbuf_t *leftover = bufferstreamIdealRead(&ls->in_stream);
             if (! httpclientTransportFeedHttp2Input(t, l, ls, leftover))
             {
-                failAndClose(t, l, ls);
+                failAndCloseD(t, l, ls);
                 return;
             }
         }
@@ -49,7 +49,7 @@ void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     {
         if (! httpclientTransportDrainHttp1Body(t, l, ls))
         {
-            failAndClose(t, l, ls);
+            failAndCloseD(t, l, ls);
             return;
         }
     }

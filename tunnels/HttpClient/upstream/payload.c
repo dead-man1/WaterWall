@@ -2,7 +2,7 @@
 
 #include "loggers/network_logger.h"
 
-static void failAndClose(tunnel_t *t, line_t *l, httpclient_lstate_t *ls)
+static void failAndCloseU(tunnel_t *t, line_t *l, httpclient_lstate_t *ls)
 {
     httpclientLinestateDestroy(ls);
     tunnelNextUpStreamFinish(t, l);
@@ -17,7 +17,7 @@ void httpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     {
         if (! httpclientTransportSendHttp1ChunkedPayload(t, l, buf))
         {
-            failAndClose(t, l, ls);
+            failAndCloseU(t, l, ls);
         }
         return;
     }
@@ -26,7 +26,7 @@ void httpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     {
         if (! httpclientTransportSendHttp2DataFrame(t, l, ls, buf, false))
         {
-            failAndClose(t, l, ls);
+            failAndCloseU(t, l, ls);
         }
         return;
     }

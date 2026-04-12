@@ -74,3 +74,5 @@ int encryptionclientEncryptAead(uint32_t algorithm, unsigned char *dst, const un
 int encryptionclientDecryptAead(uint32_t algorithm, unsigned char *dst, const unsigned char *src, size_t src_len,
                                 const unsigned char *ad, size_t ad_len, const unsigned char *nonce,
                                 const unsigned char *key);
+
+void encryptionclientCloseLineBidirectional(tunnel_t *t, line_t *l);

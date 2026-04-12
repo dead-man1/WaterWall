@@ -9,25 +9,6 @@ enum frame_read_result_e
     kFrameReadInvalid  = -1,
 };
 
-static void closeLineBidirectional(tunnel_t *t, line_t *l)
-{
-    encryptionclient_lstate_t *ls = lineGetState(l, t);
-
-    if (! ls->next_finished)
-    {
-        ls->next_finished = true;
-        if (! withLineLocked(l, tunnelNextUpStreamFinish, t))
-        {
-            return;
-        }
-    }
-
-    if (! ls->prev_finished)
-    {
-        ls->prev_finished = true;
-        withLineLocked(l, tunnelPrevDownStreamFinish, t);
-    }
-}
 
 static int tryReadCompleteFrame(buffer_stream_t *stream, const encryptionclient_tstate_t *ts, sbuf_t **frame_buffer)
 {
@@ -88,7 +69,7 @@ void encryptionclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
     if (isOverflow(&(ls->read_stream), ts))
     {
         bufferstreamEmpty(&(ls->read_stream));
-        closeLineBidirectional(t, l);
+        encryptionclientCloseLineBidirectional(t, l);
         return;
     }
 
@@ -106,7 +87,7 @@ void encryptionclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
         {
             LOGW("EncryptionClient: invalid encrypted frame received, closing line");
             bufferstreamEmpty(&(ls->read_stream));
-            closeLineBidirectional(t, l);
+            encryptionclientCloseLineBidirectional(t, l);
             return;
         }
 
@@ -125,7 +106,7 @@ void encryptionclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
             LOGW("EncryptionClient: failed to decrypt frame, closing line");
             lineReuseBuffer(l, frame_buffer);
             bufferstreamEmpty(&(ls->read_stream));
-            closeLineBidirectional(t, l);
+            encryptionclientCloseLineBidirectional(t, l);
             return;
         }
 

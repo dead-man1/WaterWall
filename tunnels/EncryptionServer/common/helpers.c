@@ -256,3 +256,24 @@ int encryptionserverDecryptAead(uint32_t algorithm, unsigned char *dst, const un
 
     return -1;
 }
+
+void encryptionserverCloseLineBidirectional(tunnel_t *t, line_t *l)
+{
+    encryptionserver_lstate_t *ls = lineGetState(l, t);
+
+    if (! ls->next_finished)
+    {
+        ls->next_finished = true;
+        if (! withLineLocked(l, tunnelNextUpStreamFinish, t))
+        {
+            return;
+        }
+    }
+
+    if (! ls->prev_finished)
+    {
+        ls->prev_finished = true;
+        withLineLocked(l, tunnelPrevDownStreamFinish, t);
+    }
+}
+

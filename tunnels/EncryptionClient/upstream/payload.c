@@ -2,25 +2,6 @@
 
 #include "loggers/network_logger.h"
 
-static void closeLineBidirectional(tunnel_t *t, line_t *l)
-{
-    encryptionclient_lstate_t *ls = lineGetState(l, t);
-
-    if (! ls->next_finished)
-    {
-        ls->next_finished = true;
-        if (! withLineLocked(l, tunnelNextUpStreamFinish, t))
-        {
-            return;
-        }
-    }
-
-    if (! ls->prev_finished)
-    {
-        ls->prev_finished = true;
-        withLineLocked(l, tunnelPrevDownStreamFinish, t);
-    }
-}
 
 void encryptionclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
@@ -73,7 +54,7 @@ void encryptionclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     {
         LOGW("EncryptionClient: failed to encrypt payload, closing line");
         lineReuseBuffer(l, buf);
-        closeLineBidirectional(t, l);
+        encryptionclientCloseLineBidirectional(t, l);
         return;
     }
 
