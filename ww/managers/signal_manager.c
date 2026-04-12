@@ -7,6 +7,92 @@
 
 static signal_manager_t *signalmanager_gstate = NULL;
 
+static const char *signalName(int signum)
+{
+    switch (signum)
+    {
+#ifdef SIGABRT
+    case SIGABRT:
+        return "SIGABRT";
+#endif
+#ifdef SIGALRM
+    case SIGALRM:
+        return "SIGALRM";
+#endif
+#ifdef SIGBUS
+    case SIGBUS:
+        return "SIGBUS";
+#endif
+#ifdef SIGFPE
+    case SIGFPE:
+        return "SIGFPE";
+#endif
+#ifdef SIGHUP
+    case SIGHUP:
+        return "SIGHUP";
+#endif
+#ifdef SIGILL
+    case SIGILL:
+        return "SIGILL";
+#endif
+#ifdef SIGINT
+    case SIGINT:
+        return "SIGINT";
+#endif
+#ifdef SIGPIPE
+    case SIGPIPE:
+        return "SIGPIPE";
+#endif
+#ifdef SIGQUIT
+    case SIGQUIT:
+        return "SIGQUIT";
+#endif
+#ifdef SIGSEGV
+    case SIGSEGV:
+        return "SIGSEGV";
+#endif
+#ifdef SIGTERM
+    case SIGTERM:
+        return "SIGTERM";
+#endif
+#ifdef SIGTRAP
+    case SIGTRAP:
+        return "SIGTRAP";
+#endif
+#ifdef SIGUSR1
+    case SIGUSR1:
+        return "SIGUSR1";
+#endif
+#ifdef SIGUSR2
+    case SIGUSR2:
+        return "SIGUSR2";
+#endif
+    default:
+        return "UNKNOWN_SIGNAL";
+    }
+}
+
+#if defined(OS_WIN)
+static const char *windowsCtrlEventName(DWORD ctrl_type)
+{
+    switch (ctrl_type)
+    {
+    case CTRL_C_EVENT:
+        return "CTRL_C_EVENT";
+    case CTRL_BREAK_EVENT:
+        return "CTRL_BREAK_EVENT";
+    case CTRL_CLOSE_EVENT:
+        return "CTRL_CLOSE_EVENT";
+    case CTRL_LOGOFF_EVENT:
+        return "CTRL_LOGOFF_EVENT";
+    case CTRL_SHUTDOWN_EVENT:
+        return "CTRL_SHUTDOWN_EVENT";
+    default:
+        return "UNKNOWN_WINDOWS_EVENT";
+    }
+}
+#endif
+
 /**
  * @brief Register one at-exit callback in reverse-priority slots.
  *
@@ -104,7 +190,9 @@ static void exitHandler(void)
 static BOOL WINAPI CtrlHandler(_In_ DWORD CtrlType)
 {
     // return TRUE;
-    printError("SignalManager: Received windows event %d\n", CtrlType);
+    printError("SignalManager: Received windows event %s (%lu)\n",
+               windowsCtrlEventName(CtrlType),
+               (unsigned long) CtrlType);
 
     switch (CtrlType)
     {
@@ -132,9 +220,17 @@ static BOOL WINAPI CtrlHandler(_In_ DWORD CtrlType)
  */
 static void multiplexedSignalHandler(int signum)
 {
-    char    message[50];
-    int     length  = snprintf(message, sizeof(message), "SignalManager: Received signal %d\n", signum);
-    int     written = write(STDOUT_FILENO, message, length);
+    static const char prefix[] = "SignalManager: Received signal ";
+    static const char suffix[] = "\n";
+
+    const char *name = signalName(signum);
+    int         written;
+
+    written = write(STDOUT_FILENO, prefix, sizeof(prefix) - 1);
+    discard written;
+    written = write(STDOUT_FILENO, name, stringLength(name));
+    discard written;
+    written = write(STDOUT_FILENO, suffix, sizeof(suffix) - 1);
     discard written;
 
     if (signalmanager_gstate == NULL || signalmanager_gstate->raise_defaults)
