@@ -258,9 +258,8 @@ static inline buffer_pool_t *lineGetBufferPool(const line_t *const line)
  *
  * @param line Line instance.
  * @param b Buffer to return.
- * @return void* Unused return placeholder.
  */
-static inline void *lineReuseBuffer(const line_t *const line, sbuf_t *b)
+static inline void lineReuseBuffer(const line_t *const line, sbuf_t *b)
 {
     bufferpoolReuseBuffer(lineGetBufferPool(line), b);
 }
