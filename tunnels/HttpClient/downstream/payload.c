@@ -4,21 +4,37 @@
 
 static void failAndCloseD(tunnel_t *t, line_t *l, httpclient_lstate_t *ls)
 {
-    httpclientLinestateDestroy(ls);
-    tunnelNextUpStreamFinish(t, l);
-    tunnelPrevDownStreamFinish(t, l);
+    if (lineIsAlive(l))
+    {
+        httpclientTransportCloseBothDirections(t, l, ls);
+    }
+    else
+    {
+        httpclientLinestateDestroy(ls);
+    }
 }
 
 void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     httpclient_lstate_t *ls = lineGetState(l, t);
 
+    lineLock(l);
+
     if (ls->runtime_proto == kHttpClientRuntimeHttp2)
     {
         if (! httpclientTransportFeedHttp2Input(t, l, ls, buf))
         {
             failAndCloseD(t, l, ls);
+            lineUnlock(l);
+            return;
         }
+        if (ls->response_complete && ! ls->prev_finished)
+        {
+            httpclientTransportCloseBothDirections(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
+        lineUnlock(l);
         return;
     }
 
@@ -27,6 +43,21 @@ void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     if (! httpclientTransportHandleHttp1ResponseHeaderPhase(t, l, ls))
     {
         failAndCloseD(t, l, ls);
+        lineUnlock(l);
+        return;
+    }
+
+    if (! lineIsAlive(l))
+    {
+        httpclientLinestateDestroy(ls);
+        lineUnlock(l);
+        return;
+    }
+
+    if (ls->response_complete && ! ls->prev_finished)
+    {
+        httpclientTransportCloseBothDirections(t, l, ls);
+        lineUnlock(l);
         return;
     }
 
@@ -38,10 +69,26 @@ void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             if (! httpclientTransportFeedHttp2Input(t, l, ls, leftover))
             {
                 failAndCloseD(t, l, ls);
+                lineUnlock(l);
+                return;
+            }
+
+            if (! lineIsAlive(l))
+            {
+                httpclientLinestateDestroy(ls);
+                lineUnlock(l);
+                return;
+            }
+
+            if (ls->response_complete && ! ls->prev_finished)
+            {
+                httpclientTransportCloseBothDirections(t, l, ls);
+                lineUnlock(l);
                 return;
             }
         }
 
+        lineUnlock(l);
         return;
     }
 
@@ -50,7 +97,24 @@ void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         if (! httpclientTransportDrainHttp1Body(t, l, ls))
         {
             failAndCloseD(t, l, ls);
+            lineUnlock(l);
             return;
         }
     }
+
+    if (! lineIsAlive(l))
+    {
+        httpclientLinestateDestroy(ls);
+        lineUnlock(l);
+        return;
+    }
+
+    if (ls->response_complete && ! ls->prev_finished)
+    {
+        httpclientTransportCloseBothDirections(t, l, ls);
+        lineUnlock(l);
+        return;
+    }
+
+    lineUnlock(l);
 }

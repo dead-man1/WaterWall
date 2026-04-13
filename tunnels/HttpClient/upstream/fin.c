@@ -6,18 +6,26 @@ void httpclientTunnelUpStreamFinish(tunnel_t *t, line_t *l)
 {
     httpclient_lstate_t *ls = lineGetState(l, t);
 
-    if (! ls->initialized)
-    {
-        tunnelNextUpStreamFinish(t, l);
-        return;
-    }
+    lineLock(l);
 
     if (ls->runtime_proto == kHttpClientRuntimeHttp1)
     {
         if (! ls->fin_sent)
         {
             ls->fin_sent = true;
-            httpclientTransportSendHttp1FinalChunk(t, l);
+            if (! httpclientTransportSendHttp1FinalChunk(t, l))
+            {
+                if (lineIsAlive(l))
+                {
+                    httpclientTransportCloseBothDirections(t, l, ls);
+                }
+                else
+                {
+                    httpclientLinestateDestroy(ls);
+                }
+                lineUnlock(l);
+                return;
+            }
         }
     }
     else if (ls->runtime_proto == kHttpClientRuntimeHttp2)
@@ -25,7 +33,19 @@ void httpclientTunnelUpStreamFinish(tunnel_t *t, line_t *l)
         if (! ls->fin_sent)
         {
             ls->fin_sent = true;
-            httpclientTransportSendHttp2DataFrame(t, l, ls, NULL, true);
+            if (! httpclientTransportSendHttp2DataFrame(t, l, ls, NULL, true))
+            {
+                if (lineIsAlive(l))
+                {
+                    httpclientTransportCloseBothDirections(t, l, ls);
+                }
+                else
+                {
+                    httpclientLinestateDestroy(ls);
+                }
+                lineUnlock(l);
+                return;
+            }
         }
     }
     else
@@ -35,4 +55,5 @@ void httpclientTunnelUpStreamFinish(tunnel_t *t, line_t *l)
 
     httpclientLinestateDestroy(ls);
     tunnelNextUpStreamFinish(t, l);
+    lineUnlock(l);
 }

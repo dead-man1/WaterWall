@@ -46,8 +46,6 @@ typedef struct httpserver_lstate_s
     int64_t h1_chunk_expected;
     int64_t h1_body_remaining;
 
-    bool initialized;
-
     bool h1_headers_parsed;
     bool h1_request_chunked;
     bool h1_request_finished;

@@ -820,22 +820,7 @@ static bool httpserverTransportApplyUpgradeSettingsAndOpenStream(tunnel_t *t, li
         return false;
     }
 
-    {
-        nghttp2_nv nvs[1];
-        nvs[0] = (nghttp2_nv) {.name = (uint8_t *) ":status",
-                               .value = (uint8_t *) "200",
-                               .namelen = 7,
-                               .valuelen = 3,
-                               .flags = NGHTTP2_NV_FLAG_NONE};
-
-        if (nghttp2_submit_headers(ls->session, NGHTTP2_FLAG_END_HEADERS | NGHTTP2_FLAG_END_STREAM, 1, NULL, nvs, 1,
-                                   NULL) != 0)
-        {
-            LOGE("HttpServer: failed to submit stream-1 response after upgrade");
-            return false;
-        }
-    }
-
+    ls->h2_stream_id  = 1;
     ls->runtime_proto = kHttpServerRuntimeHttp2;
 
     return sendNghttp2Outbound(t, l, ls);
@@ -1261,27 +1246,48 @@ bool httpserverTransportHandleHttp1RequestHeaderPhase(tunnel_t *t, line_t *l, ht
     if (ts->version_mode == kHttpServerVersionModeBoth && ts->enable_upgrade && info.connection_upgrade &&
         info.connection_http2_settings && info.upgrade_h2c && info.has_http2_settings)
     {
-        if (! sendTextDown(t, l, HTTP2_UPGRADE_RESPONSE))
-        {
-            return false;
-        }
+        bool request_has_body = info.transfer_chunked || (info.has_content_length && info.content_length > 0);
 
-        ls->h1_headers_parsed = true;
-        if (! httpserverTransportApplyUpgradeSettingsAndOpenStream(t, l, ls, info.http2_settings))
+        if (request_has_body)
         {
-            return false;
+            LOGW("HttpServer: ignoring h2c upgrade request that carries an HTTP/1.1 request body");
         }
-
-        while (! bufferstreamIsEmpty(&ls->in_stream))
+        else
         {
-            sbuf_t *leftover = bufferstreamIdealRead(&ls->in_stream);
-            if (! httpserverTransportFeedHttp2Input(t, l, ls, leftover))
+            if (! sendTextDown(t, l, HTTP2_UPGRADE_RESPONSE))
             {
                 return false;
             }
-        }
 
-        return httpserverTransportFlushPendingDown(t, l, ls);
+            ls->h1_headers_parsed = true;
+            if (! httpserverTransportApplyUpgradeSettingsAndOpenStream(t, l, ls, info.http2_settings))
+            {
+                return false;
+            }
+
+            while (! bufferstreamIsEmpty(&ls->in_stream))
+            {
+                sbuf_t *leftover = bufferstreamIdealRead(&ls->in_stream);
+                if (! httpserverTransportFeedHttp2Input(t, l, ls, leftover))
+                {
+                    return false;
+                }
+            }
+
+            if (! ls->next_finished)
+            {
+                ls->next_finished       = true;
+                ls->h2_request_finished = true;
+                tunnelNextUpStreamFinish(t, l);
+            }
+
+            if (! lineIsAlive(l))
+            {
+                return true;
+            }
+
+            return httpserverTransportFlushPendingDown(t, l, ls);
+        }
     }
 
     ls->runtime_proto      = kHttpServerRuntimeHttp1;
@@ -1497,6 +1503,8 @@ bool httpserverTransportDrainHttp1RequestBody(tunnel_t *t, line_t *l, httpserver
 
 void httpserverTransportCloseBothDirections(tunnel_t *t, line_t *l, httpserver_lstate_t *ls)
 {
+    lineLock(l);
+
     bool close_next = ! ls->next_finished;
     bool close_prev = ! ls->prev_finished;
 
@@ -1510,8 +1518,10 @@ void httpserverTransportCloseBothDirections(tunnel_t *t, line_t *l, httpserver_l
         tunnelNextUpStreamFinish(t, l);
     }
 
-    if (close_prev)
+    if (lineIsAlive(l) && close_prev)
     {
         tunnelPrevDownStreamFinish(t, l);
     }
+
+    lineUnlock(l);
 }

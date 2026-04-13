@@ -2,6 +2,18 @@
 
 #include "loggers/network_logger.h"
 
+static void closeOrDestroyLine(tunnel_t *t, line_t *l, httpclient_lstate_t *ls)
+{
+    if (lineIsAlive(l))
+    {
+        httpclientTransportCloseBothDirections(t, l, ls);
+    }
+    else
+    {
+        httpclientLinestateDestroy(ls);
+    }
+}
+
 void httpclientTunnelUpStreamInit(tunnel_t *t, line_t *l)
 {
     httpclient_tstate_t *ts = tunnelGetState(t);
@@ -9,8 +21,12 @@ void httpclientTunnelUpStreamInit(tunnel_t *t, line_t *l)
 
     httpclientLinestateInitialize(ls, t, l);
 
+    lineLock(l);
+
     if (! withLineLocked(l, tunnelNextUpStreamInit, t))
     {
+        httpclientLinestateDestroy(ls);
+        lineUnlock(l);
         return;
     }
 
@@ -19,8 +35,9 @@ void httpclientTunnelUpStreamInit(tunnel_t *t, line_t *l)
         ls->runtime_proto = kHttpClientRuntimeHttp1;
         if (! httpclientTransportSendHttp1RequestHeaders(t, l, false))
         {
-            httpclientLinestateDestroy(ls);
+            closeOrDestroyLine(t, l, ls);
         }
+        lineUnlock(l);
         return;
     }
 
@@ -29,8 +46,9 @@ void httpclientTunnelUpStreamInit(tunnel_t *t, line_t *l)
         ls->runtime_proto = kHttpClientRuntimeHttp2;
         if (! httpclientTransportEnsureHttp2Session(t, l, ls))
         {
-            httpclientLinestateDestroy(ls);
+            closeOrDestroyLine(t, l, ls);
         }
+        lineUnlock(l);
         return;
     }
 
@@ -39,14 +57,17 @@ void httpclientTunnelUpStreamInit(tunnel_t *t, line_t *l)
         ls->runtime_proto = kHttpClientRuntimeWaitUpgrade;
         if (! httpclientTransportSendHttp1RequestHeaders(t, l, true))
         {
-            httpclientLinestateDestroy(ls);
+            closeOrDestroyLine(t, l, ls);
         }
+        lineUnlock(l);
         return;
     }
 
     ls->runtime_proto = kHttpClientRuntimeHttp2;
     if (! httpclientTransportEnsureHttp2Session(t, l, ls))
     {
-        httpclientLinestateDestroy(ls);
+        closeOrDestroyLine(t, l, ls);
     }
+
+    lineUnlock(l);
 }

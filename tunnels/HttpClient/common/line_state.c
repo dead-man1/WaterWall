@@ -14,13 +14,14 @@ void httpclientLinestateInitialize(httpclient_lstate_t *ls, tunnel_t *t, line_t 
                                  .h2_stream_id         = 0,
                                  .h1_chunk_expected    = -1,
                                  .h1_body_remaining    = 0,
-                                 .initialized          = true,
                                  .h1_headers_parsed    = false,
                                  .h1_response_chunked  = false,
                                  .h1_upgrade_accepted  = false,
                                  .h1_body_mode         = kHttpClientH1BodyNone,
                                  .h2_headers_received  = false,
+                                 .response_complete    = false,
                                  .prev_finished        = false,
+                                 .next_finished        = false,
                                  .fin_sent             = false};
 }
 
@@ -32,13 +33,9 @@ void httpclientLinestateDestroy(httpclient_lstate_t *ls)
         ls->session = NULL;
     }
 
-    if (ls->initialized)
-    {
-        bufferstreamDestroy(&ls->in_stream);
-        bufferqueueDestroy(&ls->pending_up);
-        contextqueueDestroy(&ls->events_down);
-        ls->initialized = false;
-    }
+    bufferstreamDestroy(&ls->in_stream);
+    bufferqueueDestroy(&ls->pending_up);
+    contextqueueDestroy(&ls->events_down);
 
     memoryZeroAligned32(ls, sizeof(*ls));
 }

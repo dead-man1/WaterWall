@@ -74,15 +74,15 @@ typedef struct httpclient_lstate_s
     int64_t h1_chunk_expected;
     int64_t h1_body_remaining;
 
-    bool initialized;
-
     bool h1_headers_parsed;
     bool h1_response_chunked;
     bool h1_upgrade_accepted;
     httpclient_h1_body_mode_t h1_body_mode;
 
     bool h2_headers_received;
+    bool response_complete;
     bool prev_finished;
+    bool next_finished;
 
     bool fin_sent;
 } httpclient_lstate_t;
@@ -152,3 +152,4 @@ bool httpclientTransportFeedHttp2Input(tunnel_t *t, line_t *l, httpclient_lstate
 bool httpclientTransportHandleHttp1ResponseHeaderPhase(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
 bool httpclientTransportDrainHttp1ChunkedBody(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
 bool httpclientTransportDrainHttp1Body(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
+void httpclientTransportCloseBothDirections(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);

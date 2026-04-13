@@ -172,8 +172,7 @@ bool httpclientTransportSendHttp1RequestHeaders(tunnel_t *t, line_t *l, bool upg
         if (! appendHeaderFmt(header_buf, kHttpClientMaxHeaderBytes, &offset, "Connection: Upgrade, HTTP2-Settings\r\n") ||
             ! appendHeaderFmt(header_buf, kHttpClientMaxHeaderBytes, &offset, "Upgrade: h2c\r\n") ||
             ! appendHeaderFmt(header_buf, kHttpClientMaxHeaderBytes, &offset, "HTTP2-Settings: %s\r\n",
-                              ts->upgrade_settings_b64) ||
-            ! appendHeaderFmt(header_buf, kHttpClientMaxHeaderBytes, &offset, "Transfer-Encoding: chunked\r\n"))
+                              ts->upgrade_settings_b64))
         {
             LOGE("HttpClient: request headers are too large");
             memoryFree(header_buf);
@@ -189,16 +188,16 @@ bool httpclientTransportSendHttp1RequestHeaders(tunnel_t *t, line_t *l, bool upg
             memoryFree(header_buf);
             return false;
         }
+    }
 
-        if (ts->content_type != kContentTypeNone && ts->content_type != kContentTypeUndefined)
+    if (ts->content_type != kContentTypeNone && ts->content_type != kContentTypeUndefined)
+    {
+        if (! appendHeaderFmt(header_buf, kHttpClientMaxHeaderBytes, &offset, "Content-Type: %s\r\n",
+                              httpContentTypeStr(ts->content_type)))
         {
-            if (! appendHeaderFmt(header_buf, kHttpClientMaxHeaderBytes, &offset, "Content-Type: %s\r\n",
-                                  httpContentTypeStr(ts->content_type)))
-            {
-                LOGE("HttpClient: request headers are too large");
-                memoryFree(header_buf);
-                return false;
-            }
+            LOGE("HttpClient: request headers are too large");
+            memoryFree(header_buf);
+            return false;
         }
     }
 
@@ -524,11 +523,7 @@ static int httpclientOnFrameRecvCallback(nghttp2_session *session, const nghttp2
 
     if ((frame->hd.flags & NGHTTP2_FLAG_END_STREAM) == NGHTTP2_FLAG_END_STREAM && frame->hd.stream_id == ls->h2_stream_id)
     {
-        if (! ls->prev_finished)
-        {
-            ls->prev_finished = true;
-            contextqueuePush(&ls->events_down, contextCreateFin(ls->line));
-        }
+        ls->response_complete = true;
     }
 
     return 0;
@@ -547,10 +542,9 @@ static int httpclientOnStreamClosedCallback(nghttp2_session *session, int32_t st
 
     httpclient_lstate_t *ls = (httpclient_lstate_t *) userdata;
 
-    if (stream_id == ls->h2_stream_id && ! ls->prev_finished)
+    if (stream_id == ls->h2_stream_id)
     {
-        ls->prev_finished = true;
-        contextqueuePush(&ls->events_down, contextCreateFin(ls->line));
+        ls->response_complete = true;
     }
 
     return 0;
@@ -710,6 +704,12 @@ bool httpclientTransportHandleUpgradeAccepted(tunnel_t *t, line_t *l, httpclient
         return false;
     }
 
+    if (bufferqueueGetBufCount(&ls->pending_up) > 0)
+    {
+        LOGE("HttpClient: h2c upgrade does not support request body payloads on the original HTTP/1.1 request");
+        return false;
+    }
+
     if (ls->session == NULL)
     {
         nghttp2_session_callbacks_set_on_header_callback(ts->cbs, httpclientOnHeaderCallback);
@@ -732,16 +732,36 @@ bool httpclientTransportHandleUpgradeAccepted(tunnel_t *t, line_t *l, httpclient
         return false;
     }
 
-    int32_t stream_id = 0;
-    if (! httpclientSubmitHttp2RequestHeaders(ts, ls, &stream_id))
-    {
-        return false;
-    }
-
-    ls->h2_stream_id  = stream_id;
+    ls->h2_stream_id  = 1;
     ls->runtime_proto = kHttpClientRuntimeHttp2;
 
     return sendNghttp2Outbound(t, l, ls);
+}
+
+void httpclientTransportCloseBothDirections(tunnel_t *t, line_t *l, httpclient_lstate_t *ls)
+{
+    lineLock(l);
+
+    bool close_next = ! ls->next_finished;
+    bool close_prev = ! ls->prev_finished;
+
+    ls->next_finished     = true;
+    ls->prev_finished     = true;
+    ls->response_complete = true;
+
+    httpclientLinestateDestroy(ls);
+
+    if (close_next)
+    {
+        tunnelNextUpStreamFinish(t, l);
+    }
+
+    if (lineIsAlive(l) && close_prev)
+    {
+        tunnelPrevDownStreamFinish(t, l);
+    }
+
+    lineUnlock(l);
 }
 
 bool httpclientTransportSendHttp2DataFrame(tunnel_t *t, line_t *l, httpclient_lstate_t *ls, sbuf_t *payload,
@@ -1058,8 +1078,7 @@ bool httpclientTransportHandleHttp1ResponseHeaderPhase(tunnel_t *t, line_t *l, h
         if (response_has_no_body)
         {
             ls->h1_body_mode      = kHttpClientH1BodyNone;
-            ls->prev_finished = true;
-            tunnelPrevDownStreamFinish(t, l);
+            ls->response_complete = true;
             return true;
         }
 
@@ -1074,8 +1093,7 @@ bool httpclientTransportHandleHttp1ResponseHeaderPhase(tunnel_t *t, line_t *l, h
             ls->h1_body_remaining = info.content_length;
             if (ls->h1_body_remaining == 0)
             {
-                ls->prev_finished = true;
-                tunnelPrevDownStreamFinish(t, l);
+                ls->response_complete = true;
                 return true;
             }
         }
@@ -1173,8 +1191,7 @@ bool httpclientTransportDrainHttp1ChunkedBody(tunnel_t *t, line_t *l, httpclient
                     {
                         if (! ls->prev_finished)
                         {
-                            ls->prev_finished = true;
-                            tunnelPrevDownStreamFinish(t, l);
+                            ls->response_complete = true;
                         }
                         return true;
                     }
@@ -1267,8 +1284,7 @@ bool httpclientTransportDrainHttp1Body(tunnel_t *t, line_t *l, httpclient_lstate
 
     if (ls->h1_body_remaining == 0 && ! ls->prev_finished)
     {
-        ls->prev_finished = true;
-        tunnelPrevDownStreamFinish(t, l);
+        ls->response_complete = true;
         return true;
     }
 

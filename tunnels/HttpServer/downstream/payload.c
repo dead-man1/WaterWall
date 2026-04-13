@@ -2,15 +2,30 @@
 
 #include "loggers/network_logger.h"
 
+static void failAndCloseDownStream(tunnel_t *t, line_t *l, httpserver_lstate_t *ls)
+{
+    if (lineIsAlive(l))
+    {
+        httpserverTransportCloseBothDirections(t, l, ls);
+    }
+    else
+    {
+        httpserverLinestateDestroy(ls);
+    }
+}
+
 void httpserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     httpserver_lstate_t *ls = lineGetState(l, t);
+
+    lineLock(l);
 
     if (ls->runtime_proto == kHttpServerRuntimeHttp1)
     {
         if (! ls->h1_headers_parsed)
         {
             bufferqueuePushBack(&ls->pending_down, buf);
+            lineUnlock(l);
             return;
         }
 
@@ -19,7 +34,8 @@ void httpserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             if (! httpserverTransportSendHttp1ResponseHeaders(t, l))
             {
                 lineReuseBuffer(l, buf);
-                httpserverTransportCloseBothDirections(t, l, ls);
+                failAndCloseDownStream(t, l, ls);
+                lineUnlock(l);
                 return;
             }
             ls->h1_response_headers_sent = true;
@@ -27,8 +43,11 @@ void httpserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
         if (! httpserverTransportSendHttp1ChunkedPayload(t, l, buf))
         {
-            httpserverTransportCloseBothDirections(t, l, ls);
+            failAndCloseDownStream(t, l, ls);
+            lineUnlock(l);
+            return;
         }
+        lineUnlock(l);
         return;
     }
 
@@ -37,6 +56,7 @@ void httpserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         if (ls->h2_stream_id <= 0)
         {
             bufferqueuePushBack(&ls->pending_down, buf);
+            lineUnlock(l);
             return;
         }
 
@@ -45,17 +65,22 @@ void httpserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             if (! httpserverTransportSubmitHttp2ResponseHeaders(t, l, ls, false))
             {
                 lineReuseBuffer(l, buf);
-                httpserverTransportCloseBothDirections(t, l, ls);
+                failAndCloseDownStream(t, l, ls);
+                lineUnlock(l);
                 return;
             }
         }
 
         if (! httpserverTransportSendHttp2DataFrame(t, l, ls, buf, false))
         {
-            httpserverTransportCloseBothDirections(t, l, ls);
+            failAndCloseDownStream(t, l, ls);
+            lineUnlock(l);
+            return;
         }
+        lineUnlock(l);
         return;
     }
 
     bufferqueuePushBack(&ls->pending_down, buf);
+    lineUnlock(l);
 }

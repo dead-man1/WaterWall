@@ -2,6 +2,18 @@
 
 #include "loggers/network_logger.h"
 
+static void closeOrDestroyLine(tunnel_t *t, line_t *l, httpserver_lstate_t *ls)
+{
+    if (lineIsAlive(l))
+    {
+        httpserverTransportCloseBothDirections(t, l, ls);
+    }
+    else
+    {
+        httpserverLinestateDestroy(ls);
+    }
+}
+
 void httpserverTunnelUpStreamInit(tunnel_t *t, line_t *l)
 {
     httpserver_tstate_t *ts = tunnelGetState(t);
@@ -9,14 +21,19 @@ void httpserverTunnelUpStreamInit(tunnel_t *t, line_t *l)
 
     httpserverLinestateInitialize(ls, t, l);
 
+    lineLock(l);
+
     if (! withLineLocked(l, tunnelNextUpStreamInit, t))
     {
+        httpserverLinestateDestroy(ls);
+        lineUnlock(l);
         return;
     }
 
     if (ts->version_mode == kHttpServerVersionModeHttp1)
     {
         ls->runtime_proto = kHttpServerRuntimeHttp1;
+        lineUnlock(l);
         return;
     }
 
@@ -24,10 +41,12 @@ void httpserverTunnelUpStreamInit(tunnel_t *t, line_t *l)
     {
         if (! httpserverTransportEnsureHttp2Session(t, l, ls))
         {
-            httpserverTransportCloseBothDirections(t, l, ls);
+            closeOrDestroyLine(t, l, ls);
         }
+        lineUnlock(l);
         return;
     }
 
     ls->runtime_proto = kHttpServerRuntimeUnknown;
+    lineUnlock(l);
 }

@@ -5,16 +5,42 @@
 void httpclientTunnelDownStreamFinish(tunnel_t *t, line_t *l)
 {
     httpclient_lstate_t *ls = lineGetState(l, t);
-    bool                 already_finished = false;
 
-    if (ls->initialized)
+    lineLock(l);
+
+    ls->next_finished = true;
+
+    if (! ls->prev_finished)
     {
-        already_finished = ls->prev_finished;
-        httpclientLinestateDestroy(ls);
+        bool truncated = false;
+
+        if (ls->runtime_proto == kHttpClientRuntimeHttp1)
+        {
+            if (! ls->h1_headers_parsed)
+            {
+                truncated = true;
+            }
+            else if (ls->h1_body_mode == kHttpClientH1BodyContentLen && ls->h1_body_remaining != 0)
+            {
+                truncated = true;
+            }
+            else if (ls->h1_body_mode == kHttpClientH1BodyChunked && ! ls->response_complete)
+            {
+                truncated = true;
+            }
+        }
+        else if (ls->runtime_proto == kHttpClientRuntimeHttp2 && ! ls->response_complete)
+        {
+            truncated = true;
+        }
+
+        if (truncated)
+        {
+            LOGE("HttpClient: response stream ended before the HTTP body was complete");
+        }
     }
 
-    if (! already_finished)
-    {
-        tunnelPrevDownStreamFinish(t, l);
-    }
+    httpclientLinestateDestroy(ls);
+    tunnelPrevDownStreamFinish(t, l);
+    lineUnlock(l);
 }
