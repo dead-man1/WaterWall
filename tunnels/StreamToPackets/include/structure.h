@@ -19,7 +19,8 @@ enum
 {
     kTunnelStateSize = sizeof(streamtopackets_tstate_t),
     kLineStateSize   = sizeof(streamtopackets_lstate_t),
-    kMaxBufferSize   = 65536 * 2 // Maximum buffer size for reading data packets
+    kMaxBufferSize   = 65536 * 2, // Maximum buffer size for reading data packets
+    kHeaderSize      = 2          // add 2 bytes to packet to store real size
 };
 
 WW_EXPORT void         streamtopacketsTunnelDestroy(tunnel_t *t);
@@ -47,6 +48,7 @@ void streamtopacketsTunnelDownStreamResume(tunnel_t *t, line_t *l);
 
 void streamtopacketsLinestateInitialize(streamtopackets_lstate_t *ls, buffer_pool_t *pool);
 void streamtopacketsLinestateDestroy(streamtopackets_lstate_t *ls);
+void streamtopacketsLinestateReset(streamtopackets_lstate_t *ls);
 
 bool streamtopacketsReadStreamIsOverflowed(buffer_stream_t *read_stream);
 bool streamtopacketsTryReadIPv4Packet(buffer_stream_t *stream, sbuf_t **packet_out);

@@ -14,10 +14,11 @@ typedef struct udpovertcpserver_lstate_s
 
 enum
 {
-    kTunnelStateSize        = sizeof(udpovertcpserver_tstate_t),
-    kLineStateSize          = sizeof(udpovertcpserver_lstate_t),
-    kHeaderSize             = 2,                            // 2 bytes for the length of the packet
-    kMaxAllowedPacketLength = 65535 - 20 - 8 - kHeaderSize, // Maximum UDP packet size (shared with udp_over_tcp_client)
+    kTunnelStateSize = sizeof(udpovertcpserver_tstate_t),
+    kLineStateSize   = sizeof(udpovertcpserver_lstate_t),
+    kHeaderSize      = 2, // 2 bytes for the length of the packet
+    kMaxAllowedUDPPacketLength =
+        65535 - 20 - 8 - kHeaderSize, // Maximum UDP packet size (shared with udp_over_tcp_client)
 };
 
 WW_EXPORT void         udpovertcpserverTunnelDestroy(tunnel_t *t);

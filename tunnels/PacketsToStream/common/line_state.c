@@ -5,8 +5,9 @@
 void packetstostreamLinestateInitialize(packetstostream_lstate_t *ls, buffer_pool_t *pool)
 {
     *ls = (packetstostream_lstate_t) {.line        = NULL,
-                                      .read_stream = bufferstreamCreate(pool, 0),
-                                      .paused      = false};
+                                      .read_stream = bufferstreamCreate(pool, kHeaderSize),
+                                      .paused      = false,
+                                      .recreate_scheduled = false};
 }
 
 void packetstostreamLinestateDestroy(packetstostream_lstate_t *ls)

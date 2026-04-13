@@ -88,7 +88,7 @@ Incoming stream bytes are stored in a read stream until one or more full packets
 
 Current overflow limit:
 
-- `2 * kMaxAllowedPacketLength`
+- `2 * kMaxAllowedUDPPacketLength`
 
 If the buffered data grows beyond that limit, the implementation empties the read stream buffer.
 

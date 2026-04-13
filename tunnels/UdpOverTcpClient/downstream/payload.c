@@ -14,7 +14,7 @@ static sbuf_t *tryReadCompletePacket(buffer_stream_t *stream)
 
     uint16_t total_packet_size = ntohs(*(uint16_t *) packet_first_bytes);
 
-    if (total_packet_size < 1 || total_packet_size > bufferstreamGetBufLen(stream))
+    if (total_packet_size < 1 || ((uint32_t) (total_packet_size  + kHeaderSize)) > (uint32_t) bufferstreamGetBufLen(stream))
     {
         return NULL;
     }
@@ -28,10 +28,10 @@ static sbuf_t *tryReadCompletePacket(buffer_stream_t *stream)
 
 static bool isOverFlow(buffer_stream_t *read_stream)
 {
-    if (bufferstreamGetBufLen(read_stream) > (uint32_t) (kMaxAllowedPacketLength * 2))
+    if (bufferstreamGetBufLen(read_stream) > (uint32_t) (kMaxAllowedUDPPacketLength * 2))
     {
-        LOGW("UdpOverTcpClient: DownStreamPayload: Read stream overflow, size: %zu, limit: %zu", bufferstreamGetBufLen(read_stream),
-             (uint32_t) (kMaxAllowedPacketLength * 2));
+        LOGW("UdpOverTcpClient: DownStreamPayload: Read stream overflow, size: %zu, limit: %zu",
+             bufferstreamGetBufLen(read_stream), (uint32_t) (kMaxAllowedUDPPacketLength * 2));
         return true; // Return true when overflow IS detected
     }
     return false; // Return false when no overflow
@@ -58,7 +58,7 @@ void udpovertcpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
             break; // No complete packet available, exit the loop
         }
 
-        if(! withLineLockedWithBuf(l, tunnelPrevDownStreamPayload, t, packet_buffer))
+        if (! withLineLockedWithBuf(l, tunnelPrevDownStreamPayload, t, packet_buffer))
         {
             break; // Exit if the line is no longer alive
         }

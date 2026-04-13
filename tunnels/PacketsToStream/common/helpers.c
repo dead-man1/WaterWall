@@ -28,33 +28,39 @@ bool packetstostreamTryReadIPv4Packet(buffer_stream_t *stream, sbuf_t **packet_o
     assert(packet_out != NULL);
     *packet_out = NULL;
 
-    while (bufferstreamGetBufLen(stream) >= IP_HLEN)
+    if (bufferstreamGetBufLen(stream) < kHeaderSize + 1)
     {
-        uint8_t ip_header_bytes[IP_HLEN];
-        bufferstreamViewBytesAt(stream, 0, ip_header_bytes, IP_HLEN);
-
-        uint8_t version    = (uint8_t) (ip_header_bytes[0] >> 4);
-        uint8_t ihl_words  = (uint8_t) (ip_header_bytes[0] & 0x0F);
-        size_t  header_len = (size_t) ihl_words * 4U;
-        size_t  total_len  = ((size_t) ip_header_bytes[2] << 8U) | (size_t) ip_header_bytes[3];
-
-        if (version != 4 || ihl_words < 5 || total_len < header_len)
-        {
-            LOGW("PacketsToStream: dropping invalid IPv4 framing byte while parsing stream");
-            packetstostreamDropOneByte(stream);
-            continue;
-        }
-
-        if (bufferstreamGetBufLen(stream) < total_len)
-        {
-            return false;
-        }
-
-        *packet_out = bufferstreamReadExact(stream, total_len);
-        return true;
+        return false;
     }
 
-    return false;
+    uint8_t packet_first_bytes[kHeaderSize];
+    bufferstreamViewBytesAt(stream, 0, packet_first_bytes, kHeaderSize);
+
+    uint16_t total_packet_size = ntohs(*(uint16_t *) packet_first_bytes);
+
+    if (total_packet_size < 1 ||  ((uint32_t) (total_packet_size  + kHeaderSize)) > (uint32_t) bufferstreamGetBufLen(stream))
+    {
+        return false;
+    }
+
+    // Read the complete packet (header + payload)
+    *packet_out = bufferstreamReadExact(stream, kHeaderSize + total_packet_size);
+    sbufShiftRight(*packet_out, kHeaderSize);
+
+    return true;
+}
+
+void packetstostreamRecreateOutputLineTask(tunnel_t *t, line_t *packet_line)
+{
+    packetstostream_lstate_t *ls = lineGetState(packet_line, t);
+
+    if (! ls->recreate_scheduled)
+    {
+        return;
+    }
+
+    ls->recreate_scheduled = false;
+    packetstostreamEnsureOutputLine(t, packet_line, ls);
 }
 
 line_t *packetstostreamEnsureOutputLine(tunnel_t *t, line_t *packet_line, packetstostream_lstate_t *ls)
@@ -67,6 +73,11 @@ line_t *packetstostreamEnsureOutputLine(tunnel_t *t, line_t *packet_line, packet
     if (ls->line != NULL && lineIsAlive(ls->line))
     {
         return ls->line;
+    }
+
+    if (ls->recreate_scheduled)
+    {
+        return NULL;
     }
 
     ls->line   = NULL;

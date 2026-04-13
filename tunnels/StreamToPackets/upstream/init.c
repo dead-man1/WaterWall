@@ -12,10 +12,15 @@ void streamtopacketsTunnelUpStreamInit(tunnel_t *t, line_t *l)
         streamtopacketsLinestateInitialize(ls, lineGetBufferPool(l));
     }
 
-    if (ls->line != NULL && ls->line != l)
+    if (ls->line != l)
     {
-        LOGW("StreamToPackets: replacing active upstream line on worker %u", (unsigned int) lineGetWID(l));
-        bufferstreamEmpty(&ls->read_stream);
+        if (ls->line != NULL)
+        {
+            LOGW("StreamToPackets: replacing active upstream line on worker %u", (unsigned int) lineGetWID(l));
+        }
+
+        // Packet parsing state is worker-local, so partial bytes must not survive a line switch.
+        streamtopacketsLinestateReset(ls);
     }
 
     ls->paused = false;

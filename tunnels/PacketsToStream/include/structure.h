@@ -12,6 +12,7 @@ typedef struct packetstostream_lstate_s
     line_t         *line;        // Pointer to the line associated with this state
     buffer_stream_t read_stream; // Stream for reading data packets
     bool            paused;      // Indicates if the line is paused, dropping packets
+    bool            recreate_scheduled;
 
 } packetstostream_lstate_t;
 
@@ -19,7 +20,8 @@ enum
 {
     kTunnelStateSize = sizeof(packetstostream_tstate_t),
     kLineStateSize   = sizeof(packetstostream_lstate_t),
-    kMaxBufferSize   = 65536 * 2 // Maximum buffer size for reading data packets
+    kMaxBufferSize   = 65536 * 2, // Maximum buffer size for reading data packets
+    kHeaderSize      = 2          // add 2 bytes to packet to store real size
 };
 
 WW_EXPORT void         packetstostreamTunnelDestroy(tunnel_t *t);
@@ -48,6 +50,7 @@ void packetstostreamTunnelDownStreamResume(tunnel_t *t, line_t *l);
 void packetstostreamLinestateInitialize(packetstostream_lstate_t *ls, buffer_pool_t *pool);
 void packetstostreamLinestateDestroy(packetstostream_lstate_t *ls);
 
-bool packetstostreamReadStreamIsOverflowed(buffer_stream_t *read_stream);
-bool packetstostreamTryReadIPv4Packet(buffer_stream_t *stream, sbuf_t **packet_out);
+bool    packetstostreamReadStreamIsOverflowed(buffer_stream_t *read_stream);
+bool    packetstostreamTryReadIPv4Packet(buffer_stream_t *stream, sbuf_t **packet_out);
+void    packetstostreamRecreateOutputLineTask(tunnel_t *t, line_t *packet_line);
 line_t *packetstostreamEnsureOutputLine(tunnel_t *t, line_t *packet_line, packetstostream_lstate_t *ls);

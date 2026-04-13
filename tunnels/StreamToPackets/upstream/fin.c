@@ -12,5 +12,5 @@ void streamtopacketsTunnelUpStreamFinish(tunnel_t *t, line_t *l)
         return;
     }
 
-    streamtopacketsLinestateDestroy(ls);
+    streamtopacketsLinestateReset(ls);
 }

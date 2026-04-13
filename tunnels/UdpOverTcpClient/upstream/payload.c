@@ -16,13 +16,13 @@ void udpovertcpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     }
 #endif
 
-    if(packet_length > kMaxAllowedPacketLength)
+    if(packet_length > kMaxAllowedUDPPacketLength)
     {
-        LOGW("UdpOverTcpClient: Packet length exceeds maximum allowed size: %u > %u , dropped", packet_length, kMaxAllowedPacketLength);
+        LOGW("UdpOverTcpClient: Packet length exceeds maximum allowed size: %u > %u , dropped", packet_length, kMaxAllowedUDPPacketLength);
         lineReuseBuffer(l, buf);
         return;
     }
-    // safely cast to uint16_t, since kMaxAllowedPacketLength is lower than 65536
+    // safely cast to uint16_t, since kMaxAllowedUDPPacketLength is lower than 65536
     uint16_t packet_length_network = htons(packet_length);
 
     sbufShiftLeft(buf, sizeof(uint16_t));
