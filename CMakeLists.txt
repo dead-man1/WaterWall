@@ -15,7 +15,7 @@ endif()
 set(CMAKE_UNITY_BUILD_BATCH_SIZE 500)
 
 project(Waterwall
-  VERSION 1.41
+  VERSION 1.42
   DESCRIPTION "A fast and secure VPN tunnel"
   HOMEPAGE_URL "https://github.com/radkesvat/waterwall"
   LANGUAGES C CXX
@@ -141,6 +141,8 @@ option(INCLUDE_PACKET_SPLIT_STREAM      "link PacketSplitStream staticly to the 
 option(INCLUDE_LAYER3_IP_ROUTING_TABLE  "link Layer3IpRoutingTable staticly to the core" FALSE)
 option(INCLUDE_IP_OVERRIDER             "link IpOverrider staticly to the core"          TRUE)
 option(INCLUDE_IP_MANIPULATOR           "link IPManipulator staticly to the core"        TRUE)
+option(INCLUDE_PING_CLIENT              "link PingClient staticly to the core"           TRUE)
+option(INCLUDE_PING_SERVER              "link PingServer staticly to the core"           TRUE)
 option(INCLUDE_TCP_LISTENER             "link TcpListener staticly to the core"          TRUE)
 option(INCLUDE_UDP_LISTENER             "link UdpListener staticly to the core"          TRUE)
 option(INCLUDE_LISTENER                 "link Listener staticly to the core"             FALSE)
@@ -329,6 +331,22 @@ if(INCLUDE_IP_MANIPULATOR)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/IpManipulator)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/IpManipulator)
   target_link_libraries(Waterwall IpManipulator)
+endif()
+
+#ping client
+if(INCLUDE_PING_CLIENT)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_PING_CLIENT=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/PingClient)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/PingClient)
+  target_link_libraries(Waterwall PingClient)
+endif()
+
+#ping server
+if(INCLUDE_PING_SERVER)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_PING_SERVER=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/PingServer)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/PingServer)
+  target_link_libraries(Waterwall PingServer)
 endif()
 
 

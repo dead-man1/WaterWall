@@ -44,6 +44,14 @@
 #include "tunnels/IpManipulator/include/interface.h"
 #endif
 
+#ifdef INCLUDE_PING_CLIENT
+#include "tunnels/PingClient/include/interface.h"
+#endif
+
+#ifdef INCLUDE_PING_SERVER
+#include "tunnels/PingServer/include/interface.h"
+#endif
+
 #ifdef INCLUDE_LAYER3_TCP_MANIPULATOR
 #include "tunnels/layer3/tcp/manipulator/tcp_manipulator.h"
 #endif
@@ -261,6 +269,14 @@ void loadImportedTunnelsIntoCore(void)
 
 #ifdef INCLUDE_IP_MANIPULATOR
     USING(IpManipulator);
+#endif
+
+#ifdef INCLUDE_PING_CLIENT
+    USING(PingClient);
+#endif
+
+#ifdef INCLUDE_PING_SERVER
+    USING(PingServer);
 #endif
 
 #ifdef INCLUDE_LAYER3_TCP_MANIPULATOR
