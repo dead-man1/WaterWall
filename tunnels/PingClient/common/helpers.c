@@ -91,7 +91,10 @@ static bool pingclientMatchEnvelope(const pingclient_tstate_t *state, sbuf_t *bu
         return false;
     }
 
-    if (ipheader->src.addr != state->peer_ipv4 || ipheader->dest.addr != state->local_ipv4)
+    const bool matches_reverse_direction = (ipheader->src.addr == state->peer_ipv4 && ipheader->dest.addr == state->local_ipv4);
+    const bool matches_forward_direction = (ipheader->src.addr == state->local_ipv4 && ipheader->dest.addr == state->peer_ipv4);
+
+    if ((! matches_reverse_direction) && (! matches_forward_direction))
     {
         return false;
     }
