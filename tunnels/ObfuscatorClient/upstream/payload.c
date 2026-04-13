@@ -4,13 +4,22 @@
 
 void obfuscatorclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
-
     obfuscatorclient_tstate_t *ts = tunnelGetState(t);
 
     if (ts->method == kObfuscatorMethodXor)
     {
-        obfuscatorclientXorByte(sbufGetMutablePtr(buf), sbufGetLength(buf), ts->xor_key);
+        obfuscatorclientApplyXor(t, l, buf);
     }
 
+    if (ts->tls_record_header && ! obfuscatorclientWrapTlsRecordHeader(l, &buf))
+    {
+        return;
+    }
+
+    if (l == tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)))
+    {
+        l->recalculate_checksum = true;
+    }
+    
     tunnelNextUpStreamPayload(t, l, buf);
 }

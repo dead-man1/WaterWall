@@ -4,21 +4,10 @@
 
 tunnel_t *obfuscatorserverTunnelCreate(node_t *node)
 {
-    tunnel_t *t = tunnelCreate(node, sizeof(obfuscatorserver_tstate_t), sizeof(obfuscatorserver_lstate_t));
+    tunnel_t *t = packettunnelCreate(node, sizeof(obfuscatorserver_tstate_t), 0);
 
-    t->fnInitU    = &obfuscatorserverTunnelUpStreamInit;
-    t->fnEstU     = &obfuscatorserverTunnelUpStreamEst;
-    t->fnFinU     = &obfuscatorserverTunnelUpStreamFinish;
     t->fnPayloadU = &obfuscatorserverTunnelUpStreamPayload;
-    t->fnPauseU   = &obfuscatorserverTunnelUpStreamPause;
-    t->fnResumeU  = &obfuscatorserverTunnelUpStreamResume;
-
-    t->fnInitD    = &obfuscatorserverTunnelDownStreamInit;
-    t->fnEstD     = &obfuscatorserverTunnelDownStreamEst;
-    t->fnFinD     = &obfuscatorserverTunnelDownStreamFinish;
     t->fnPayloadD = &obfuscatorserverTunnelDownStreamPayload;
-    t->fnPauseD   = &obfuscatorserverTunnelDownStreamPause;
-    t->fnResumeD  = &obfuscatorserverTunnelDownStreamResume;
 
     t->onPrepare = &obfuscatorserverTunnelOnPrepair;
     t->onStart   = &obfuscatorserverTunnelOnStart;
@@ -27,8 +16,10 @@ tunnel_t *obfuscatorserverTunnelCreate(node_t *node)
     obfuscatorserver_tstate_t *ts = tunnelGetState(t);
 
     const cJSON *settings = node->node_settings_json;
+    dynamic_value_t skip  = parseDynamicNumericValueFromJsonObject(settings, "skip", 3, "none", "ipv4", "transport");
 
     ts->method = parseDynamicNumericValueFromJsonObject(settings, "method", 1, "xor").status;
+    ts->skip   = (skip.status == kDvsEmpty) ? kObfuscatorSkipNone : skip.status;
 
     if (ts->method == kObfuscatorMethodXor)
     {
@@ -49,5 +40,20 @@ tunnel_t *obfuscatorserverTunnelCreate(node_t *node)
         return NULL;
     }
 
+    if (ts->skip != kObfuscatorSkipNone && ts->skip != kObfuscatorSkipIpv4 && ts->skip != kObfuscatorSkipTransport)
+    {
+        LOGF("ObfuscatorServer: 'skip' must be one of 'none', 'ipv4', or 'transport'");
+        tunnelDestroy(t);
+        dynamicvalueDestroy(skip);
+        return NULL;
+    }
+
+    getBoolFromJsonObjectOrDefault(&ts->tls_record_header, settings, "tls_record_header", false);
+    if (getBoolFromJsonObject(&ts->tls_record_header, settings, "tls_header"))
+    {
+        LOGW("ObfuscatorServer: 'tls_header' is deprecated, use 'tls_record_header'");
+    }
+
+    dynamicvalueDestroy(skip);
     return t;
 }

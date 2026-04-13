@@ -8,11 +8,20 @@ enum obfuscator_methods_e
 
 };
 
+enum obfuscator_skip_parts_e
+{
+    kObfuscatorSkipNone = kDvsFirstOption,
+    kObfuscatorSkipIpv4,
+    kObfuscatorSkipTransport
+};
+
 typedef struct obfuscatorserver_tstate_s
 {
     uint32_t method; // Obfuscation method
+    uint32_t skip;   // Headers that remain unobfuscated inside packet payloads
 
     uint8_t  xor_key; // Key for XOR obfuscation, if used
+    bool     tls_record_header;
 } obfuscatorserver_tstate_t;
 
 typedef struct obfuscatorserver_lstate_s
@@ -23,7 +32,8 @@ typedef struct obfuscatorserver_lstate_s
 enum
 {
     kTunnelStateSize = sizeof(obfuscatorserver_tstate_t),
-    kLineStateSize   = sizeof(obfuscatorserver_lstate_t)
+    kLineStateSize   = 0,
+    kObfuscatorTlsRecordHeaderSize = 5
 };
 
 WW_EXPORT void         obfuscatorserverTunnelDestroy(tunnel_t *t);
@@ -53,3 +63,6 @@ void obfuscatorserverLinestateInitialize(obfuscatorserver_lstate_t *ls);
 void obfuscatorserverLinestateDestroy(obfuscatorserver_lstate_t *ls);
 
 void obfuscatorserverXorByte(uint8_t *data, size_t size, uint8_t key);
+void obfuscatorserverApplyXor(tunnel_t *t, line_t *l, sbuf_t *buf);
+bool obfuscatorserverWrapTlsRecordHeader(line_t *l, sbuf_t **buf_io);
+bool obfuscatorserverStripTlsRecordHeader(line_t *l, sbuf_t *buf);

@@ -8,7 +8,17 @@ void obfuscatorserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
 
     if (ts->method == kObfuscatorMethodXor)
     {
-        obfuscatorserverXorByte(sbufGetMutablePtr(buf),sbufGetLength(buf), ts->xor_key);
+        obfuscatorserverApplyXor(t, l, buf);
+    }
+
+    if (ts->tls_record_header && ! obfuscatorserverWrapTlsRecordHeader(l, &buf))
+    {
+        return;
+    }
+
+    if (l == tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l)))
+    {
+        l->recalculate_checksum = true;
     }
 
     tunnelPrevDownStreamPayload(t, l, buf);
