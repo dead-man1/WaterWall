@@ -53,6 +53,7 @@ static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
 
         struct iphdr *ip_header0 = (struct iphdr *) sbufGetRawPtr(buf);
 
+        memorySet(&addrs[0], 0, sizeof(addrs[0]));
         addrs[0].sin_family      = AF_INET;
         addrs[0].sin_addr.s_addr = ip_header0->daddr;
 
@@ -90,6 +91,7 @@ static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
             }
 
             struct iphdr *ip_header  = (struct iphdr *) sbufGetRawPtr(b2);
+            memorySet(&addrs[i], 0, sizeof(addrs[i]));
             addrs[i].sin_family      = AF_INET;
             addrs[i].sin_addr.s_addr = ip_header->daddr;
             iovs[i].iov_base         = (void *) ip_header;

@@ -54,6 +54,14 @@ static inline void sbufByteCopy(void *restrict dst, const void *restrict src, co
 }
 
 /**
+ * @brief Align requested left padding to the allocator's internal boundary.
+ *
+ * @param pad_left Requested left padding in bytes.
+ * @return uint16_t Aligned padding value.
+ */
+uint16_t sbufAlignLeftPadding(uint16_t pad_left);
+
+/**
  * @brief Destroy a non-temporary buffer and free its allocation.
  *
  * @param b Buffer to destroy.
@@ -290,12 +298,15 @@ static inline void sbufWriteBuf(sbuf_t *restrict const to, sbuf_t *restrict cons
  */
 static inline sbuf_t *sbufReserveSpace(sbuf_t *const b, const uint32_t bytes)
 {
+    uint32_t current_length = sbufGetLength(b);
+
+    // `bytes` is the required writable size from current cursor, not an increment.
     if (sbufGetMaximumWriteableSize(b) < bytes)
     {
-        uint32_t needed_capacity = sbufGetLength(b) + bytes;
-        sbuf_t  *bigger_buf      = sbufCreateWithPadding(needed_capacity, b->l_pad);
-        sbufSetLength(bigger_buf, sbufGetLength(b));
-        sbufWriteBuf(bigger_buf, b, sbufGetLength(b));
+        uint32_t needed_writable = max(current_length, bytes);
+        sbuf_t *bigger_buf       = sbufCreateWithPadding(needed_writable, b->l_pad);
+        sbufSetLength(bigger_buf, current_length);
+        sbufWriteBuf(bigger_buf, b, current_length);
         sbufDestroy(b);
         return bigger_buf;
     }

@@ -35,7 +35,7 @@ static void reverseclientBeginConnectMessageReceived(worker_t *worker, void *arg
 
 
     sbuf_t *handshakebuf = bufferpoolGetLargeBuffer(lineGetBufferPool(ul));
-    sbufReserveSpace(handshakebuf, kHandShakeLength);
+    handshakebuf = sbufReserveSpace(handshakebuf, kHandShakeLength);
     memorySet(sbufGetMutablePtr(handshakebuf), kHandShakeByte, kHandShakeLength);
     sbufSetLength(handshakebuf, kHandShakeLength);
 

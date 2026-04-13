@@ -13,6 +13,15 @@ enum
     kConcatMaxThreshould = 4096
 };
 
+static inline void bufferstreamCheckSbufByteCount(size_t bytes, const char *operation)
+{
+    if (UNLIKELY(bytes > UINT32_MAX))
+    {
+        printError("BufferStream: %s exceeds sbuf_t 32-bit limit (%zu bytes)", operation, bytes);
+        terminateProgram(1);
+    }
+}
+
 buffer_stream_t bufferstreamCreate(buffer_pool_t *pool, uint16_t use_left_padding)
 {
     assert(pool != NULL);
@@ -79,6 +88,14 @@ void bufferstreamPush(buffer_stream_t *self, sbuf_t *buf)
     // }
 
     size_t buf_len = sbufGetLength(buf);
+    bufferstreamCheckSbufByteCount(buf_len, "push");
+
+    if (UNLIKELY(self->size > (size_t) UINT32_MAX - buf_len))
+    {
+        printError("BufferStream: buffered data exceeds sbuf_t 32-bit limit");
+        terminateProgram(1);
+    }
+
     // Check for potential overflow
     assert(self->size <= SIZE_MAX - buf_len);
 
@@ -90,6 +107,7 @@ sbuf_t *bufferstreamReadExact(buffer_stream_t *self, size_t bytes)
 {
     assert(self && self->size >= bytes && bytes > 0);
     assert(bs_doublequeue_t_size(&self->q) > 0); // Ensure queue is not empty
+    bufferstreamCheckSbufByteCount(bytes, "exact read");
 
     self->size -= bytes;
 
@@ -129,6 +147,7 @@ sbuf_t *bufferstreamReadAtLeast(buffer_stream_t *self, size_t bytes)
 {
     assert(self && self->size >= bytes && bytes > 0);
     assert(bs_doublequeue_t_size(&self->q) > 0); // Ensure queue is not empty
+    bufferstreamCheckSbufByteCount(bytes, "at-least read");
 
     sbuf_t *container = bs_doublequeue_t_pull_front(&self->q);
     size_t  consumed  = sbufGetLength(container);

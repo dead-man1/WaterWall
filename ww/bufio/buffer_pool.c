@@ -341,6 +341,8 @@ sbuf_t *sbufDuplicateByPool(buffer_pool_t *pool, sbuf_t *b)
 void bufferpoolUpdateAllocationPaddings(buffer_pool_t *pool, uint16_t large_buffer_left_padding,
                                         uint16_t small_buffer_left_padding)
 {
+    large_buffer_left_padding = sbufAlignLeftPadding(large_buffer_left_padding);
+    small_buffer_left_padding = sbufAlignLeftPadding(small_buffer_left_padding);
 
     uint16_t l_new_max = max(pool->large_buffer_left_padding, large_buffer_left_padding);
     uint16_t s_new_max = max(pool->small_buffer_left_padding, small_buffer_left_padding);

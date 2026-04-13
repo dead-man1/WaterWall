@@ -388,7 +388,7 @@ static WTHREAD_ROUTINE(routineReadFromCapture) // NOLINT
             for (uint32_t i = 0; i < RAM_PROFILE && queued_count < kMaxReadDistributeQueueSize; ++i)
             {
                 bufs[queued_count] = bufferpoolGetSmallBuffer(cdev->reader_buffer_pool);
-                sbufReserveSpace(bufs[queued_count], kReadPacketSize);
+                bufs[queued_count] = sbufReserveSpace(bufs[queued_count], kReadPacketSize);
 
                 nread = netfilterGetPacket(cdev->socket, cdev->queue_number, bufs[queued_count]);
 

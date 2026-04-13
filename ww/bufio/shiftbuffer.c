@@ -5,6 +5,19 @@
 #include "shiftbuffer.h"
 #include "wlibc.h"
 
+uint16_t sbufAlignLeftPadding(uint16_t pad_left)
+{
+    const uint32_t aligned_pad = (((uint32_t) pad_left) + 31U) & ~31U;
+
+    if (aligned_pad > UINT16_MAX)
+    {
+        printError("sbuf: left padding overflow after alignment");
+        terminateProgram(1);
+    }
+
+    return (uint16_t) aligned_pad;
+}
+
 void sbufDestroy(sbuf_t *b)
 {
     if (UNLIKELY(b->is_temporary))
@@ -17,8 +30,7 @@ void sbufDestroy(sbuf_t *b)
 
 sbuf_t *sbufCreateWithPadding(uint32_t minimum_capacity, uint16_t pad_left)
 {
-    // Ensure pad_left is always a multiple of 32 for optimal alignment
-    pad_left = (pad_left + 31) & ~31;
+    pad_left = sbufAlignLeftPadding(pad_left);
 
     if (minimum_capacity != 0 && minimum_capacity % kCpuLineCacheSize != 0)
     {
@@ -87,8 +99,14 @@ sbuf_t *sbufConcat(sbuf_t *restrict root, const sbuf_t *restrict const buf)
 {
     uint32_t root_length   = sbufGetLength(root);
     uint32_t append_length = sbufGetLength(buf);
-    // sbufReserveSpace expects additional writable bytes, not final total length.
-    root                   = sbufReserveSpace(root, append_length);
+
+    if (UNLIKELY(root_length > UINT32_MAX - append_length))
+    {
+        printError("sbuf: concat overflow (root=%u, append=%u)", root_length, append_length);
+        terminateProgram(1);
+    }
+
+    root = sbufReserveSpace(root, root_length + append_length);
     sbufSetLength(root, root_length + append_length);
 
     memoryCopyLarge(sbufGetMutablePtr(root) + root_length, sbufGetRawPtr(buf), append_length);

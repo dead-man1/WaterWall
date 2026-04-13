@@ -131,7 +131,7 @@ static bool pairWithLocalUpstreamConnection(tunnel_t *t, line_t *d, reverseserve
 static sbuf_t *createHandshakeBuffer(line_t *d)
 {
     sbuf_t *handshake_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(d));
-    sbufReserveSpace(handshake_buf, kHandShakeLength);
+    handshake_buf = sbufReserveSpace(handshake_buf, kHandShakeLength);
     sbufSetLength(handshake_buf, kHandShakeLength);
     memorySet(sbufGetMutablePtr(handshake_buf), kHandShakeByte, kHandShakeLength);
     return handshake_buf;

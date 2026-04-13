@@ -51,7 +51,7 @@ err_t wireguardifOutputToPeer(wireguard_device_t *device, sbuf_t *q, const ip_ad
                 goto finish;
             }
 
-            q = sbufReserveSpace(q, (padded_len + WIREGUARD_AUTHTAG_LEN) - unpadded_len);
+            q = sbufReserveSpace(q, padded_len + WIREGUARD_AUTHTAG_LEN);
             sbufSetLength(q, padded_len + WIREGUARD_AUTHTAG_LEN); // 1500 is the max packet size which is divided by 16
 
             if (padded_len > unpadded_len)

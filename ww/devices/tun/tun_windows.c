@@ -225,7 +225,7 @@ static WTHREAD_ROUTINE(routineReadFromTun)
     while (atomicLoadRelaxed(&(tdev->running)))
     {
         bufs[queued_count] = bufferpoolGetSmallBuffer(tdev->reader_buffer_pool);
-        sbufReserveSpace(bufs[queued_count], kReadPacketSize);
+        bufs[queued_count] = sbufReserveSpace(bufs[queued_count], kReadPacketSize);
 
         DWORD packet_size;
         BYTE *packet = WintunReceivePacket(Session, &packet_size);
