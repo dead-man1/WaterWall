@@ -13,6 +13,9 @@ typedef struct pingserver_tstate_s
     uint16_t    identifier;
     uint8_t     ttl;
     uint8_t     tos;
+    uint8_t     payload_xor_byte;
+    bool        payload_xor_enabled;
+    bool        roundup_payload_size;
 } pingserver_tstate_t;
 
 typedef struct pingserver_lstate_s
@@ -22,10 +25,13 @@ typedef struct pingserver_lstate_s
 
 enum
 {
+    kPingServerNetworkMtu            = 1500,
     kPingServerIpv4HeaderLength      = sizeof(struct ip_hdr),
     kPingServerIcmpHeaderLength      = sizeof(struct icmp_echo_hdr),
     kPingServerEncapsulationOverhead = kPingServerIpv4HeaderLength + kPingServerIcmpHeaderLength,
-    kPingServerMaxInnerPacketLength  = UINT16_MAX - kPingServerEncapsulationOverhead,
+    kPingServerSizePrefixLength      = sizeof(uint16_t),
+    kPingServerMaxIcmpPayloadLength  = kPingServerNetworkMtu - kPingServerEncapsulationOverhead,
+    kPingServerMaxInnerPacketLength  = kPingServerMaxIcmpPayloadLength,
     kPingServerDefaultIdentifier     = 0xAFAF,
     kPingServerDefaultTtl            = 64,
     kTunnelStateSize                 = sizeof(pingserver_tstate_t),

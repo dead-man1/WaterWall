@@ -11,7 +11,10 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
 - downstream payload encapsulates raw IPv4 packets into real IPv4 ICMP echo-request packets
 - outgoing server packets are also ICMP echo requests, never ICMP echo replies
 - the configured ICMP identifier is matched before decapsulation
+- `xor-byte` can XOR the ICMP payload bytes before server-side encapsulation and restore them during decapsulation
+- `roundup-size` can add a 2-byte original-size prefix and pad the ICMP payload up to `64`, `128`, `256`, `512`, `1024`, or the maximum supported ICMP payload size
 - outer IPv4 and ICMP checksums are calculated immediately when server-side encapsulation happens
+- total packet size is capped at `1500` bytes, so oversized payloads are logged and dropped
 
 ## Required `settings`
 
@@ -43,6 +46,16 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
   Outer IPv4 TOS byte.
   Default: `0`
 
+- `xor-byte` `(integer)`
+  XOR byte applied to the ICMP payload only.
+  Omit this field to disable XOR.
+
+- `roundup-size` `(boolean)`
+  When `true`, the ICMP payload stores:
+  `2-byte original-size -> original IPv4 packet -> random filler`
+  and rounds the payload length up to the next supported bucket.
+  Default: `false`
+
 ## Example
 
 ```json
@@ -53,6 +66,8 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
     "local-ip": "203.0.113.20",
     "peer-ip": "198.51.100.10",
     "identifier": 4660,
+    "xor-byte": 90,
+    "roundup-size": true,
     "sequence-start": 0,
     "ttl": 64
   },
@@ -65,3 +80,4 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
 - only IPv4 inner packets are encapsulated by this tunnel
 - only matching IPv4 ICMP echo-request envelopes are decapsulated on the upstream path
 - fragmented outer ICMP packets are not reassembled here, so they are passed through unchanged
+- with `roundup-size`, packets larger than `1470` bytes are dropped because the 2-byte size prefix must still fit inside the `1500` byte total packet limit

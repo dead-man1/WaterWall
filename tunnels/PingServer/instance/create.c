@@ -63,6 +63,24 @@ static bool pingserverLoadUint8Setting(uint8_t *dest, const cJSON *settings, con
     return true;
 }
 
+static bool pingserverLoadOptionalXorByteSetting(bool *enabled_out, uint8_t *value_out, const cJSON *settings,
+                                                 const char *key, const char *json_path)
+{
+    int value = -1;
+    getIntFromJsonObjectOrDefault(&value, settings, key, -1);
+
+    if (value < -1 || value > UINT8_MAX)
+    {
+        LOGF("JSON Error: %s (int field) : expected a value between 0 and %u, or omit the field",
+             json_path, (unsigned int) UINT8_MAX);
+        return false;
+    }
+
+    *enabled_out = (value != -1);
+    *value_out   = (value == -1) ? 0 : (uint8_t) value;
+    return true;
+}
+
 tunnel_t *pingserverCreate(node_t *node)
 {
     tunnel_t *t = packettunnelCreate(node, sizeof(pingserver_tstate_t), 0);
@@ -88,10 +106,19 @@ tunnel_t *pingserverCreate(node_t *node)
         ! pingserverLoadUint16Setting(&state->identifier, settings, "identifier", kPingServerDefaultIdentifier,
                                       "PingServer->settings->identifier") ||
         ! pingserverLoadUint8Setting(&state->ttl, settings, "ttl", kPingServerDefaultTtl, "PingServer->settings->ttl") ||
-        ! pingserverLoadUint8Setting(&state->tos, settings, "tos", 0, "PingServer->settings->tos"))
+        ! pingserverLoadUint8Setting(&state->tos, settings, "tos", 0, "PingServer->settings->tos") ||
+        ! pingserverLoadOptionalXorByteSetting(&state->payload_xor_enabled, &state->payload_xor_byte, settings,
+                                               "xor-byte", "PingServer->settings->xor-byte"))
     {
         pingserverDestroy(t);
         return NULL;
+    }
+
+    getBoolFromJsonObjectOrDefault(&state->roundup_payload_size, settings, "roundup-size", false);
+
+    if (! state->roundup_payload_size)
+    {
+        getBoolFromJsonObjectOrDefault(&state->roundup_payload_size, settings, "roundup", false);
     }
 
     uint16_t sequence_start = 0;

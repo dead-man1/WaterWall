@@ -33,11 +33,38 @@ static bool pingserverValidateIpv4PacketBytes(const uint8_t *packet, uint32_t av
     return true;
 }
 
-static bool pingserverPrepareInnerPacket(line_t *l, sbuf_t *buf, uint16_t *inner_packet_len_out)
+static void pingserverXorPayload(uint8_t *payload, uint16_t payload_len, uint8_t xor_byte)
 {
-    if (! pingserverValidateIpv4PacketBytes(sbufGetRawPtr(buf), sbufGetLength(buf), inner_packet_len_out))
+    for (uint16_t i = 0; i < payload_len; ++i)
     {
-        return false;
+        payload[i] ^= xor_byte;
+    }
+}
+
+static bool pingserverChooseRoundupPayloadLength(uint16_t payload_with_size_len, uint16_t *roundup_payload_len_out)
+{
+    static const uint16_t kRoundupBuckets[] = {64, 128, 256, 512, 1024, kPingServerMaxIcmpPayloadLength};
+
+    for (size_t i = 0; i < ARRAY_SIZE(kRoundupBuckets); ++i)
+    {
+        if (payload_with_size_len <= kRoundupBuckets[i])
+        {
+            *roundup_payload_len_out = kRoundupBuckets[i];
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static sbuf_t *pingserverPreparePayloadBuffer(tunnel_t *t, line_t *l, sbuf_t *buf, uint16_t *icmp_payload_len_out)
+{
+    pingserver_tstate_t *state = tunnelGetState(t);
+    uint16_t             inner_packet_len;
+
+    if (! pingserverValidateIpv4PacketBytes(sbufGetRawPtr(buf), sbufGetLength(buf), &inner_packet_len))
+    {
+        return NULL;
     }
 
     if (lineGetRecalculateChecksum(l))
@@ -46,7 +73,54 @@ static bool pingserverPrepareInnerPacket(line_t *l, sbuf_t *buf, uint16_t *inner
         lineSetRecalculateChecksum(l, false);
     }
 
-    return true;
+    uint16_t icmp_payload_len = inner_packet_len;
+
+    if (state->roundup_payload_size)
+    {
+        if (inner_packet_len > kPingServerMaxIcmpPayloadLength - kPingServerSizePrefixLength)
+        {
+            LOGW("PingServer: dropping packet because roundup-size needs %u bytes but ICMP payload is capped at %u",
+                 (unsigned int) (inner_packet_len + kPingServerSizePrefixLength),
+                 (unsigned int) kPingServerMaxIcmpPayloadLength);
+            return NULL;
+        }
+
+        const uint16_t payload_with_size_len = (uint16_t) (inner_packet_len + kPingServerSizePrefixLength);
+        if (! pingserverChooseRoundupPayloadLength(payload_with_size_len, &icmp_payload_len))
+        {
+            LOGW("PingServer: dropping packet because roundup-size cannot fit %u bytes inside the ICMP payload limit",
+                 (unsigned int) payload_with_size_len);
+            return NULL;
+        }
+
+        buf = sbufReserveSpace(buf, icmp_payload_len);
+
+        uint8_t *payload = sbufGetMutablePtr(buf);
+        memoryMove(payload + kPingServerSizePrefixLength, payload, inner_packet_len);
+        payload[0] = (uint8_t) ((inner_packet_len >> 8) & 0xFFU);
+        payload[1] = (uint8_t) (inner_packet_len & 0xFFU);
+
+        if (icmp_payload_len > payload_with_size_len)
+        {
+            getRandomBytes(payload + payload_with_size_len, (size_t) (icmp_payload_len - payload_with_size_len));
+        }
+
+        sbufSetLength(buf, icmp_payload_len);
+    }
+    else if (inner_packet_len > kPingServerMaxIcmpPayloadLength)
+    {
+        LOGW("PingServer: inner IPv4 packet exceeds ICMP payload size limit: %u > %u", inner_packet_len,
+             (unsigned int) kPingServerMaxIcmpPayloadLength);
+        return NULL;
+    }
+
+    if (state->payload_xor_enabled)
+    {
+        pingserverXorPayload(sbufGetMutablePtr(buf), icmp_payload_len, state->payload_xor_byte);
+    }
+
+    *icmp_payload_len_out = icmp_payload_len;
+    return buf;
 }
 
 static bool pingserverMatchEnvelope(const pingserver_tstate_t *state, sbuf_t *buf, uint16_t *outer_header_len_out)
@@ -77,6 +151,11 @@ static bool pingserverMatchEnvelope(const pingserver_tstate_t *state, sbuf_t *bu
 
     const uint16_t total_packet_len = lwip_ntohs(IPH_LEN(ipheader));
     if (total_packet_len != sbufGetLength(buf))
+    {
+        return false;
+    }
+
+    if (total_packet_len > kPingServerNetworkMtu)
     {
         return false;
     }
@@ -112,21 +191,15 @@ static bool pingserverMatchEnvelope(const pingserver_tstate_t *state, sbuf_t *bu
 void pingserverEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     pingserver_tstate_t *state = tunnelGetState(t);
-    uint16_t             inner_packet_len;
+    uint16_t             icmp_payload_len;
 
-    if (! pingserverPrepareInnerPacket(l, buf, &inner_packet_len))
+    sbuf_t *prepared_buf = pingserverPreparePayloadBuffer(t, l, buf, &icmp_payload_len);
+    if (prepared_buf == NULL)
     {
         lineReuseBuffer(l, buf);
         return;
     }
-
-    if (inner_packet_len > kPingServerMaxInnerPacketLength)
-    {
-        LOGW("PingServer: inner IPv4 packet exceeds ICMP tunnel size limit: %u > %u", inner_packet_len,
-             (unsigned int) kPingServerMaxInnerPacketLength);
-        lineReuseBuffer(l, buf);
-        return;
-    }
+    buf = prepared_buf;
 
     if (sbufGetLeftCapacity(buf) < kPingServerEncapsulationOverhead)
     {
@@ -137,7 +210,7 @@ void pingserverEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
 
     sbufShiftLeft(buf, kPingServerEncapsulationOverhead);
 
-    uint8_t   *packet     = sbufGetMutablePtr(buf);
+    uint8_t              *packet     = sbufGetMutablePtr(buf);
     struct ip_hdr        *ipheader   = (struct ip_hdr *) packet;
     struct icmp_echo_hdr *icmpheader = (struct icmp_echo_hdr *) (packet + kPingServerIpv4HeaderLength);
 
@@ -145,7 +218,7 @@ void pingserverEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
 
     IPH_VHL_SET(ipheader, 4, sizeof(struct ip_hdr) / 4U);
     IPH_TOS_SET(ipheader, state->tos);
-    IPH_LEN_SET(ipheader, lwip_htons((uint16_t) (inner_packet_len + kPingServerEncapsulationOverhead)));
+    IPH_LEN_SET(ipheader, lwip_htons((uint16_t) (icmp_payload_len + kPingServerEncapsulationOverhead)));
     IPH_ID_SET(ipheader, lwip_htons((uint16_t) (atomicAdd(&(state->ipv4_identification), 1U) + 1U)));
     IPH_OFFSET_SET(ipheader, 0);
     IPH_TTL_SET(ipheader, state->ttl);
@@ -177,17 +250,63 @@ void pingserverDecapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
         return;
     }
 
-    const uint32_t inner_packet_len = sbufGetLength(buf) - outer_header_len;
-    uint16_t       validated_inner_len;
+    uint8_t *icmp_payload             = sbufGetMutablePtr(buf) + outer_header_len;
+    uint16_t icmp_payload_len         = (uint16_t) (sbufGetLength(buf) - outer_header_len);
+    bool     payload_decoded_in_place = false;
 
-    if (! pingserverValidateIpv4PacketBytes((const uint8_t *) sbufGetRawPtr(buf) + outer_header_len, inner_packet_len,
-                                            &validated_inner_len))
+    if (state->payload_xor_enabled)
     {
+        pingserverXorPayload(icmp_payload, icmp_payload_len, state->payload_xor_byte);
+        payload_decoded_in_place = true;
+    }
+
+    uint8_t  *inner_packet_ptr = icmp_payload;
+    uint16_t  inner_packet_len = icmp_payload_len;
+
+    if (state->roundup_payload_size)
+    {
+        if (icmp_payload_len < kPingServerSizePrefixLength)
+        {
+            if (payload_decoded_in_place)
+            {
+                pingserverXorPayload(icmp_payload, icmp_payload_len, state->payload_xor_byte);
+            }
+            tunnelNextUpStreamPayload(t, l, buf);
+            return;
+        }
+
+        inner_packet_len = (uint16_t) ((((uint16_t) icmp_payload[0]) << 8) | icmp_payload[1]);
+        if (inner_packet_len > icmp_payload_len - kPingServerSizePrefixLength)
+        {
+            if (payload_decoded_in_place)
+            {
+                pingserverXorPayload(icmp_payload, icmp_payload_len, state->payload_xor_byte);
+            }
+            tunnelNextUpStreamPayload(t, l, buf);
+            return;
+        }
+
+        inner_packet_ptr = icmp_payload + kPingServerSizePrefixLength;
+    }
+
+    uint16_t validated_inner_len;
+    if (! pingserverValidateIpv4PacketBytes(inner_packet_ptr, inner_packet_len, &validated_inner_len))
+    {
+        if (payload_decoded_in_place)
+        {
+            pingserverXorPayload(icmp_payload, icmp_payload_len, state->payload_xor_byte);
+        }
         tunnelNextUpStreamPayload(t, l, buf);
         return;
     }
 
     sbufShiftRight(buf, outer_header_len);
+
+    if (state->roundup_payload_size)
+    {
+        memoryMove(sbufGetMutablePtr(buf), sbufGetMutablePtr(buf) + kPingServerSizePrefixLength, validated_inner_len);
+    }
+
     sbufSetLength(buf, validated_inner_len);
     lineSetRecalculateChecksum(l, false);
 

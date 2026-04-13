@@ -13,6 +13,9 @@ typedef struct pingclient_tstate_s
     uint16_t    identifier;
     uint8_t     ttl;
     uint8_t     tos;
+    uint8_t     payload_xor_byte;
+    bool        payload_xor_enabled;
+    bool        roundup_payload_size;
 } pingclient_tstate_t;
 
 typedef struct pingclient_lstate_s
@@ -22,10 +25,13 @@ typedef struct pingclient_lstate_s
 
 enum
 {
+    kPingClientNetworkMtu            = 1500,
     kPingClientIpv4HeaderLength      = sizeof(struct ip_hdr),
     kPingClientIcmpHeaderLength      = sizeof(struct icmp_echo_hdr),
     kPingClientEncapsulationOverhead = kPingClientIpv4HeaderLength + kPingClientIcmpHeaderLength,
-    kPingClientMaxInnerPacketLength  = UINT16_MAX - kPingClientEncapsulationOverhead,
+    kPingClientSizePrefixLength      = sizeof(uint16_t),
+    kPingClientMaxIcmpPayloadLength  = kPingClientNetworkMtu - kPingClientEncapsulationOverhead,
+    kPingClientMaxInnerPacketLength  = kPingClientMaxIcmpPayloadLength,
     kPingClientDefaultIdentifier     = 0xAFAF,
     kPingClientDefaultTtl            = 64,
     kTunnelStateSize                 = sizeof(pingclient_tstate_t),
