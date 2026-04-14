@@ -15,7 +15,7 @@ endif()
 set(CMAKE_UNITY_BUILD_BATCH_SIZE 500)
 
 project(Waterwall
-  VERSION 1.42
+  VERSION 1.43
   DESCRIPTION "A fast and secure VPN tunnel"
   HOMEPAGE_URL "https://github.com/radkesvat/waterwall"
   LANGUAGES C CXX
@@ -135,9 +135,9 @@ endif()
 option(INCLUDE_TEMPLATE                 "link Template staticly to the core"             TRUE)
 option(INCLUDE_WIREGUARD_DEVICE         "link WireGuardDevice staticly to the core"      TRUE)
 option(INCLUDE_PACKET_TO_CONNECTION     "link PacketToConnection staticly to the core"   TRUE)
-option(INCLUDE_STREAM_TO_PACKETS           "link StreamToPackets staticly to the core"         TRUE)
-option(INCLUDE__PACKETS_TO_STREAM           "link PacketsToStream staticly to the core"         TRUE)
-option(INCLUDE_PACKET_SPLIT_STREAM      "link PacketSplitStream staticly to the core"       TRUE)
+option(INCLUDE_STREAM_TO_PACKETS           "link StreamToPackets staticly to the core"   TRUE)
+option(INCLUDE__PACKETS_TO_STREAM           "link PacketsToStream staticly to the core"  TRUE)
+option(INCLUDE_PACKET_SPLIT_STREAM      "link PacketSplitStream staticly to the core"    TRUE)
 option(INCLUDE_LAYER3_IP_ROUTING_TABLE  "link Layer3IpRoutingTable staticly to the core" FALSE)
 option(INCLUDE_IP_OVERRIDER             "link IpOverrider staticly to the core"          TRUE)
 option(INCLUDE_IP_MANIPULATOR           "link IPManipulator staticly to the core"        TRUE)
