@@ -1,19 +1,21 @@
 # PacketsToStream Node
 
-`PacketsToStream` adapts a packet-oriented side of the chain to a stream-oriented side. It accepts discrete IPv4 packets from the previous side, forwards them through a data line toward the next node, and reconstructs packet boundaries again on the way back.
+`PacketsToStream` adapts a packet-oriented side of the chain to a stream-oriented side.
 
-In practice, this tunnel is useful when one side of the chain works with packets while the next side expects a normal byte stream line.
+The current implementation frames each packet by adding a **2-byte length prefix** (network byte order / big-endian), then sends that framed data over a normal stream line.
+
+On the reverse path, it reads the same 2-byte length prefix and reconstructs packet boundaries.
 
 ## What It Does
 
 - Accepts packet payload from the previous side.
 - Creates and maintains one stream-facing line per worker toward the next node.
-- Forwards each inbound packet as payload on that stream-facing line.
-- Buffers return data from the next side until a complete IPv4 packet is available.
+- For each outgoing packet, prepends a 2-byte packet size field.
+- Buffers return stream data and extracts complete framed packets.
 - Sends each reconstructed packet back to the previous side.
 - Recreates the stream-facing line if that line is closed.
 
-This tunnel is best thought of as a packet-to-data adapter with IPv4 packet reconstruction on the return path.
+This tunnel is a packet-to-stream adapter based on explicit length framing, not IPv4 header parsing.
 
 ## Typical Placement
 
@@ -23,7 +25,12 @@ A common layout is:
 - `PacketsToStream`
 - stream-oriented transport or processing nodes after it
 
-Typical use cases are chains where raw packet payload needs to move through nodes that operate on ordinary data lines instead of packet boundaries.
+### Basic two-server use case
+
+- `server1`: `TunDevice` -> `PacketsToStream` -> `TcpConnector`
+- `server2`: `TcpListener` -> `StreamToPackets` -> `TunDevice`
+
+This works because `PacketsToStream` and `StreamToPackets` use the same 2-byte framing format.
 
 ## Configuration Example
 
@@ -63,10 +70,10 @@ There are no tunnel-specific optional settings in the current implementation.
 
 `PacketsToStream` maintains a stream-facing line for each worker as needed.
 
-When traffic is first initialized on that worker:
+When traffic is initialized on that worker:
 
 - the tunnel creates a new line toward the next node
-- stores it in the worker-local line state
+- stores it in worker-local state
 - initializes the next node with that new line
 
 That data line is then reused for packet payload arriving on the same worker.
@@ -78,20 +85,37 @@ That data line is then reused for packet payload arriving on the same worker.
 
 From the packet side, this tunnel behaves like a packet-preserving adapter.
 
-From the next side, it behaves like a normal line carrying payload data.
+From the next side, it behaves like a normal line carrying framed bytes.
 
-### Packet reconstruction
+### Framing format
+
+Each packet is encoded as:
+
+- 2 bytes: packet length (`uint16`, network byte order)
+- N bytes: raw packet payload
+
+Maximum packet size accepted by this node is limited by `kMaxAllowedPacketLength`.
+
+### Checksum recalc behavior
+
+Before sending packet payload to the stream side:
+
+- if `line->recalculate_checksum` is enabled and payload is IPv4,
+- full packet checksum is recalculated,
+- then normal framing is applied.
+
+### Frame decoding on return path
 
 Return traffic from the next side is buffered in a read stream.
 
 The tunnel then:
 
-- waits until it has enough bytes for an IPv4 header
-- reads the IPv4 total-length field
-- waits until that many bytes are available
-- emits one complete packet back to the previous side
+- waits for at least 2 bytes
+- reads framed packet length
+- waits until the whole frame (`2 + length`) is available
+- emits one packet back to the previous side
 
-This means packet boundary recovery is based on the IPv4 header's total packet length.
+Packet boundary recovery is based on this 2-byte prefix.
 
 ### Pause and resume behavior
 
@@ -105,32 +129,30 @@ When resume arrives:
 
 - packet forwarding continues normally
 
-This keeps the tunnel simple and avoids unbounded packet buffering during backpressure.
-
 ### Finish and line recreation
 
 If the stream-facing line toward the next node finishes:
 
 - the old line is discarded
-- the packet-side read buffer is cleared
+- the read buffer is cleared
 - a fresh stream-facing line is created
 - the next node is initialized again on that new line
 
-This gives the tunnel a persistent packet-facing role while allowing the data-side line to be recreated transparently.
+This keeps the packet-facing role stable while allowing automatic recreation of the stream-side line.
 
 ### Buffering limits
 
-The read stream used for reconstructing IPv4 packets has a fixed overflow limit.
+The read stream uses a fixed overflow limit.
 
 Current limit:
 
 - `65536 * 2` bytes
 
-If the buffered return data grows beyond that limit, the read stream is emptied.
+If buffered return data grows beyond that limit, the read stream is emptied.
 
 ## Notes And Caveats
 
 - `PacketsToStream` has no tunnel-specific JSON settings today.
-- Packet boundary reconstruction is based on IPv4 headers.
-- This tunnel is most useful when the previous side is packet-oriented and the next side is stream-oriented.
+- This node is framing-based (`2-byte length + payload`), not IPv4-length based.
+- Pair it with `StreamToPackets` on the other side to restore packet boundaries.
 - Upstream `est`, `pause`, `resume`, and `finish`, plus downstream `init`, are not part of the intended normal callback path for this tunnel.
