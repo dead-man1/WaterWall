@@ -3,6 +3,7 @@
 #include "loggers/network_logger.h"
 
 #include "tricks/protoswap/trick.h"
+#include "tricks/echosni/trick.h"
 #include "tricks/sniblender/trick.h"
 #include "tricks/tcpbitchange/trick.h"
 
@@ -18,6 +19,11 @@ void ipmanipulatorUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     if (state->trick_tcp_bit_changes)
     {
         tcpbitchangetrickUpStreamPayload(t, l, buf);
+    }
+
+    if (state->trick_echo_sni && echosnitrickUpStreamPayload(t, l, buf))
+    {
+        return;
     }
 
     if (state->trick_sni_blender && sniblendertrickUpStreamPayload(t, l, buf))

@@ -7,6 +7,7 @@ It is meant for layer-3 chains where the payload is already a raw IP packet, not
 The current implementation provides three classes of tricks:
 
 - protocol-number swapping
+- TLS ClientHello echo (`EchoSNI`)
 - TLS ClientHello fragmentation and shuffle (`sni-blender`)
 - TCP flag bit rewriting
 
@@ -31,6 +32,7 @@ This is a packet tunnel created with `packettunnelCreate()`, so normal stream-st
 Typical use cases include:
 
 - changing protocol numbers to evade simple filtering
+- sending a crafted TLS ClientHello copy before the real ClientHello
 - fragmenting a TLS ClientHello to alter packet shape
 - testing how a path behaves when TCP control bits are rewritten
 
@@ -44,6 +46,9 @@ Typical use cases include:
     "protoswap-tcp": 253,
     "protoswap-tcp-2": 254,
     "protoswap-udp": 252,
+    "first-sni": "cover.example.net",
+    "echo-sni-ttl": 1,
+    "echo-sni-random-tcp-sequence": true,
     "sni-blender": true,
     "sni-blender-packets": 4,
     "up-tcp-bit-psh": "off",
@@ -100,6 +105,23 @@ If none of the supported trick settings are present, tunnel creation fails with:
 
   Valid range in the current implementation:
   - `1` to `16`
+
+### EchoSNI settings
+
+- `first-sni` `(string)`
+  Enables the EchoSNI trick and sets the SNI that will be written into the crafted TLS ClientHello copy.
+
+- `echo-sni-ttl` `(integer)`
+  Optional.
+
+  When present, the crafted EchoSNI packet is sent with this IPv4 TTL value.
+
+- `echo-sni-random-tcp-sequence` `(boolean)`
+  Optional.
+
+  When `true`, the crafted EchoSNI packet gets a fresh random TCP sequence number before it is sent.
+
+  When `false` or omitted, the crafted EchoSNI packet keeps the original TCP sequence number.
 
 ### TCP flag rewrite settings
 
@@ -195,6 +217,23 @@ Important details from the current code:
 
 Before crafting fragments, the tunnel applies any pending checksum recalculation on the original packet, then marks each crafted packet for checksum recalculation before forwarding.
 
+### EchoSNI
+
+This trick is upstream-only and only applies to IPv4 TCP packets that begin with a TLS ClientHello carrying an SNI extension.
+
+Behavior:
+
+- detect an upstream TLS ClientHello
+- parse the first host-name entry in the TLS server-name extension
+- clone the packet and replace only the copied packet's SNI with `first-sni`
+- send the modified copy first
+- if `echo-sni-ttl` is set, update the crafted packet TTL to that value
+- if `echo-sni-random-tcp-sequence` is `true`, randomize the crafted packet's TCP sequence number
+- recompute the crafted packet checksum before send
+- then forward the original packet using the original `line->recalculate_checksum` intent
+
+If `first-sni` is longer or shorter than the original SNI, the copied packet updates the relevant TLS and IPv4 length fields.
+
 ### TCP flag rewriting
 
 The TCP-bit trick only applies to valid IPv4 TCP packets.
@@ -217,7 +256,9 @@ This happens independently on upstream and downstream using the `up-...` and `dw
 
 - This tunnel is for raw packet chains, not normal byte-stream chains.
 - Only IPv4 packets are modified by the current implementation.
+- `EchoSNI` is upstream-only and rewrites the first TLS host-name entry in the crafted copy.
 - `sni-blender` is upstream-only. The downstream half of that trick is currently a no-op.
 - The tunnel relies on later packet-writing code to honor `line->recalculate_checksum` and rebuild packet checksums.
 - `sni-blender-packets` is required when `sni-blender` is enabled.
+- `echo-sni-random-tcp-sequence` affects only the crafted EchoSNI copy, not the original packet.
 - The struct contains `trick_sni_blender_packets_delay_max`, but current JSON parsing does not expose or use it.

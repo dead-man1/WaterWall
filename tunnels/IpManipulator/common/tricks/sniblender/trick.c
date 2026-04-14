@@ -22,6 +22,8 @@ bool sniblendertrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     ipmanipulator_tstate_t *state    = tunnelGetState(t);
     struct ip_hdr          *ipheader = (struct ip_hdr *) sbufGetMutablePtr(buf);
+    uint16_t                fragment_offsets[kSniBlenderTrickMaxPacketsCount] = {0};
+    uint16_t                fragment_lengths[kSniBlenderTrickMaxPacketsCount] = {0};
 
     if (IPH_V(ipheader) != 4 || IPH_PROTO(ipheader) != IPPROTO_TCP)
     {
@@ -48,9 +50,9 @@ bool sniblendertrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         return false;
     }
 
-    // Skip non-zero-offset fragments: do not fragment already fragmented packets.
+    // Do not touch packets that are already fragmented, including the first fragment (MF set, offset 0).
     uint16_t off_f = lwip_ntohs(IPH_OFFSET(ipheader));
-    if ((off_f & IP_OFFMASK) != 0)
+    if ((off_f & (IP_MF | IP_OFFMASK)) != 0)
     {
         return false;
     }
@@ -85,12 +87,10 @@ bool sniblendertrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         return false;
     }
 
-    // Round down per-fragment size to 8-byte multiple because IP fragment offset is in 8-byte units.
-    uint16_t frag_unit = (total_payload / state->trick_sni_blender_packets_count) & ~0x7;
-    if (frag_unit == 0)
+    uint16_t min_first_fragment_payload = (uint16_t) ((tcphdr_len + 7U) & ~0x7U);
+    if (min_first_fragment_payload >= total_payload)
     {
-        LOGW("sniblendertrick: packet is too small for configured fragment count (%d), bypassing",
-             state->trick_sni_blender_packets_count);
+        LOGW("sniblendertrick: packet is too small to fragment without splitting the TCP header, bypassing");
         return false;
     }
 
@@ -107,11 +107,46 @@ bool sniblendertrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     int     crafted_count = 0;
     buffer_pool_t *bp = lineGetBufferPool(l);
 
-    for (int i = 0; i < state->trick_sni_blender_packets_count; i++)
+    fragment_offsets[0] = 0;
+    fragment_lengths[0] = min_first_fragment_payload;
+
+    uint16_t offset_bytes = min_first_fragment_payload;
+    uint16_t remaining_payload = (uint16_t) (total_payload - min_first_fragment_payload);
+    int      planned_count = 1;
+
+    while (remaining_payload > 0 && planned_count < state->trick_sni_blender_packets_count)
     {
-        uint16_t offset_bytes = i * frag_unit;
-        uint16_t this_len =
-            (i == state->trick_sni_blender_packets_count - 1) ? total_payload - offset_bytes : frag_unit;
+        int      fragments_left = state->trick_sni_blender_packets_count - planned_count;
+        uint16_t this_len       = remaining_payload;
+
+        if (fragments_left > 1)
+        {
+            this_len = (remaining_payload / fragments_left) & ~0x7U;
+            if (this_len == 0)
+            {
+                this_len = remaining_payload;
+            }
+        }
+
+        fragment_offsets[planned_count] = offset_bytes;
+        fragment_lengths[planned_count] = this_len;
+        offset_bytes                    = (uint16_t) (offset_bytes + this_len);
+        remaining_payload               = (uint16_t) (remaining_payload - this_len);
+        planned_count++;
+    }
+
+    if (planned_count <= 1)
+    {
+        LOGW("sniblendertrick: packet is too small for configured fragment count (%d) after preserving the TCP header,"
+             " bypassing",
+             state->trick_sni_blender_packets_count);
+        return false;
+    }
+
+    for (int i = 0; i < planned_count; i++)
+    {
+        uint16_t this_offset = fragment_offsets[i];
+        uint16_t this_len    = fragment_lengths[i];
 
         if (this_len == 0)
         {
@@ -131,14 +166,14 @@ bool sniblendertrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         IPH_VHL_SET(fhdr, 4, iphdr_len / 4);
         IPH_ID_SET(fhdr, lwip_htons(identification));
 
-        uint16_t flags_offset = (offset_bytes >> 3);
-        if (i < state->trick_sni_blender_packets_count - 1)
+        uint16_t flags_offset = (this_offset >> 3);
+        if (i < planned_count - 1)
         {
             flags_offset |= IP_MF;
         }
         IPH_OFFSET_SET(fhdr, lwip_htons(flags_offset));
 
-        uint8_t *data_src = sbufGetMutablePtr(buf) + iphdr_len + offset_bytes;
+        uint8_t *data_src = sbufGetMutablePtr(buf) + iphdr_len + this_offset;
         uint8_t *data_dst = (uint8_t *) sbufGetMutablePtr(craft_buf) + iphdr_len;
         memoryCopy(data_dst, data_src, this_len);
     }
@@ -156,9 +191,9 @@ bool sniblendertrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         shuffled_indices[ti] = ti;
     }
 
-    for (int idx = crafted_count - 1; idx > 0; idx--)
+    for (int idx = crafted_count - 1; idx > 1; idx--)
     {
-        int j                 = (int) fastRand() % (idx + 1);
+        int j                 = 1 + ((int) fastRand() % idx);
         int temp              = shuffled_indices[idx];
         shuffled_indices[idx] = shuffled_indices[j];
         shuffled_indices[j]   = temp;

@@ -3,6 +3,7 @@
 #include "loggers/network_logger.h"
 
 #include "tricks/protoswap/trick.h"
+#include "tricks/echosni/trick.h"
 #include "tricks/sniblender/trick.h"
 #include "tricks/tcpbitchange/trick.h"
 
@@ -87,6 +88,43 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
         state->trick_sni_blender = true;
     }
 
+    state->trick_echo_sni_ttl = -1;
+
+    bool has_first_sni = getStringFromJsonObject(&state->trick_echo_sni_first_sni, settings, "first-sni");
+    if (has_first_sni)
+    {
+        size_t first_sni_len = stringLength(state->trick_echo_sni_first_sni);
+
+        if (first_sni_len == 0)
+        {
+            LOGF("IpManipulator: EchoSNI field \"first-sni\" must not be empty");
+            tunnelDestroy(t);
+            return NULL;
+        }
+
+        if (first_sni_len > UINT16_MAX)
+        {
+            LOGF("IpManipulator: EchoSNI field \"first-sni\" must fit in 16-bit TLS length fields");
+            tunnelDestroy(t);
+            return NULL;
+        }
+
+        if (getIntFromJsonObject(&state->trick_echo_sni_ttl, settings, "echo-sni-ttl"))
+        {
+            if (state->trick_echo_sni_ttl < 0 || state->trick_echo_sni_ttl > UINT8_MAX)
+            {
+                LOGF("IpManipulator: EchoSNI field \"echo-sni-ttl\" must be between 0 and 255");
+                tunnelDestroy(t);
+                return NULL;
+            }
+        }
+
+        getBoolFromJsonObject(&state->trick_echo_sni_random_tcp_sequence, settings, "echo-sni-random-tcp-sequence");
+
+        state->trick_echo_sni_first_sni_len = (uint16_t) first_sni_len;
+        state->trick_echo_sni               = true;
+    }
+
     bool tcp_parse_ok = true;
     tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_cwr_action, settings, "up-tcp-bit-cwr");
     tcp_parse_ok &= parseTcpBitActionField(&state->up_tcp_bit_ece_action, settings, "up-tcp-bit-ece");
@@ -122,7 +160,8 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
          state->up_tcp_bit_psh_action != kDvsNoAction || state->up_tcp_bit_rst_action != kDvsNoAction ||
          state->up_tcp_bit_syn_action != kDvsNoAction || state->up_tcp_bit_fin_action != kDvsNoAction);
 
-    if (! (state->trick_proto_swap || state->trick_sni_blender || state->trick_tcp_bit_changes))
+    if (! (state->trick_proto_swap || state->trick_sni_blender || state->trick_echo_sni ||
+           state->trick_tcp_bit_changes))
     {
         LOGF("IpManipulator: no tricks are enabled, nothing to do");
         tunnelDestroy(t);

@@ -22,6 +22,7 @@ typedef struct ipmanipulator_tstate_s
 {
     uint64_t trick_proto_swap : 1;
     uint64_t trick_sni_blender : 1;
+    uint64_t trick_echo_sni : 1;
     uint64_t trick_tcp_bit_changes : 1;
 
     int trick_proto_swap_tcp_number;
@@ -33,6 +34,11 @@ typedef struct ipmanipulator_tstate_s
 
     int trick_sni_blender_packets_count;
     int trick_sni_blender_packets_delay_max;
+
+    bool     trick_echo_sni_random_tcp_sequence;
+    char    *trick_echo_sni_first_sni;
+    uint16_t trick_echo_sni_first_sni_len;
+    int      trick_echo_sni_ttl;
 
     enum tcp_bit_action_dynamic_value up_tcp_bit_cwr_action;
     enum tcp_bit_action_dynamic_value up_tcp_bit_ece_action;

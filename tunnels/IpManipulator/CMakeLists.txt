@@ -25,6 +25,7 @@ add_library(IpManipulator STATIC
                     downstream/resume.c
                     downstream/est.c
                     common/tricks/protoswap/trick.c
+                    common/tricks/echosni/trick.c
                     common/tricks/sniblender/trick.c
                     common/tricks/tcpbitchange/trick.c
   
