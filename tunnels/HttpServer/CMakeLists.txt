@@ -29,8 +29,7 @@ target_include_directories(HttpServer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/includ
 
 target_link_libraries(HttpServer ww)
 
-if(NOT TUNNELS_HTTP_DEF_SET)
-    set(TUNNELS_HTTP_DEF_SET TRUE CACHE INTERNAL "")
+if(NOT TARGET http_def)
     add_library(http_def OBJECT
         common/http_def.c
     )
