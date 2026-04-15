@@ -17,8 +17,39 @@ static void failAndCloseDownStream(tunnel_t *t, line_t *l, httpserver_lstate_t *
 void httpserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     httpserver_lstate_t *ls = lineGetState(l, t);
+    httpserver_tstate_t *ts = tunnelGetState(t);
 
     lineLock(l);
+
+    if (ts->websocket_enabled)
+    {
+        if (! ls->websocket_active)
+        {
+            bufferqueuePushBack(&ls->pending_down, buf);
+            lineUnlock(l);
+            return;
+        }
+
+        if (ls->runtime_proto == kHttpServerRuntimeHttp2 && ! ls->h2_response_headers_sent)
+        {
+            if (! httpserverTransportSubmitHttp2ResponseHeaders(t, l, ls, false))
+            {
+                lineReuseBuffer(l, buf);
+                failAndCloseDownStream(t, l, ls);
+                lineUnlock(l);
+                return;
+            }
+        }
+
+        if (! httpserverTransportSendWebSocketData(t, l, ls, buf, 0x2))
+        {
+            failAndCloseDownStream(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
+        lineUnlock(l);
+        return;
+    }
 
     if (ls->runtime_proto == kHttpServerRuntimeHttp1)
     {

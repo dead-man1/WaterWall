@@ -17,6 +17,7 @@ static void failAndCloseD(tunnel_t *t, line_t *l, httpclient_lstate_t *ls)
 void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     httpclient_lstate_t *ls = lineGetState(l, t);
+    httpclient_tstate_t *ts = tunnelGetState(t);
 
     lineLock(l);
 
@@ -29,6 +30,32 @@ void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             return;
         }
         if (ls->response_complete && ! ls->prev_finished)
+        {
+            httpclientTransportCloseBothDirections(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
+
+        if (ts->websocket_enabled && ls->websocket_active && ls->websocket_close_received)
+        {
+            httpclientTransportCloseBothDirections(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
+        lineUnlock(l);
+        return;
+    }
+
+    if (ts->websocket_enabled && ls->websocket_active)
+    {
+        bufferstreamPush(&ls->in_stream, buf);
+        if (! httpclientTransportDrainWebSocketDown(t, l, ls))
+        {
+            failAndCloseD(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
+        if (ls->websocket_close_received)
         {
             httpclientTransportCloseBothDirections(t, l, ls);
             lineUnlock(l);
@@ -110,6 +137,13 @@ void httpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     }
 
     if (ls->response_complete && ! ls->prev_finished)
+    {
+        httpclientTransportCloseBothDirections(t, l, ls);
+        lineUnlock(l);
+        return;
+    }
+
+    if (ts->websocket_enabled && ls->websocket_active && ls->websocket_close_received)
     {
         httpclientTransportCloseBothDirections(t, l, ls);
         lineUnlock(l);

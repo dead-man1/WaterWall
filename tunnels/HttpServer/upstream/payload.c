@@ -17,6 +17,7 @@ static void failAndCloseU(tunnel_t *t, line_t *l, httpserver_lstate_t *ls)
 void httpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     httpserver_lstate_t *ls = lineGetState(l, t);
+    httpserver_tstate_t *ts = tunnelGetState(t);
 
     lineLock(l);
 
@@ -34,12 +35,48 @@ void httpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             lineUnlock(l);
             return;
         }
+
+        if (ts->websocket_enabled && ls->websocket_active &&
+            (ls->websocket_close_received || ls->h2_request_finished))
+        {
+            httpserverTransportCloseBothDirections(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
         if (! lineIsAlive(l))
         {
             httpserverLinestateDestroy(ls);
             lineUnlock(l);
             return;
         }
+        lineUnlock(l);
+        return;
+    }
+
+    if (ts->websocket_enabled && ls->websocket_active)
+    {
+        bufferstreamPush(&ls->in_stream, buf);
+        if (! httpserverTransportDrainWebSocketUp(t, l, ls))
+        {
+            failAndCloseU(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
+
+        if (ls->websocket_close_received)
+        {
+            httpserverTransportCloseBothDirections(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
+
+        if (! httpserverTransportFlushPendingDown(t, l, ls))
+        {
+            failAndCloseU(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
+
         lineUnlock(l);
         return;
     }
@@ -154,6 +191,13 @@ void httpserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     if (! lineIsAlive(l))
     {
         httpserverLinestateDestroy(ls);
+        lineUnlock(l);
+        return;
+    }
+
+    if (ts->websocket_enabled && ls->websocket_active && ls->websocket_close_received)
+    {
+        httpserverTransportCloseBothDirections(t, l, ls);
         lineUnlock(l);
         return;
     }

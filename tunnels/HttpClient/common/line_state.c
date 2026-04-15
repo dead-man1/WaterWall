@@ -22,7 +22,17 @@ void httpclientLinestateInitialize(httpclient_lstate_t *ls, tunnel_t *t, line_t 
                                  .response_complete    = false,
                                  .prev_finished        = false,
                                  .next_finished        = false,
-                                 .fin_sent             = false};
+                                 .fin_sent             = false,
+                                 .websocket_active             = false,
+                                 .websocket_waiting_handshake  = false,
+                                 .websocket_close_sent         = false,
+                                 .websocket_close_received     = false,
+                                 .websocket_h2_waiting_connect = false,
+                                 .websocket_h2_request_submitted = false,
+                                 .websocket_h2_status_seen       = false,
+                                 .websocket_h2_protocol_seen     = false,
+                                 .websocket_h2_extensions_seen   = false,
+                                 .websocket_h2_status_code       = 0};
 }
 
 void httpclientLinestateDestroy(httpclient_lstate_t *ls)

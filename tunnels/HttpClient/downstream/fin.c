@@ -5,12 +5,13 @@
 void httpclientTunnelDownStreamFinish(tunnel_t *t, line_t *l)
 {
     httpclient_lstate_t *ls = lineGetState(l, t);
+    httpclient_tstate_t *ts = tunnelGetState(t);
 
     lineLock(l);
 
     ls->next_finished = true;
 
-    if (! ls->prev_finished)
+    if (! ts->websocket_enabled && ! ls->prev_finished)
     {
         bool truncated = false;
 

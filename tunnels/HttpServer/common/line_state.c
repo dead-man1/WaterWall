@@ -24,7 +24,17 @@ void httpserverLinestateInitialize(httpserver_lstate_t *ls, tunnel_t *t, line_t 
                                 .fin_sent                 = false,
                                 .prev_finished            = false,
                                 .next_finished            = false,
-                                .h2_reject_extra_streams  = true};
+                                .h2_reject_extra_streams  = true,
+                                .websocket_active         = false,
+                                .websocket_close_sent     = false,
+                                .websocket_close_received = false,
+                                .websocket_h2_method_seen = false,
+                                .websocket_h2_protocol_seen = false,
+                                .websocket_h2_path_seen     = false,
+                                .websocket_h2_authority_seen = false,
+                                .websocket_h2_version_seen   = false,
+                                .websocket_h2_subprotocol_seen = false,
+                                .websocket_h2_origin_seen      = false};
 }
 
 void httpserverLinestateDestroy(httpserver_lstate_t *ls)

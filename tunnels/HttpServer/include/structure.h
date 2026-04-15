@@ -60,6 +60,24 @@ typedef struct httpserver_lstate_s
     bool next_finished;
 
     bool h2_reject_extra_streams;
+
+    bool websocket_active;
+    bool websocket_close_sent;
+    bool websocket_close_received;
+    bool websocket_h2_method_seen;
+    bool websocket_h2_protocol_seen;
+    bool websocket_h2_path_seen;
+    bool websocket_h2_authority_seen;
+    bool websocket_h2_version_seen;
+    bool websocket_h2_subprotocol_seen;
+    bool websocket_h2_origin_seen;
+    char websocket_h2_method[16];
+    char websocket_h2_protocol[32];
+    char websocket_h2_path[2048];
+    char websocket_h2_authority[512];
+    char websocket_h2_version[16];
+    char websocket_h2_subprotocol[256];
+    char websocket_h2_origin[512];
 } httpserver_lstate_t;
 
 typedef struct httpserver_tstate_s
@@ -70,6 +88,8 @@ typedef struct httpserver_tstate_s
     char *expected_host;
     char *expected_path;
     char *expected_method;
+    char *websocket_origin;
+    char *websocket_subprotocol;
 
     const cJSON *headers;
 
@@ -79,6 +99,8 @@ typedef struct httpserver_tstate_s
 
     httpserver_version_mode_t version_mode;
     bool                     enable_upgrade;
+    bool                     websocket_enabled;
+    bool                     verbose;
 } httpserver_tstate_t;
 
 enum
@@ -131,6 +153,10 @@ sbuf_t *httpserverAllocBufferForLength(line_t *l, uint32_t len);
 bool httpserverTransportSendHttp1ResponseHeaders(tunnel_t *t, line_t *l);
 bool httpserverTransportSendHttp1FinalChunk(tunnel_t *t, line_t *l);
 bool httpserverTransportSendHttp1ChunkedPayload(tunnel_t *t, line_t *l, sbuf_t *payload);
+bool httpserverTransportSendWebSocketData(tunnel_t *t, line_t *l, httpserver_lstate_t *ls, sbuf_t *payload,
+                                          uint8_t opcode);
+bool httpserverTransportSendWebSocketClose(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);
+bool httpserverTransportDrainWebSocketUp(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);
 
 bool httpserverTransportEnsureHttp2Session(tunnel_t *t, line_t *l, httpserver_lstate_t *ls);
 bool httpserverTransportSubmitHttp2ResponseHeaders(tunnel_t *t, line_t *l, httpserver_lstate_t *ls, bool end_stream);

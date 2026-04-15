@@ -184,6 +184,21 @@ static void parsePortAndUpgrade(httpclient_tstate_t *ts, const cJSON *settings)
     ts->headers = cJSON_GetObjectItemCaseSensitive(settings, "headers");
 }
 
+static void parseUserAgentAndWebSocket(httpclient_tstate_t *ts, const cJSON *settings)
+{
+    getStringFromJsonObjectOrDefault(&ts->user_agent, settings, "user-agent", "WaterWall/1.x");
+    getBoolFromJsonObjectOrDefault(&ts->verbose, settings, "verbose", false);
+
+    getBoolFromJsonObjectOrDefault(&ts->websocket_enabled, settings, "websocket", false);
+
+    if (ts->websocket_enabled)
+    {
+        getStringFromJsonObject(&ts->websocket_origin, settings, "websocket-origin");
+        getStringFromJsonObject(&ts->websocket_subprotocol, settings, "websocket-subprotocol");
+        getStringFromJsonObject(&ts->websocket_extensions, settings, "websocket-extensions");
+    }
+}
+
 static bool initializeNghttp2State(httpclient_tstate_t *ts)
 {
     if (ts->version_mode == kHttpClientVersionModeHttp1)
@@ -287,6 +302,7 @@ tunnel_t *httpclientTunnelCreate(node_t *node)
     }
 
     parsePortAndUpgrade(ts, settings);
+    parseUserAgentAndWebSocket(ts, settings);
 
     if (! initializeNghttp2State(ts))
     {

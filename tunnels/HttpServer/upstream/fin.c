@@ -5,8 +5,23 @@
 void httpserverTunnelUpStreamFinish(tunnel_t *t, line_t *l)
 {
     httpserver_lstate_t *ls = lineGetState(l, t);
+    httpserver_tstate_t *ts = tunnelGetState(t);
 
     lineLock(l);
+
+    if (ts->websocket_enabled && ls->websocket_active)
+    {
+        if (lineIsAlive(l))
+        {
+            httpserverTransportCloseBothDirections(t, l, ls);
+        }
+        else
+        {
+            httpserverLinestateDestroy(ls);
+        }
+        lineUnlock(l);
+        return;
+    }
 
     httpserverLinestateDestroy(ls);
     tunnelNextUpStreamFinish(t, l);

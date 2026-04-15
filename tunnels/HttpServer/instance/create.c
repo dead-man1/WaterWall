@@ -127,6 +127,18 @@ static void parseUpgradeMode(httpserver_tstate_t *ts, const cJSON *settings)
     getBoolFromJsonObjectOrDefault(&ts->enable_upgrade, settings, "upgrade", default_upgrade);
 }
 
+static void parseWebSocketMode(httpserver_tstate_t *ts, const cJSON *settings)
+{
+    getBoolFromJsonObjectOrDefault(&ts->verbose, settings, "verbose", false);
+    getBoolFromJsonObjectOrDefault(&ts->websocket_enabled, settings, "websocket", false);
+
+    if (ts->websocket_enabled)
+    {
+        getStringFromJsonObject(&ts->websocket_origin, settings, "websocket-origin");
+        getStringFromJsonObject(&ts->websocket_subprotocol, settings, "websocket-subprotocol");
+    }
+}
+
 static bool initializeNghttp2State(httpserver_tstate_t *ts)
 {
     if (ts->version_mode == kHttpServerVersionModeHttp1)
@@ -192,6 +204,7 @@ tunnel_t *httpserverTunnelCreate(node_t *node)
     }
 
     parseUpgradeMode(ts, settings);
+    parseWebSocketMode(ts, settings);
 
     if (! initializeNghttp2State(ts))
     {

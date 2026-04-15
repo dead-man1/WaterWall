@@ -1,8 +1,10 @@
 #include "structure.h"
 
 #include "loggers/network_logger.h"
+#include "utils/sha1.h"
 
 #include <ctype.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdarg.h>
 
@@ -12,15 +14,63 @@ typedef struct httpserver_h1_request_info_s
     char path[2048];
     char host[512];
     char http2_settings[512];
+    char sec_websocket_key[128];
+    char sec_websocket_protocol[256];
+    char origin[512];
 
     bool    transfer_chunked;
     bool    connection_upgrade;
     bool    connection_http2_settings;
     bool    upgrade_h2c;
+    bool    upgrade_websocket;
     bool    has_http2_settings;
     bool    has_content_length;
+    bool    has_sec_websocket_key;
+    bool    has_sec_websocket_protocol;
+    bool    has_origin;
+    bool    has_sec_websocket_version;
     int64_t content_length;
+    int     sec_websocket_version;
 } httpserver_h1_request_info_t;
+
+enum
+{
+    kWebSocketOpcodeContinuation = 0x0,
+    kWebSocketOpcodeText         = 0x1,
+    kWebSocketOpcodeBinary       = 0x2,
+    kWebSocketOpcodeClose        = 0x8,
+    kWebSocketOpcodePing         = 0x9,
+    kWebSocketOpcodePong         = 0xA
+};
+
+static const char *kWebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+static bool httpserverVerboseEnabled(tunnel_t *t)
+{
+    httpserver_tstate_t *ts = tunnelGetState(t);
+    return ts->verbose;
+}
+
+static const char *httpserverWebSocketOpcodeName(uint8_t opcode)
+{
+    switch (opcode)
+    {
+    case kWebSocketOpcodeContinuation:
+        return "continuation";
+    case kWebSocketOpcodeText:
+        return "text";
+    case kWebSocketOpcodeBinary:
+        return "binary";
+    case kWebSocketOpcodeClose:
+        return "close";
+    case kWebSocketOpcodePing:
+        return "ping";
+    case kWebSocketOpcodePong:
+        return "pong";
+    default:
+        return "unknown";
+    }
+}
 
 static bool parseContentLength(const char *value, int64_t *out)
 {
@@ -200,6 +250,67 @@ static bool appendHeaderFmt(char *buf, size_t cap, int *offset, const char *fmt,
     return true;
 }
 
+static bool httpserverHeaderNameEquals(const char *value, const char *name)
+{
+    return httpserverStringCaseEquals(value, name);
+}
+
+static bool httpserverShouldSkipExtraHeader(const char *name, bool websocket_mode)
+{
+    if (name == NULL)
+    {
+        return true;
+    }
+
+    if (httpserverHeaderNameEquals(name, "content-length"))
+    {
+        return true;
+    }
+
+    if (websocket_mode)
+    {
+        return httpserverHeaderNameEquals(name, "connection") || httpserverHeaderNameEquals(name, "upgrade") ||
+               httpserverHeaderNameEquals(name, "transfer-encoding") ||
+               httpserverHeaderNameEquals(name, "sec-websocket-accept") ||
+               httpserverHeaderNameEquals(name, "sec-websocket-protocol") ||
+               httpserverHeaderNameEquals(name, "sec-websocket-extensions") ||
+               httpserverHeaderNameEquals(name, "content-type");
+    }
+
+    return httpserverHeaderNameEquals(name, "connection") || httpserverHeaderNameEquals(name, "transfer-encoding");
+}
+
+static void httpserverBuildWebSocketAccept(const char *key, char *out, size_t out_cap)
+{
+    char digest_input[160];
+    int  input_len = snprintf(digest_input, sizeof(digest_input), "%s%s", key, kWebSocketGuid);
+    if (input_len <= 0 || (size_t) input_len >= sizeof(digest_input) || out_cap == 0)
+    {
+        if (out_cap > 0)
+        {
+            out[0] = '\0';
+        }
+        return;
+    }
+
+    unsigned char digest[20];
+    wwSHA1((unsigned char *) digest_input, (uint32_t) input_len, digest);
+
+    if (out_cap <= BASE64_ENCODE_OUT_SIZE(sizeof(digest)))
+    {
+        out[0] = '\0';
+        return;
+    }
+
+    int encoded = wwBase64Encode(digest, sizeof(digest), out);
+    if (encoded < 0 || (size_t) encoded >= out_cap)
+    {
+        out[0] = '\0';
+        return;
+    }
+    out[encoded] = '\0';
+}
+
 static size_t minSize(size_t a, size_t b)
 {
     return a < b ? a : b;
@@ -247,6 +358,105 @@ static bool sendTextDown(tunnel_t *t, line_t *l, const char *text)
     return sendBytesDown(t, l, text, (uint32_t) strlen(text));
 }
 
+static bool httpserverSendRawDown(tunnel_t *t, line_t *l, httpserver_lstate_t *ls, sbuf_t *buf)
+{
+    if (buf == NULL)
+    {
+        return true;
+    }
+
+    if (ls->runtime_proto == kHttpServerRuntimeHttp2)
+    {
+        return httpserverTransportSendHttp2DataFrame(t, l, ls, buf, false);
+    }
+
+    return withLineLockedWithBuf(l, tunnelPrevDownStreamPayload, t, buf);
+}
+
+static bool httpserverSendRawBytesDown(tunnel_t *t, line_t *l, httpserver_lstate_t *ls, const void *data, uint32_t len)
+{
+    if (len == 0)
+    {
+        return true;
+    }
+
+    if (ls->runtime_proto == kHttpServerRuntimeHttp2)
+    {
+        sbuf_t *buf = httpserverAllocBufferForLength(l, len);
+        sbufSetLength(buf, len);
+        sbufWriteLarge(buf, data, len);
+        return httpserverTransportSendHttp2DataFrame(t, l, ls, buf, false);
+    }
+
+    return sendBytesDown(t, l, data, len);
+}
+
+static size_t httpserverBuildWebSocketHeader(uint8_t *header, size_t cap, uint8_t opcode, uint64_t payload_len)
+{
+    if (cap < 2)
+    {
+        return 0;
+    }
+
+    size_t off   = 0;
+    header[off++] = (uint8_t) (0x80U | (opcode & 0x0FU));
+
+    if (payload_len <= 125U)
+    {
+        header[off++] = (uint8_t) payload_len;
+    }
+    else if (payload_len <= 0xFFFFU)
+    {
+        if (cap < off + 3)
+        {
+            return 0;
+        }
+        header[off++] = 126U;
+        header[off++] = (uint8_t) ((payload_len >> 8) & 0xFFU);
+        header[off++] = (uint8_t) (payload_len & 0xFFU);
+    }
+    else
+    {
+        if (cap < off + 9)
+        {
+            return 0;
+        }
+        header[off++] = 127U;
+        for (int shift = 56; shift >= 0; shift -= 8)
+        {
+            header[off++] = (uint8_t) ((payload_len >> shift) & 0xFFU);
+        }
+    }
+
+    return off;
+}
+
+static bool httpserverSendWebSocketControlFrame(tunnel_t *t, line_t *l, httpserver_lstate_t *ls, uint8_t opcode,
+                                                const void *payload, uint32_t payload_len)
+{
+    uint8_t header[16];
+    size_t  header_len = httpserverBuildWebSocketHeader(header, sizeof(header), opcode, payload_len);
+    if (header_len == 0)
+    {
+        return false;
+    }
+
+    if (! httpserverSendRawBytesDown(t, l, ls, header, (uint32_t) header_len))
+    {
+        return false;
+    }
+
+    if (payload_len == 0)
+    {
+        return true;
+    }
+
+    sbuf_t *buf = httpserverAllocBufferForLength(l, payload_len);
+    sbufSetLength(buf, payload_len);
+    sbufWriteLarge(buf, payload, payload_len);
+    return httpserverSendRawDown(t, l, ls, buf);
+}
+
 static const char *statusReasonPhrase(int status_code)
 {
     const char *reason = httpStatusStr((enum http_status) status_code);
@@ -262,6 +472,11 @@ static const char *statusReasonPhrase(int status_code)
 bool httpserverTransportSendHttp1ResponseHeaders(tunnel_t *t, line_t *l)
 {
     httpserver_tstate_t *ts = tunnelGetState(t);
+
+    if (ts->verbose)
+    {
+        LOGD("HttpServer: sending HTTP/1.1 response status=%d websocket=false", ts->status_code);
+    }
 
     char *header_buf = memoryAllocate(kHttpServerMaxHeaderBytes);
     int  offset = 0;
@@ -297,6 +512,11 @@ bool httpserverTransportSendHttp1ResponseHeaders(tunnel_t *t, line_t *l)
                 continue;
             }
 
+            if (httpserverShouldSkipExtraHeader(header->string, false))
+            {
+                continue;
+            }
+
             if (! appendHeaderFmt(header_buf, kHttpServerMaxHeaderBytes, &offset, "%s: %s\r\n", header->string,
                                   header->valuestring))
             {
@@ -310,6 +530,79 @@ bool httpserverTransportSendHttp1ResponseHeaders(tunnel_t *t, line_t *l)
     if (! appendHeaderFmt(header_buf, kHttpServerMaxHeaderBytes, &offset, "\r\n"))
     {
         LOGE("HttpServer: response headers are too large");
+        memoryFree(header_buf);
+        return false;
+    }
+
+    bool ok = sendBytesDown(t, l, header_buf, (uint32_t) offset);
+    memoryFree(header_buf);
+    return ok;
+}
+
+static bool httpserverTransportSendHttp1WebSocketResponseHeaders(tunnel_t *t, line_t *l,
+                                                                 const httpserver_h1_request_info_t *info)
+{
+    httpserver_tstate_t *ts = tunnelGetState(t);
+    char                *header_buf = memoryAllocate(kHttpServerMaxHeaderBytes);
+    int                  offset     = 0;
+    char                 accept[128];
+
+    httpserverBuildWebSocketAccept(info->sec_websocket_key, accept, sizeof(accept));
+    if (accept[0] == '\0')
+    {
+        memoryFree(header_buf);
+        return false;
+    }
+
+    if (ts->verbose)
+    {
+        LOGD("HttpServer: accepting websocket HTTP/1.1 upgrade path=%s host=%s protocol=%s", info->path, info->host,
+             ts->websocket_subprotocol != NULL ? ts->websocket_subprotocol : "<none>");
+    }
+
+    if (! appendHeaderFmt(header_buf, kHttpServerMaxHeaderBytes, &offset, "HTTP/1.1 101 Switching Protocols\r\n") ||
+        ! appendHeaderFmt(header_buf, kHttpServerMaxHeaderBytes, &offset, "Connection: Upgrade\r\n") ||
+        ! appendHeaderFmt(header_buf, kHttpServerMaxHeaderBytes, &offset, "Upgrade: websocket\r\n") ||
+        ! appendHeaderFmt(header_buf, kHttpServerMaxHeaderBytes, &offset, "Sec-WebSocket-Accept: %s\r\n", accept))
+    {
+        memoryFree(header_buf);
+        return false;
+    }
+
+    if (ts->websocket_subprotocol != NULL &&
+        ! appendHeaderFmt(header_buf, kHttpServerMaxHeaderBytes, &offset, "Sec-WebSocket-Protocol: %s\r\n",
+                          ts->websocket_subprotocol))
+    {
+        memoryFree(header_buf);
+        return false;
+    }
+
+    if (cJSON_IsObject(ts->headers))
+    {
+        cJSON *header = NULL;
+        cJSON_ArrayForEach(header, ts->headers)
+        {
+            if (! cJSON_IsString(header) || header->valuestring == NULL || header->string == NULL)
+            {
+                continue;
+            }
+
+            if (httpserverShouldSkipExtraHeader(header->string, true))
+            {
+                continue;
+            }
+
+            if (! appendHeaderFmt(header_buf, kHttpServerMaxHeaderBytes, &offset, "%s: %s\r\n", header->string,
+                                  header->valuestring))
+            {
+                memoryFree(header_buf);
+                return false;
+            }
+        }
+    }
+
+    if (! appendHeaderFmt(header_buf, kHttpServerMaxHeaderBytes, &offset, "\r\n"))
+    {
         memoryFree(header_buf);
         return false;
     }
@@ -496,6 +789,10 @@ static bool parseHttp1RequestHeaders(const char *headers, httpserver_h1_request_
             {
                 info->upgrade_h2c = true;
             }
+            else if (httpserverStringCaseEquals(key, "Upgrade") && httpserverStringCaseContains(value, "websocket"))
+            {
+                info->upgrade_websocket = true;
+            }
             else if (httpserverStringCaseEquals(key, "HTTP2-Settings"))
             {
                 if (info->has_http2_settings)
@@ -531,6 +828,26 @@ static bool parseHttp1RequestHeaders(const char *headers, httpserver_h1_request_
                     return false;
                 }
             }
+            else if (httpserverStringCaseEquals(key, "Sec-WebSocket-Key"))
+            {
+                info->has_sec_websocket_key = true;
+                snprintf(info->sec_websocket_key, sizeof(info->sec_websocket_key), "%s", value);
+            }
+            else if (httpserverStringCaseEquals(key, "Sec-WebSocket-Protocol"))
+            {
+                info->has_sec_websocket_protocol = true;
+                snprintf(info->sec_websocket_protocol, sizeof(info->sec_websocket_protocol), "%s", value);
+            }
+            else if (httpserverStringCaseEquals(key, "Origin"))
+            {
+                info->has_origin = true;
+                snprintf(info->origin, sizeof(info->origin), "%s", value);
+            }
+            else if (httpserverStringCaseEquals(key, "Sec-WebSocket-Version"))
+            {
+                info->has_sec_websocket_version = true;
+                info->sec_websocket_version     = atoi(value);
+            }
         }
 
         line = next + 2;
@@ -557,6 +874,58 @@ static bool validateHttp1Request(const httpserver_tstate_t *ts, const httpserver
     if (! hostMatchesExpected(ts->expected_host, info->host))
     {
         LOGW("HttpServer: host mismatch, expected=%s got=%s", ts->expected_host, info->host);
+        return false;
+    }
+
+    return true;
+}
+
+static bool validateWebSocketHttp1Request(const httpserver_tstate_t *ts, const httpserver_h1_request_info_t *info)
+{
+    if (! httpserverStringCaseEquals(info->method, "GET"))
+    {
+        LOGW("HttpServer: websocket HTTP/1.1 request must use GET");
+        return false;
+    }
+
+    if (ts->expected_path != NULL && ts->expected_path[0] != '\0' && stringCompare(ts->expected_path, info->path) != 0)
+    {
+        LOGW("HttpServer: websocket path mismatch, expected=%s got=%s", ts->expected_path, info->path);
+        return false;
+    }
+
+    if (! hostMatchesExpected(ts->expected_host, info->host))
+    {
+        LOGW("HttpServer: websocket host mismatch expected=%s got=%s", ts->expected_host, info->host);
+        return false;
+    }
+
+    if (! info->connection_upgrade || ! info->upgrade_websocket || ! info->has_sec_websocket_key ||
+        ! info->has_sec_websocket_version || info->sec_websocket_version != 13)
+    {
+        LOGW("HttpServer: websocket HTTP/1.1 handshake headers are invalid");
+        return false;
+    }
+
+    if (info->transfer_chunked || (info->has_content_length && info->content_length > 0))
+    {
+        LOGW("HttpServer: websocket HTTP/1.1 upgrade request must not carry a body transfer-chunked=%s content-length=%" PRId64,
+             info->transfer_chunked ? "true" : "false", info->content_length);
+        return false;
+    }
+
+    if (ts->websocket_origin != NULL &&
+        (! info->has_origin || ! httpserverStringCaseEquals(ts->websocket_origin, info->origin)))
+    {
+        LOGW("HttpServer: websocket origin mismatch");
+        return false;
+    }
+
+    if (ts->websocket_subprotocol != NULL &&
+        (! info->has_sec_websocket_protocol ||
+         ! httpserverStringCaseContainsToken(info->sec_websocket_protocol, ts->websocket_subprotocol)))
+    {
+        LOGW("HttpServer: websocket subprotocol mismatch");
         return false;
     }
 
@@ -616,15 +985,44 @@ static bool sendNghttp2Outbound(tunnel_t *t, line_t *l, httpserver_lstate_t *ls)
     return true;
 }
 
+static bool validateWebSocketHttp2Request(const httpserver_tstate_t *ts, const httpserver_lstate_t *ls)
+{
+    if (! ls->websocket_h2_method_seen || ! ls->websocket_h2_protocol_seen || ! ls->websocket_h2_path_seen ||
+        ! ls->websocket_h2_authority_seen || ! ls->websocket_h2_version_seen)
+    {
+        return false;
+    }
+
+    if (! httpserverStringCaseEquals(ls->websocket_h2_method, "CONNECT") ||
+        ! httpserverStringCaseEquals(ls->websocket_h2_protocol, "websocket") ||
+        stringCompare(ls->websocket_h2_path, ts->expected_path) != 0 ||
+        ! hostMatchesExpected(ts->expected_host, ls->websocket_h2_authority) ||
+        stringCompare(ls->websocket_h2_version, "13") != 0)
+    {
+        return false;
+    }
+
+    if (ts->websocket_origin != NULL &&
+        (! ls->websocket_h2_origin_seen || ! httpserverStringCaseEquals(ts->websocket_origin, ls->websocket_h2_origin)))
+    {
+        return false;
+    }
+
+    if (ts->websocket_subprotocol != NULL &&
+        (! ls->websocket_h2_subprotocol_seen ||
+         ! httpserverStringCaseContainsToken(ls->websocket_h2_subprotocol, ts->websocket_subprotocol)))
+    {
+        return false;
+    }
+
+    return true;
+}
+
 static int httpserverOnHeaderCallback(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name,
                                       size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags,
                                       void *userdata)
 {
     discard session;
-    discard name;
-    discard namelen;
-    discard value;
-    discard valuelen;
     discard flags;
 
     if (userdata == NULL)
@@ -646,6 +1044,62 @@ static int httpserverOnHeaderCallback(nghttp2_session *session, const nghttp2_fr
             nghttp2_submit_rst_stream(ls->session, NGHTTP2_FLAG_NONE, frame->hd.stream_id, NGHTTP2_REFUSED_STREAM);
         }
         return 0;
+    }
+
+    httpserver_tstate_t *ts = tunnelGetState(ls->tunnel);
+    if (! ts->websocket_enabled || name == NULL || value == NULL)
+    {
+        return 0;
+    }
+
+    if (namelen == 7 && memoryCompare(name, ":method", 7) == 0)
+    {
+        size_t copy_len = min(valuelen, sizeof(ls->websocket_h2_method) - 1U);
+        memoryCopy(ls->websocket_h2_method, value, copy_len);
+        ls->websocket_h2_method[copy_len] = '\0';
+        ls->websocket_h2_method_seen      = true;
+    }
+    else if (namelen == 9 && memoryCompare(name, ":protocol", 9) == 0)
+    {
+        size_t copy_len = min(valuelen, sizeof(ls->websocket_h2_protocol) - 1U);
+        memoryCopy(ls->websocket_h2_protocol, value, copy_len);
+        ls->websocket_h2_protocol[copy_len] = '\0';
+        ls->websocket_h2_protocol_seen      = true;
+    }
+    else if (namelen == 5 && memoryCompare(name, ":path", 5) == 0)
+    {
+        size_t copy_len = min(valuelen, sizeof(ls->websocket_h2_path) - 1U);
+        memoryCopy(ls->websocket_h2_path, value, copy_len);
+        ls->websocket_h2_path[copy_len] = '\0';
+        ls->websocket_h2_path_seen      = true;
+    }
+    else if (namelen == 10 && memoryCompare(name, ":authority", 10) == 0)
+    {
+        size_t copy_len = min(valuelen, sizeof(ls->websocket_h2_authority) - 1U);
+        memoryCopy(ls->websocket_h2_authority, value, copy_len);
+        ls->websocket_h2_authority[copy_len] = '\0';
+        ls->websocket_h2_authority_seen      = true;
+    }
+    else if (namelen == 21 && memoryCompare(name, "sec-websocket-version", 21) == 0)
+    {
+        size_t copy_len = min(valuelen, sizeof(ls->websocket_h2_version) - 1U);
+        memoryCopy(ls->websocket_h2_version, value, copy_len);
+        ls->websocket_h2_version[copy_len] = '\0';
+        ls->websocket_h2_version_seen      = true;
+    }
+    else if (namelen == 22 && memoryCompare(name, "sec-websocket-protocol", 22) == 0)
+    {
+        size_t copy_len = min(valuelen, sizeof(ls->websocket_h2_subprotocol) - 1U);
+        memoryCopy(ls->websocket_h2_subprotocol, value, copy_len);
+        ls->websocket_h2_subprotocol[copy_len] = '\0';
+        ls->websocket_h2_subprotocol_seen      = true;
+    }
+    else if (namelen == 6 && memoryCompare(name, "origin", 6) == 0)
+    {
+        size_t copy_len = min(valuelen, sizeof(ls->websocket_h2_origin) - 1U);
+        memoryCopy(ls->websocket_h2_origin, value, copy_len);
+        ls->websocket_h2_origin[copy_len] = '\0';
+        ls->websocket_h2_origin_seen      = true;
     }
 
     return 0;
@@ -684,7 +1138,15 @@ static int httpserverOnDataChunkRecvCallback(nghttp2_session *session, uint8_t f
         sbuf_t  *buf   = httpserverAllocBufferForLength(ls->line, chunk);
         sbufSetLength(buf, chunk);
         sbufWriteLarge(buf, ptr, chunk);
-        contextqueuePush(&ls->events_up, contextCreatePayload(ls->line, buf));
+        httpserver_tstate_t *ts = tunnelGetState(ls->tunnel);
+        if (ts->websocket_enabled)
+        {
+            bufferstreamPush(&ls->in_stream, buf);
+        }
+        else
+        {
+            contextqueuePush(&ls->events_up, contextCreatePayload(ls->line, buf));
+        }
         ptr += chunk;
         rem -= chunk;
     }
@@ -717,6 +1179,18 @@ static int httpserverOnFrameRecvCallback(nghttp2_session *session, const nghttp2
             }
             return 0;
         }
+
+        httpserver_tstate_t *ts = tunnelGetState(ls->tunnel);
+        if (ts->websocket_enabled)
+        {
+            ls->websocket_active = validateWebSocketHttp2Request(ts, ls);
+            if (ls->websocket_active && ts->verbose)
+            {
+                LOGD("HttpServer: websocket HTTP/2 handshake accepted stream_id=%d authority=%s path=%s protocol=%s",
+                     ls->h2_stream_id, ls->websocket_h2_authority, ls->websocket_h2_path,
+                     ls->websocket_h2_subprotocol_seen ? ls->websocket_h2_subprotocol : "<none>");
+            }
+        }
     }
 
     if ((frame->hd.flags & NGHTTP2_FLAG_END_STREAM) == NGHTTP2_FLAG_END_STREAM && frame->hd.stream_id == ls->h2_stream_id)
@@ -724,7 +1198,11 @@ static int httpserverOnFrameRecvCallback(nghttp2_session *session, const nghttp2
         if (! ls->h2_request_finished)
         {
             ls->h2_request_finished = true;
-            contextqueuePush(&ls->events_up, contextCreateFin(ls->line));
+            httpserver_tstate_t *ts = tunnelGetState(ls->tunnel);
+            if (! ts->websocket_enabled)
+            {
+                contextqueuePush(&ls->events_up, contextCreateFin(ls->line));
+            }
         }
     }
 
@@ -747,7 +1225,11 @@ static int httpserverOnStreamClosedCallback(nghttp2_session *session, int32_t st
     if (stream_id == ls->h2_stream_id && ! ls->h2_request_finished)
     {
         ls->h2_request_finished = true;
-        contextqueuePush(&ls->events_up, contextCreateFin(ls->line));
+        httpserver_tstate_t *ts = tunnelGetState(ls->tunnel);
+        if (! ts->websocket_enabled)
+        {
+            contextqueuePush(&ls->events_up, contextCreateFin(ls->line));
+        }
     }
 
     return 0;
@@ -777,7 +1259,8 @@ bool httpserverTransportEnsureHttp2Session(tunnel_t *t, line_t *l, httpserver_ls
     nghttp2_settings_entry settings[] = {
         {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 1},
         {NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE, (1U << 20)},
-        {NGHTTP2_SETTINGS_MAX_FRAME_SIZE, (uint32_t) kHttpServerHttp2FrameBytes}
+        {NGHTTP2_SETTINGS_MAX_FRAME_SIZE, (uint32_t) kHttpServerHttp2FrameBytes},
+        {NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL, ts->websocket_enabled ? 1U : 0U}
     };
 
     if (nghttp2_submit_settings(ls->session, NGHTTP2_FLAG_NONE, settings, ARRAY_SIZE(settings)) != 0)
@@ -787,6 +1270,11 @@ bool httpserverTransportEnsureHttp2Session(tunnel_t *t, line_t *l, httpserver_ls
     }
 
     ls->runtime_proto = kHttpServerRuntimeHttp2;
+
+    if (ts->verbose)
+    {
+        LOGD("HttpServer: initialized HTTP/2 server session websocket=%s", ts->websocket_enabled ? "true" : "false");
+    }
 
     return sendNghttp2Outbound(t, l, ls);
 }
@@ -836,7 +1324,13 @@ bool httpserverTransportSubmitHttp2ResponseHeaders(tunnel_t *t, line_t *l, https
     }
 
     char status_buf[8];
-    snprintf(status_buf, sizeof(status_buf), "%d", ts->status_code);
+    snprintf(status_buf, sizeof(status_buf), "%d", ts->websocket_enabled ? 200 : ts->status_code);
+
+    if (ts->verbose)
+    {
+        LOGD("HttpServer: sending HTTP/2 response headers stream_id=%d status=%s websocket=%s end_stream=%s",
+             ls->h2_stream_id, status_buf, ts->websocket_enabled ? "true" : "false", end_stream ? "true" : "false");
+    }
 
     nghttp2_nv nvs[24];
     int        nvlen = 0;
@@ -847,7 +1341,7 @@ bool httpserverTransportSubmitHttp2ResponseHeaders(tunnel_t *t, line_t *l, https
                                  .valuelen = stringLength(status_buf),
                                  .flags = NGHTTP2_NV_FLAG_NONE};
 
-    if (ts->content_type != kContentTypeNone && ts->content_type != kContentTypeUndefined)
+    if (! ts->websocket_enabled && ts->content_type != kContentTypeNone && ts->content_type != kContentTypeUndefined)
     {
         const char *ctype = httpContentTypeStr(ts->content_type);
         nvs[nvlen++]      = (nghttp2_nv) {.name = (uint8_t *) "content-type",
@@ -855,6 +1349,15 @@ bool httpserverTransportSubmitHttp2ResponseHeaders(tunnel_t *t, line_t *l, https
                                           .namelen = 12,
                                           .valuelen = stringLength(ctype),
                                           .flags = NGHTTP2_NV_FLAG_NONE};
+    }
+
+    if (ts->websocket_enabled && ts->websocket_subprotocol != NULL)
+    {
+        nvs[nvlen++] = (nghttp2_nv) {.name = (uint8_t *) "sec-websocket-protocol",
+                                     .value = (uint8_t *) ts->websocket_subprotocol,
+                                     .namelen = 22,
+                                     .valuelen = stringLength(ts->websocket_subprotocol),
+                                     .flags = NGHTTP2_NV_FLAG_NONE};
     }
 
     if (cJSON_IsObject(ts->headers))
@@ -867,7 +1370,7 @@ bool httpserverTransportSubmitHttp2ResponseHeaders(tunnel_t *t, line_t *l, https
                 continue;
             }
 
-            if (header->string[0] == ':')
+            if (header->string[0] == ':' || httpserverShouldSkipExtraHeader(header->string, ts->websocket_enabled))
             {
                 continue;
             }
@@ -1030,13 +1533,256 @@ bool httpserverTransportSendHttp2DataFrame(tunnel_t *t, line_t *l, httpserver_ls
     return true;
 }
 
+bool httpserverTransportSendWebSocketData(tunnel_t *t, line_t *l, httpserver_lstate_t *ls, sbuf_t *payload,
+                                          uint8_t opcode)
+{
+    if (payload == NULL)
+    {
+        return true;
+    }
+
+    uint32_t payload_len = sbufGetLength(payload);
+    uint8_t  header[16];
+    size_t   header_len = httpserverBuildWebSocketHeader(header, sizeof(header), opcode, payload_len);
+    if (header_len == 0)
+    {
+        lineReuseBuffer(l, payload);
+        return false;
+    }
+
+    if (sbufGetLeftCapacity(payload) >= header_len)
+    {
+        sbufShiftLeft(payload, (uint32_t) header_len);
+        sbufWrite(payload, header, (uint32_t) header_len);
+        return httpserverSendRawDown(t, l, ls, payload);
+    }
+
+    if (! httpserverSendRawBytesDown(t, l, ls, header, (uint32_t) header_len))
+    {
+        lineReuseBuffer(l, payload);
+        return false;
+    }
+
+    return httpserverSendRawDown(t, l, ls, payload);
+}
+
+bool httpserverTransportSendWebSocketClose(tunnel_t *t, line_t *l, httpserver_lstate_t *ls)
+{
+    if (ls->websocket_close_sent)
+    {
+        return true;
+    }
+
+    ls->websocket_close_sent = true;
+    if (httpserverVerboseEnabled(t))
+    {
+        LOGD("HttpServer: sending websocket close frame");
+    }
+    return httpserverSendWebSocketControlFrame(t, l, ls, kWebSocketOpcodeClose, NULL, 0);
+}
+
+bool httpserverTransportDrainWebSocketUp(tunnel_t *t, line_t *l, httpserver_lstate_t *ls)
+{
+    while (true)
+    {
+        size_t available = bufferstreamGetBufLen(&ls->in_stream);
+        if (available < 2)
+        {
+            return true;
+        }
+
+        uint8_t head[14];
+        bufferstreamViewBytesAt(&ls->in_stream, 0, head, 2);
+
+        bool     fin         = (head[0] & 0x80U) != 0;
+        uint8_t  opcode      = (uint8_t) (head[0] & 0x0FU);
+        bool     masked      = (head[1] & 0x80U) != 0;
+        uint64_t payload_len = (uint64_t) (head[1] & 0x7FU);
+        size_t   header_len  = 2;
+        uint8_t  mask_key[4] = {0};
+
+        if (! masked)
+        {
+            LOGE("HttpServer: client websocket frames must be masked opcode=%s payload_len=%" PRIu64,
+                 httpserverWebSocketOpcodeName(opcode), payload_len);
+            return false;
+        }
+
+        if (payload_len == 126U)
+        {
+            if (available < 4)
+            {
+                return true;
+            }
+            bufferstreamViewBytesAt(&ls->in_stream, 2, head + 2, 2);
+            payload_len = ((uint64_t) head[2] << 8) | (uint64_t) head[3];
+            header_len  = 4;
+        }
+        else if (payload_len == 127U)
+        {
+            if (available < 10)
+            {
+                return true;
+            }
+            bufferstreamViewBytesAt(&ls->in_stream, 2, head + 2, 8);
+            payload_len = 0;
+            for (size_t i = 0; i < 8; ++i)
+            {
+                payload_len = (payload_len << 8) | (uint64_t) head[2 + i];
+            }
+            header_len = 10;
+        }
+
+        if (available < header_len + 4 + (size_t) payload_len)
+        {
+            return true;
+        }
+
+        if ((opcode & 0x08U) != 0 && (! fin || payload_len > 125U))
+        {
+            LOGE("HttpServer: invalid websocket control frame opcode=%s fin=%s payload_len=%" PRIu64,
+                 httpserverWebSocketOpcodeName(opcode), fin ? "true" : "false", payload_len);
+            return false;
+        }
+
+        if (payload_len > UINT32_MAX)
+        {
+            LOGE("HttpServer: websocket frame exceeds buffer limits opcode=%s payload_len=%" PRIu64,
+                 httpserverWebSocketOpcodeName(opcode), payload_len);
+            return false;
+        }
+
+        sbuf_t *discard_header = bufferstreamReadExact(&ls->in_stream, header_len);
+        lineReuseBuffer(l, discard_header);
+        sbuf_t *mask_buf = bufferstreamReadExact(&ls->in_stream, 4);
+        memoryCopy(mask_key, sbufGetRawPtr(mask_buf), 4);
+        lineReuseBuffer(l, mask_buf);
+
+        sbuf_t *payload = NULL;
+        if (payload_len > 0)
+        {
+            payload = bufferstreamReadExact(&ls->in_stream, (size_t) payload_len);
+            uint8_t *ptr = (uint8_t *) sbufGetMutablePtr(payload);
+            for (uint32_t i = 0; i < sbufGetLength(payload); ++i)
+            {
+                ptr[i] ^= mask_key[i & 3U];
+            }
+        }
+
+        if (opcode == kWebSocketOpcodePing)
+        {
+            if (httpserverVerboseEnabled(t))
+            {
+                LOGD("HttpServer: received websocket ping payload_len=%u", payload == NULL ? 0U : sbufGetLength(payload));
+            }
+            const void *pong_data = (payload == NULL) ? NULL : sbufGetRawPtr(payload);
+            uint32_t    pong_len  = (payload == NULL) ? 0U : sbufGetLength(payload);
+            bool        ok        = httpserverSendWebSocketControlFrame(t, l, ls, kWebSocketOpcodePong, pong_data,
+                                                                        pong_len);
+            if (payload != NULL)
+            {
+                lineReuseBuffer(l, payload);
+            }
+            if (! ok)
+            {
+                return false;
+            }
+            continue;
+        }
+
+        if (opcode == kWebSocketOpcodePong)
+        {
+            if (httpserverVerboseEnabled(t))
+            {
+                LOGD("HttpServer: received websocket pong payload_len=%u", payload == NULL ? 0U : sbufGetLength(payload));
+            }
+            if (payload != NULL)
+            {
+                lineReuseBuffer(l, payload);
+            }
+            continue;
+        }
+
+        if (opcode == kWebSocketOpcodeClose)
+        {
+            if (httpserverVerboseEnabled(t))
+            {
+                LOGD("HttpServer: received websocket close payload_len=%u close_sent=%s",
+                     payload == NULL ? 0U : sbufGetLength(payload), ls->websocket_close_sent ? "true" : "false");
+            }
+
+            if (! ls->websocket_close_sent)
+            {
+                const void *close_data = (payload == NULL) ? NULL : sbufGetRawPtr(payload);
+                uint32_t    close_len  = (payload == NULL) ? 0U : sbufGetLength(payload);
+                if (! httpserverSendWebSocketControlFrame(t, l, ls, kWebSocketOpcodeClose, close_data, close_len))
+                {
+                    if (payload != NULL)
+                    {
+                        lineReuseBuffer(l, payload);
+                    }
+                    LOGE("HttpServer: failed to send websocket close reply");
+                    return false;
+                }
+                ls->websocket_close_sent = true;
+            }
+
+            if (payload != NULL)
+            {
+                lineReuseBuffer(l, payload);
+            }
+            ls->websocket_close_received = true;
+            return true;
+        }
+
+        if (opcode != kWebSocketOpcodeBinary && opcode != kWebSocketOpcodeText &&
+            opcode != kWebSocketOpcodeContinuation)
+        {
+            if (payload != NULL)
+            {
+                lineReuseBuffer(l, payload);
+            }
+            LOGE("HttpServer: unsupported websocket opcode=%u", opcode);
+            return false;
+        }
+
+        if (payload != NULL && ! withLineLockedWithBuf(l, tunnelNextUpStreamPayload, t, payload))
+        {
+            return false;
+        }
+    }
+}
+
 bool httpserverTransportFlushPendingDown(tunnel_t *t, line_t *l, httpserver_lstate_t *ls)
 {
+    httpserver_tstate_t *ts = tunnelGetState(t);
+
+    if (ts->websocket_enabled && ! ls->websocket_active)
+    {
+        return true;
+    }
+
     while (bufferqueueGetBufCount(&ls->pending_down) > 0)
     {
         sbuf_t *buf = bufferqueuePopFront(&ls->pending_down);
 
-        if (ls->runtime_proto == kHttpServerRuntimeHttp2)
+        if (ts->websocket_enabled)
+        {
+            if (ls->runtime_proto == kHttpServerRuntimeHttp2 && ! ls->h2_response_headers_sent)
+            {
+                if (! httpserverTransportSubmitHttp2ResponseHeaders(t, l, ls, false))
+                {
+                    lineReuseBuffer(l, buf);
+                    return false;
+                }
+            }
+
+            if (! httpserverTransportSendWebSocketData(t, l, ls, buf, kWebSocketOpcodeBinary))
+            {
+                return false;
+            }
+        }
+        else if (ls->runtime_proto == kHttpServerRuntimeHttp2)
         {
             if (! ls->h2_response_headers_sent)
             {
@@ -1128,12 +1874,45 @@ bool httpserverTransportFeedHttp2Input(tunnel_t *t, line_t *l, httpserver_lstate
 
     lineReuseBuffer(l, buf);
 
+    httpserver_tstate_t *ts = tunnelGetState(t);
+
     if (! sendNghttp2Outbound(t, l, ls))
     {
         return false;
     }
 
-    if (! drainUpEvents(t, l, ls))
+    if (ts->websocket_enabled)
+    {
+        if (ls->h2_stream_id > 0 && ! ls->websocket_active)
+        {
+            LOGE("HttpServer: websocket HTTP/2 handshake failed method=%s protocol=%s path=%s authority=%s version=%s origin=%s subprotocol=%s",
+                 ls->websocket_h2_method_seen ? ls->websocket_h2_method : "<missing>",
+                 ls->websocket_h2_protocol_seen ? ls->websocket_h2_protocol : "<missing>",
+                 ls->websocket_h2_path_seen ? ls->websocket_h2_path : "<missing>",
+                 ls->websocket_h2_authority_seen ? ls->websocket_h2_authority : "<missing>",
+                 ls->websocket_h2_version_seen ? ls->websocket_h2_version : "<missing>",
+                 ls->websocket_h2_origin_seen ? ls->websocket_h2_origin : "<none>",
+                 ls->websocket_h2_subprotocol_seen ? ls->websocket_h2_subprotocol : "<none>");
+            return false;
+        }
+
+        if (ls->websocket_active)
+        {
+            if (! ls->h2_response_headers_sent)
+            {
+                if (! httpserverTransportSubmitHttp2ResponseHeaders(t, l, ls, false))
+                {
+                    return false;
+                }
+            }
+
+            if (! httpserverTransportDrainWebSocketUp(t, l, ls))
+            {
+                return false;
+            }
+        }
+    }
+    else if (! drainUpEvents(t, l, ls))
     {
         return false;
     }
@@ -1187,9 +1966,17 @@ bool httpserverTransportDetectRuntimeProtocol(tunnel_t *t, line_t *l, httpserver
             return true;
         }
 
+        if (ts->verbose)
+        {
+            LOGD("HttpServer: detected direct HTTP/2 client preface");
+        }
         return httpserverTransportEnsureHttp2Session(t, l, ls);
     }
 
+    if (ts->verbose)
+    {
+        LOGD("HttpServer: detected HTTP/1.1 request stream");
+    }
     ls->runtime_proto = kHttpServerRuntimeHttp1;
     return true;
 }
@@ -1238,9 +2025,50 @@ bool httpserverTransportHandleHttp1RequestHeaderPhase(tunnel_t *t, line_t *l, ht
     }
 
     httpserver_tstate_t *ts = tunnelGetState(t);
+    if (ts->websocket_enabled)
+    {
+        if (ts->verbose)
+        {
+            LOGD("HttpServer: parsed websocket HTTP/1.1 request method=%s path=%s host=%s origin=%s subprotocol=%s transfer-chunked=%s content-length=%" PRId64,
+                 info.method, info.path, info.host, info.has_origin ? info.origin : "<none>",
+                 info.has_sec_websocket_protocol ? info.sec_websocket_protocol : "<none>",
+                 info.transfer_chunked ? "true" : "false", info.content_length);
+        }
+
+        if (! validateWebSocketHttp1Request(ts, &info))
+        {
+            return false;
+        }
+
+        ls->runtime_proto     = kHttpServerRuntimeHttp1;
+        ls->h1_headers_parsed = true;
+        ls->websocket_active  = true;
+
+        if (! httpserverTransportSendHttp1WebSocketResponseHeaders(t, l, &info))
+        {
+            return false;
+        }
+
+        ls->h1_response_headers_sent = true;
+
+        if (! httpserverTransportFlushPendingDown(t, l, ls))
+        {
+            return false;
+        }
+
+        return httpserverTransportDrainWebSocketUp(t, l, ls);
+    }
+
     if (! validateHttp1Request(ts, &info))
     {
         return false;
+    }
+
+    if (ts->verbose)
+    {
+        LOGD("HttpServer: parsed HTTP/1.1 request method=%s path=%s host=%s transfer-chunked=%s content-length=%s",
+             info.method, info.path, info.host, info.transfer_chunked ? "true" : "false",
+             info.has_content_length ? "true" : "false");
     }
 
     if (ts->version_mode == kHttpServerVersionModeBoth && ts->enable_upgrade && info.connection_upgrade &&

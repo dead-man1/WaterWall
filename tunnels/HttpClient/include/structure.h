@@ -40,6 +40,10 @@ typedef struct httpclient_tstate_s
     char *path;
     char *host;
     char *method;
+    char *user_agent;
+    char *websocket_origin;
+    char *websocket_subprotocol;
+    char *websocket_extensions;
 
     const cJSON *headers;
 
@@ -54,6 +58,8 @@ typedef struct httpclient_tstate_s
 
     httpclient_version_mode_t version_mode;
     bool                      enable_upgrade;
+    bool                      websocket_enabled;
+    bool                      verbose;
 } httpclient_tstate_t;
 
 typedef struct httpclient_lstate_s
@@ -85,6 +91,20 @@ typedef struct httpclient_lstate_s
     bool next_finished;
 
     bool fin_sent;
+
+    bool websocket_active;
+    bool websocket_waiting_handshake;
+    bool websocket_close_sent;
+    bool websocket_close_received;
+    bool websocket_h2_waiting_connect;
+    bool websocket_h2_request_submitted;
+    bool websocket_h2_status_seen;
+    bool websocket_h2_protocol_seen;
+    bool websocket_h2_extensions_seen;
+    int  websocket_h2_status_code;
+    char websocket_key[32];
+    char websocket_h2_protocol[128];
+    char websocket_h2_extensions[256];
 } httpclient_lstate_t;
 
 enum
@@ -141,6 +161,10 @@ sbuf_t *allocBufferForLength(line_t *l, uint32_t len);
 bool httpclientTransportSendHttp1RequestHeaders(tunnel_t *t, line_t *l, bool upgrade_to_h2);
 bool httpclientTransportSendHttp1FinalChunk(tunnel_t *t, line_t *l);
 bool httpclientTransportSendHttp1ChunkedPayload(tunnel_t *t, line_t *l, sbuf_t *payload);
+bool httpclientTransportSendWebSocketData(tunnel_t *t, line_t *l, httpclient_lstate_t *ls, sbuf_t *payload,
+                                          uint8_t opcode);
+bool httpclientTransportSendWebSocketClose(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
+bool httpclientTransportDrainWebSocketDown(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
 
 bool httpclientTransportEnsureHttp2Session(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);
 bool httpclientTransportHandleUpgradeAccepted(tunnel_t *t, line_t *l, httpclient_lstate_t *ls);

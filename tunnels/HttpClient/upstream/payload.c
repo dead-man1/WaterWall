@@ -17,8 +17,29 @@ static void failAndCloseU(tunnel_t *t, line_t *l, httpclient_lstate_t *ls)
 void httpclientTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     httpclient_lstate_t *ls = lineGetState(l, t);
+    httpclient_tstate_t *ts = tunnelGetState(t);
 
     lineLock(l);
+
+    if (ts->websocket_enabled)
+    {
+        if (! ls->websocket_active)
+        {
+            bufferqueuePushBack(&ls->pending_up, buf);
+            lineUnlock(l);
+            return;
+        }
+
+        if (! httpclientTransportSendWebSocketData(t, l, ls, buf, 0x2))
+        {
+            failAndCloseU(t, l, ls);
+            lineUnlock(l);
+            return;
+        }
+
+        lineUnlock(l);
+        return;
+    }
 
     if (ls->runtime_proto == kHttpClientRuntimeHttp1)
     {
