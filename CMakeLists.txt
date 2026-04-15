@@ -133,6 +133,8 @@ else()
 endif()
 
 option(INCLUDE_TEMPLATE                 "link Template staticly to the core"             TRUE)
+option(INCLUDE_TESTER_CLIENT            "link TesterClient staticly to the core"         TRUE)
+option(INCLUDE_TESTER_SERVER            "link TesterServer staticly to the core"         TRUE)
 option(INCLUDE_WIREGUARD_DEVICE         "link WireGuardDevice staticly to the core"      TRUE)
 option(INCLUDE_PACKET_TO_CONNECTION     "link PacketToConnection staticly to the core"   TRUE)
 option(INCLUDE_STREAM_TO_PACKETS           "link StreamToPackets staticly to the core"   TRUE)
@@ -240,17 +242,28 @@ target_link_libraries(Waterwall ww)
 # Tunnel Libraries
 #--------------------------------------------------------------------------------
 
-#first setting these variables to false, so we can use them in the tunnels CMakeLists.txt files
-
-set(TUNNELS_KCP_INCLUDE_SET FALSE CACHE INTERNAL "") #if any tunnel has kcp
-set(TUNNELS_HTTP_DEF_SET FALSE CACHE INTERNAL "")    #if any tunnel compiles http_def.c
-
 #template
 if(INCLUDE_TEMPLATE)
   target_compile_definitions(Waterwall PUBLIC INCLUDE_TEMPLATE=1)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/template)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/template)
   target_link_libraries(Waterwall Template)
+endif()
+
+#tester client
+if(INCLUDE_TESTER_CLIENT)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_TESTER_CLIENT=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TesterClient)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TesterClient)
+  target_link_libraries(Waterwall TesterClient)
+endif()
+
+#tester server
+if(INCLUDE_TESTER_SERVER)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_TESTER_SERVER=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TesterServer)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TesterServer)
+  target_link_libraries(Waterwall TesterServer)
 endif()
 
 #tun device
@@ -427,6 +440,7 @@ if(INCLUDE_TCP_OVER_UDP_CLIENT)
   target_compile_definitions(Waterwall PUBLIC INCLUDE_TCP_OVER_UDP_CLIENT=1)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TcpOverUdpClient)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TcpOverUdpClient)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_BINARY_DIR}/tunnels/TcpOverUdpClient)
   target_link_libraries(Waterwall TcpOverUdpClient)
 endif()
 
@@ -435,6 +449,7 @@ if(INCLUDE_TCP_OVER_UDP_SERVER)
   target_compile_definitions(Waterwall PUBLIC INCLUDE_TCP_OVER_UDP_SERVER=1)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TcpOverUdpServer)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TcpOverUdpServer)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_BINARY_DIR}/tunnels/TcpOverUdpServer)
   target_link_libraries(Waterwall TcpOverUdpServer)
 endif()
 

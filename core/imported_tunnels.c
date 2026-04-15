@@ -8,6 +8,14 @@
 #include "tunnels/template/include/interface.h"
 #endif
 
+#ifdef INCLUDE_TESTER_CLIENT
+#include "tunnels/TesterClient/include/interface.h"
+#endif
+
+#ifdef INCLUDE_TESTER_SERVER
+#include "tunnels/TesterServer/include/interface.h"
+#endif
+
 #ifdef INCLUDE_TUN_DEVICE
 #include "tunnels/TunDevice/include/interface.h"
 #endif
@@ -233,6 +241,14 @@ void loadImportedTunnelsIntoCore(void)
 
 #if INCLUDE_TEMPLATE
     USING(Template);
+#endif
+
+#ifdef INCLUDE_TESTER_CLIENT
+    USING(TesterClient);
+#endif
+
+#ifdef INCLUDE_TESTER_SERVER
+    USING(TesterServer);
 #endif
 
 #ifdef INCLUDE_TUN_DEVICE
