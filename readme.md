@@ -28,6 +28,10 @@ If you're familiar with network protocol structures:
 * These files are written in English
 * They provide advanced documentation and implementation details
 
+## Questions & Suggestions
+
+Feel free to reach out in my small [Telegram group](t.me/radkesvat_group) if you have any questions about this project, networking, or programming in general. I’m also happy to hear your suggestions and feedback!
+
 <!-- # Plan
 
 - [x] Restructure the project into a much cleaner design  
@@ -40,7 +44,6 @@ If you're familiar with network protocol structures:
 - [ ] Implement more transports like HTTP/3 or a stream control node  
  -->
 <!-- 
-
 
 
 Thanks for the support! ❤ -->
