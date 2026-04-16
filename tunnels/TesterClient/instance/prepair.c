@@ -5,8 +5,16 @@
 void testerclientTunnelOnPrepair(tunnel_t *t)
 {
     testerclient_tstate_t *ts = tunnelGetState(t);
+    tunnel_chain_t        *tc = tunnelGetChain(t);
 
-    if (ts->packet_mode && tunnelGetChain(t)->packet_lines == NULL)
+    if (tc->workers_count > kTesterClientMaxWorkers)
+    {
+        LOGF("TesterClient: supports at most %u workers, but the chain has %u",
+             (unsigned int) kTesterClientMaxWorkers, (unsigned int) tc->workers_count);
+        terminateProgram(1);
+    }
+
+    if (ts->packet_mode && tc->packet_lines == NULL)
     {
         LOGF("TesterClient: packet-mode requires packet lines; add a packet-layer tunnel in the chain");
         terminateProgram(1);

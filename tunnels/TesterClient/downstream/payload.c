@@ -34,7 +34,7 @@ void testerclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             return;
         }
 
-        if (! testerclientVerifyChunk(t, l, buf, ls->response_rx_index, kTesterClientDirectionRequest, &bad_offset,
+        if (! testerclientVerifyChunk(t, l, buf, ls->response_rx_index, kTesterClientDirectionResponse, &bad_offset,
                                       &expected, &actual))
         {
             LOGE("TesterClient: worker %u packet response chunk %u mismatch (size=%u expected_size=%u bad_offset=%u "

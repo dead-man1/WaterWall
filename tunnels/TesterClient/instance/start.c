@@ -36,7 +36,9 @@ static void testerclientStartWorker(void *worker, void *arg1, void *arg2, void *
 
 void testerclientTunnelOnStart(tunnel_t *t)
 {
-    for (wid_t wi = 0; wi < getWorkersCount(); ++wi)
+    tunnel_chain_t *tc = tunnelGetChain(t);
+
+    for (wid_t wi = 0; wi < tc->workers_count; ++wi)
     {
         sendWorkerMessageTimed(wi, testerclientStartWorker, kTesterClientStartDelayMs, t, NULL, NULL);
     }

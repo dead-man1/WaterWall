@@ -239,6 +239,7 @@ void testerclientMarkWorkerComplete(tunnel_t *t, line_t *l)
 {
     testerclient_tstate_t       *ts   = tunnelGetState(t);
     testerclient_worker_state_t *slot = &ts->workers[lineGetWID(l)];
+    tunnel_chain_t              *tc   = tunnelGetChain(t);
     unsigned int                 done;
 
     if (slot->completed)
@@ -253,8 +254,8 @@ void testerclientMarkWorkerComplete(tunnel_t *t, line_t *l)
 
     LOGI("TesterClient: worker %u completed integrity round-trip", (unsigned int) lineGetWID(l));
 
-    if (done == (unsigned int) getWorkersCount())
+    if (done == (unsigned int) tc->workers_count)
     {
-        LOGI("TesterClient: all %u worker lines completed successfully", (unsigned int) getWorkersCount());
+        LOGI("TesterClient: all %u worker lines completed successfully", (unsigned int) tc->workers_count);
     }
 }

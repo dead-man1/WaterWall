@@ -33,8 +33,11 @@ void testerserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
             return;
         }
 
+        sbuf_t *response_buf = testerserverCreatePayload(t, l, ls->request_rx_index, kTesterServerDirectionResponse);
+
+        lineReuseBuffer(l, buf);
         ls->request_rx_index += 1;
-        bufferqueuePushBack(&ls->response_queue, buf);
+        bufferqueuePushBack(&ls->response_queue, response_buf);
         testerserverScheduleResponseSend(t, l, ls);
         return;
     }

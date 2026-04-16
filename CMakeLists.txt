@@ -164,6 +164,7 @@ option(INCLUDE_TROJAN_AUTH_SERVER       "link TrojanAuthServer staticly to the c
 option(INCLUDE_TROJAN_SOCKS_SERVER      "link TrojanSocksServer staticly to the core"    FALSE)
 option(INCLUDE_HTTP_SERVER              "link HttpServer staticly to the core"           TRUE)
 option(INCLUDE_HTTP_CLIENT              "link HttpClient staticly to the core"           TRUE)
+option(INCLUDE_SOCKS5_CLIENT            "link Socks5Client staticly to the core"         TRUE)
 option(INCLUDE_PROTOBUF_SERVER          "link ProtoBufServer staticly to the core"       FALSE)
 option(INCLUDE_PROTOBUF_CLIENT          "link ProtoBufClient staticly to the core"       FALSE)
 option(INCLUDE_REVERSE_SERVER           "link ReverseServer staticly to the core"        TRUE)
@@ -475,6 +476,14 @@ if(INCLUDE_HTTP_CLIENT)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/HttpClient)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/HttpClient)
   target_link_libraries(Waterwall HttpClient)
+endif()
+
+#socks5 client
+if(INCLUDE_SOCKS5_CLIENT)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_SOCKS5_CLIENT=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/Socks5Client)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/Socks5Client)
+  target_link_libraries(Waterwall Socks5Client)
 endif()
 
 #openssl server
