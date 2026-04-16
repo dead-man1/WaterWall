@@ -30,7 +30,7 @@ If you're familiar with network protocol structures:
 
 ## Questions & Suggestions
 
-Feel free to reach out in my small [Telegram group](t.me/radkesvat_group) if you have any questions about this project, networking, or programming in general. I’m also happy to hear your suggestions and feedback!
+Feel free to reach out in my small [Telegram group](https://t.me/radkesvat_group) if you have any questions about this project, networking, or programming in general. I’m also happy to hear your suggestions and feedback!
 
 <!-- # Plan
 
