@@ -16,14 +16,6 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
 - outer IPv4 and ICMP checksums are calculated immediately when server-side encapsulation happens
 - total packet size is capped at `1500` bytes, so oversized payloads are logged and dropped
 
-## Required `settings`
-
-- `local-ip` `(string)`
-  Outer IPv4 source address used when this server encapsulates downstream traffic.
-
-- `peer-ip` `(string)`
-  Outer IPv4 destination address used when this server encapsulates downstream traffic.
-
 ## Optional `settings`
 
 - `identifier` `(integer)`
@@ -63,8 +55,6 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
   "name": "icmp-server",
   "type": "PingServer",
   "settings": {
-    "local-ip": "203.0.113.20",
-    "peer-ip": "198.51.100.10",
     "identifier": 4660,
     "xor-byte": 90,
     "roundup-size": true,
@@ -78,6 +68,8 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
 ## Notes
 
 - only IPv4 inner packets are encapsulated by this tunnel
-- only matching IPv4 ICMP echo-request envelopes are decapsulated on the upstream path
+- outer IPv4 source and destination are copied from the current inner IPv4 packet
+- only matching IPv4 ICMP echo-request envelopes with the configured identifier are decapsulated on the upstream path
+- this tunnel does not own IP rewriting or endpoint validation; use an IP rewrite/manipulation tunnel elsewhere in the packet chain if needed
 - fragmented outer ICMP packets are not reassembled here, so they are passed through unchanged
 - with `roundup-size`, packets larger than `1470` bytes are dropped because the 2-byte size prefix must still fit inside the `1500` byte total packet limit

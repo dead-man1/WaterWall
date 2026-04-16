@@ -6,8 +6,6 @@
 
 typedef struct pingclient_tstate_s
 {
-    uint32_t    local_ipv4;
-    uint32_t    peer_ipv4;
     atomic_uint icmp_sequence;
     atomic_uint ipv4_identification;
     uint16_t    identifier;

@@ -2,35 +2,6 @@
 
 #include "loggers/network_logger.h"
 
-static bool pingclientParseIpv4String(uint32_t *dest, const char *ipbuf, const char *json_path)
-{
-    ip4_addr_t parsed_ipv4;
-
-    if (ip4AddrAddressToNetwork(ipbuf, &parsed_ipv4) == 0)
-    {
-        LOGF("JSON Error: %s (string field) : expected a single IPv4 address", json_path);
-        return false;
-    }
-
-    *dest = ip4AddrGetU32(&parsed_ipv4);
-    return true;
-}
-
-static bool pingclientLoadIpv4Setting(uint32_t *dest, const cJSON *settings, const char *key, const char *json_path)
-{
-    char *ip_string = NULL;
-
-    if (! getStringFromJsonObject(&ip_string, settings, key))
-    {
-        LOGF("JSON Error: %s (string field) : The data was empty or invalid", json_path);
-        return false;
-    }
-
-    const bool ok = pingclientParseIpv4String(dest, ip_string, json_path);
-    memoryFree(ip_string);
-    return ok;
-}
-
 static bool pingclientLoadUint16Setting(uint16_t *dest, const cJSON *settings, const char *key, int default_value,
                                         const char *json_path)
 {
@@ -101,9 +72,7 @@ tunnel_t *pingclientCreate(node_t *node)
         return NULL;
     }
 
-    if (! pingclientLoadIpv4Setting(&state->local_ipv4, settings, "local-ip", "PingClient->settings->local-ip") ||
-        ! pingclientLoadIpv4Setting(&state->peer_ipv4, settings, "peer-ip", "PingClient->settings->peer-ip") ||
-        ! pingclientLoadUint16Setting(&state->identifier, settings, "identifier", kPingClientDefaultIdentifier,
+    if (! pingclientLoadUint16Setting(&state->identifier, settings, "identifier", kPingClientDefaultIdentifier,
                                       "PingClient->settings->identifier") ||
         ! pingclientLoadUint8Setting(&state->ttl, settings, "ttl", kPingClientDefaultTtl, "PingClient->settings->ttl") ||
         ! pingclientLoadUint8Setting(&state->tos, settings, "tos", 0, "PingClient->settings->tos") ||

@@ -170,14 +170,6 @@ static bool pingclientMatchEnvelope(const pingclient_tstate_t *state, sbuf_t *bu
         return false;
     }
 
-    const bool matches_reverse_direction = (ipheader->src.addr == state->peer_ipv4 && ipheader->dest.addr == state->local_ipv4);
-    const bool matches_forward_direction = (ipheader->src.addr == state->local_ipv4 && ipheader->dest.addr == state->peer_ipv4);
-
-    if ((! matches_reverse_direction) && (! matches_forward_direction))
-    {
-        return false;
-    }
-
     const struct icmp_echo_hdr *icmpheader = (const struct icmp_echo_hdr *) (packet + ip_header_len);
     if (icmpheader->type != ICMP_ECHO || icmpheader->code != 0 || icmpheader->id != lwip_htons(state->identifier))
     {
@@ -200,6 +192,10 @@ void pingclientEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
         return;
     }
     buf = prepared_buf;
+
+    const struct ip_hdr *inner_ipheader = (const struct ip_hdr *) sbufGetRawPtr(buf);
+    const uint32_t       outer_src_addr = inner_ipheader->src.addr;
+    const uint32_t       outer_dest_addr = inner_ipheader->dest.addr;
 
     if (sbufGetLeftCapacity(buf) < kPingClientEncapsulationOverhead)
     {
@@ -224,8 +220,8 @@ void pingclientEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
     IPH_TTL_SET(ipheader, state->ttl);
     IPH_PROTO_SET(ipheader, IP_PROTO_ICMP);
     IPH_CHKSUM_SET(ipheader, 0);
-    ipheader->src.addr  = state->local_ipv4;
-    ipheader->dest.addr = state->peer_ipv4;
+    ipheader->src.addr  = outer_src_addr;
+    ipheader->dest.addr = outer_dest_addr;
 
     ICMPH_TYPE_SET(icmpheader, ICMP_ECHO);
     ICMPH_CODE_SET(icmpheader, 0);
