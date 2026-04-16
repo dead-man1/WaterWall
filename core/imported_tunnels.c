@@ -152,6 +152,10 @@
 #include "tunnels/HttpClient/include/interface.h"
 #endif
 
+#ifdef INCLUDE_SOCKS5_CLIENT
+#include "tunnels/Socks5Client/include/interface.h"
+#endif
+
 #ifdef INCLUDE_PROTOBUF_SERVER
 #include "tunnels/server/protobuf/protobuf_server.h"
 #endif
@@ -385,6 +389,10 @@ void loadImportedTunnelsIntoCore(void)
 
 #ifdef INCLUDE_HTTP_CLIENT
     USING(HttpClient);
+#endif
+
+#ifdef INCLUDE_SOCKS5_CLIENT
+    USING(Socks5Client);
 #endif
 
 #ifdef INCLUDE_PROTOBUF_SERVER
