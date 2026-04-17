@@ -37,8 +37,8 @@ typedef struct speedlimit_lstate_s
     wtimer_t       *up_timer;
     wtimer_t       *down_timer;
     speedlimit_bucket_t line_bucket;
-    uint16_t        prev_side_external_pause_depth;
-    uint16_t        next_side_external_pause_depth;
+    bool            prev_side_externally_paused;
+    bool            next_side_externally_paused;
     bool            prev_side_locally_paused;
     bool            next_side_locally_paused;
 } speedlimit_lstate_t;

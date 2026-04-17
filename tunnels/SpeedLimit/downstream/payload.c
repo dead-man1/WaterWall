@@ -12,7 +12,7 @@ static void speedlimitDrainDownstream(speedlimit_lstate_t *ls)
         if (ls->next_side_locally_paused)
         {
             ls->next_side_locally_paused = false;
-            if (ls->next_side_external_pause_depth == 0)
+            if (! ls->next_side_externally_paused)
             {
                 tunnelNextUpStreamResume(t, l);
             }
@@ -107,7 +107,7 @@ void speedlimitTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     if (! ls->next_side_locally_paused)
     {
         ls->next_side_locally_paused = true;
-        if (ls->next_side_external_pause_depth == 0)
+        if (! ls->next_side_externally_paused)
         {
             tunnelNextUpStreamPause(t, l);
         }

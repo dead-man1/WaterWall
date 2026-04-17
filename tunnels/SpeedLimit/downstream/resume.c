@@ -5,13 +5,11 @@
 void speedlimitTunnelDownStreamResume(tunnel_t *t, line_t *l)
 {
     speedlimit_lstate_t *ls = lineGetState(l, t);
-    if (ls->prev_side_external_pause_depth > 0)
-    {
-        ls->prev_side_external_pause_depth -= 1;
-    }
+    ls->prev_side_externally_paused = false;
+    tunnelPrevDownStreamResume(t, l);
 
-    if (! ls->prev_side_locally_paused && ls->prev_side_external_pause_depth == 0)
+    if (ls->prev_side_locally_paused)
     {
-        tunnelPrevDownStreamResume(t, l);
+        tunnelPrevDownStreamPause(t, l);
     }
 }

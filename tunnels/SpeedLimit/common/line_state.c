@@ -14,8 +14,8 @@ void speedlimitLinestateInitialize(speedlimit_lstate_t *ls, tunnel_t *t, line_t 
                                  .down_timer              = NULL,
                                  .line_bucket             = {.tokens_units = ts->bucket_capacity_units,
                                                              .last_refill_ms = 0},
-                                 .prev_side_external_pause_depth = 0,
-                                 .next_side_external_pause_depth = 0,
+                                 .prev_side_externally_paused   = false,
+                                 .next_side_externally_paused   = false,
                                  .prev_side_locally_paused      = false,
                                  .next_side_locally_paused      = false};
 }
