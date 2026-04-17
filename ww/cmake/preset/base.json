@@ -117,8 +117,7 @@
             "hidden": true,
             "toolchainFile": "${sourceDir}/ww/cmake/toolchain/ios_sim.cmake",
             "cacheVariables": {
-                "CMAKE_OSX_SYSROOT": "iphonesimulator",
-                "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64"
+                "CMAKE_OSX_SYSROOT": "iphonesimulator"
             }
         },
         {

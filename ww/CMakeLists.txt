@@ -535,7 +535,27 @@ if(WCRYPTO_BACKEND_OPENSSL)
             if(CMAKE_OSX_SYSROOT STREQUAL "iphoneos")
                 set(WW_OPENSSL_TARGET_PLATFORM ios64-xcrun)
             elseif(CMAKE_OSX_SYSROOT STREQUAL "iphonesimulator")
-                set(WW_OPENSSL_TARGET_PLATFORM iossimulator-xcrun)
+                set(WW_IOS_SIM_ARCHS "${CMAKE_OSX_ARCHITECTURES}")
+                if(NOT WW_IOS_SIM_ARCHS)
+                    set(WW_IOS_SIM_ARCHS "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+                endif()
+
+                list(LENGTH WW_IOS_SIM_ARCHS WW_IOS_SIM_ARCH_COUNT)
+                if(WW_IOS_SIM_ARCH_COUNT GREATER 1)
+                    message(FATAL_ERROR
+                        "The in-tree OpenSSL simulator build must use a single architecture. "
+                        "Set CMAKE_OSX_ARCHITECTURES to either arm64 or x86_64 for ios_sim.")
+                endif()
+
+                list(GET WW_IOS_SIM_ARCHS 0 WW_IOS_SIM_ARCH)
+                if(WW_IOS_SIM_ARCH STREQUAL "arm64" OR WW_IOS_SIM_ARCH STREQUAL "aarch64")
+                    set(WW_OPENSSL_TARGET_PLATFORM iossimulator-arm64-xcrun)
+                elseif(WW_IOS_SIM_ARCH STREQUAL "x86_64" OR WW_IOS_SIM_ARCH STREQUAL "AMD64")
+                    set(WW_OPENSSL_TARGET_PLATFORM iossimulator-x86_64-xcrun)
+                else()
+                    message(FATAL_ERROR
+                        "Unsupported iOS simulator architecture for OpenSSL: ${WW_IOS_SIM_ARCH}")
+                endif()
             endif()
         elseif(ANDROID)
             if(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
