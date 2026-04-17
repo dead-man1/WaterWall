@@ -239,6 +239,16 @@ target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/ww)
 target_include_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/ww)
 target_link_libraries(Waterwall ww)
 
+# Xcode/iOS simulator links are more reliable when the final executable links
+# the imported OpenSSL targets directly instead of only through the static ww
+# library's transitive link interface.
+if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto)
+  target_link_libraries(Waterwall OpenSSL::SSL OpenSSL::Crypto)
+  if(TARGET OpenSSL::applink)
+    target_link_libraries(Waterwall OpenSSL::applink)
+  endif()
+endif()
+
 #--------------------------------------------------------------------------------
 # Tunnel Libraries
 #--------------------------------------------------------------------------------
