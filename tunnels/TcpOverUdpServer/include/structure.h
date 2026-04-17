@@ -3,25 +3,30 @@
 #include "wwapi.h"
 
 #include "ikcp.h"
+#include "ww_fec.h"
 
 typedef struct tcpoverudpserver_tstate_s
 {
-    int unused;
+    bool    fec_enabled;
+    uint8_t fec_data_shards;
+    uint8_t fec_parity_shards;
 
 } tcpoverudpserver_tstate_t;
 
 typedef struct tcpoverudpserver_lstate_s
 {
-    tunnel_t       *tunnel;       // our tunnel
-    line_t         *line;         // our line
-    ikcpcb         *k_handle;     // kcp handle
-    wtimer_t       *k_timer;      // kcp processing loop timer
-    uint64_t        last_recv;    // last received timestamp
-    context_queue_t cq_u;         // context queue upstream
-    context_queue_t cq_d;         // context queue downstream
-    bool            write_paused; // write pause state
-    bool            can_upstream; // can upstream data
-    bool            ping_sent;    // ping sent state
+    tunnel_t                *tunnel;       // our tunnel
+    line_t                  *line;         // our line
+    ikcpcb                  *k_handle;     // kcp handle
+    wtimer_t                *k_timer;      // kcp processing loop timer
+    tcpoverudp_fec_encoder_t *fec_encoder; // optional fec encoder
+    tcpoverudp_fec_decoder_t *fec_decoder; // optional fec decoder
+    uint64_t                 last_recv;    // last received timestamp
+    context_queue_t          cq_u;         // context queue upstream
+    context_queue_t          cq_d;         // context queue downstream
+    bool                     write_paused; // write pause state
+    bool                     can_upstream; // can upstream data
+    bool                     ping_sent;    // ping sent state
 
 } tcpoverudpserver_lstate_t;
 
@@ -33,6 +38,8 @@ enum
     kFrameFlagData     = 0x00,
     kFrameFlagPing     = 0xF0,
     kFrameFlagClose    = 0xFF,
+    kTcpOverUdpServerFecDefaultDataShards   = 10,
+    kTcpOverUdpServerFecDefaultParityShards = 3,
 };
 
 enum tcpoverudpserver_kcpsettings_e
@@ -48,9 +55,26 @@ enum tcpoverudpserver_kcpsettings_e
 };
 
 // 1400 - 20 (IP) - 8 (UDP) - ~24 (KCP) ≈ 1348 bytes
-#define KCP_MTU               (GLOBAL_MTU_SIZE)
-#define KCP_MTU_WRITE         (GLOBAL_MTU_SIZE - 20 - 8 - 24 - kFrameHeaderLength)
 #define KCP_SEND_WINDOW_LIMIT (int) (ls->k_handle->snd_wnd + ls->k_handle->rmt_wnd + 10)
+
+static inline uint32_t tcpoverudpserverGetOuterFecOverhead(const tcpoverudpserver_tstate_t *ts)
+{
+    if (ts != NULL && ts->fec_enabled)
+    {
+        return kTcpOverUdpFecOuterHeaderSize;
+    }
+    return 0;
+}
+
+static inline int tcpoverudpserverGetKcpMtu(const tcpoverudpserver_tstate_t *ts)
+{
+    return (int) (GLOBAL_MTU_SIZE - tcpoverudpserverGetOuterFecOverhead(ts));
+}
+
+static inline int tcpoverudpserverGetKcpWriteMtu(const tcpoverudpserver_tstate_t *ts)
+{
+    return (int) (GLOBAL_MTU_SIZE - 20 - 8 - 24 - kFrameHeaderLength - tcpoverudpserverGetOuterFecOverhead(ts));
+}
 
 WW_EXPORT void         tcpoverudpserverTunnelDestroy(tunnel_t *t);
 WW_EXPORT tunnel_t    *tcpoverudpserverTunnelCreate(node_t *node);
@@ -79,6 +103,7 @@ void tcpoverudpserverLinestateInitialize(tcpoverudpserver_lstate_t *ls, line_t *
 void tcpoverudpserverLinestateDestroy(tcpoverudpserver_lstate_t *ls);
 
 int tcpoverudpserverKUdpOutput(const char *data, int len, ikcpcb *kcp, void *user);
+bool tcpoverudpserverInputKcpPacket(void *ctx, const uint8_t *packet, size_t packet_len);
 
 void tcpoverudpserverKcpLoopIntervalCallback(wtimer_t *timer);
 bool tcpoverudpserverUpdateKcp(tcpoverudpserver_lstate_t *ls, bool flush);

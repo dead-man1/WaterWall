@@ -6,13 +6,13 @@
 #include "matrix.h"
 #include <stdexcept>
 
-matrix
-matrix::newMatrix(int rows, int cols) {
+rs_matrix
+rs_matrix::newMatrix(int rows, int cols) {
     if (rows <= 0 || cols <= 0) {
         throw std::invalid_argument("invalid arguments");
     }
 
-    matrix m;
+    rs_matrix m;
     m.rows = rows;
     m.cols = cols;
     m.data.resize(rows, nullptr);
@@ -22,9 +22,9 @@ matrix::newMatrix(int rows, int cols) {
     return m;
 }
 
-matrix
-matrix::identityMatrix(int size) {
-    matrix m = matrix::newMatrix(size, size);
+rs_matrix
+rs_matrix::identityMatrix(int size) {
+    rs_matrix m = rs_matrix::newMatrix(size, size);
     for (int i = 0; i < size; i++) {
         m.at(i, i) = 1;
     }
@@ -32,13 +32,13 @@ matrix::identityMatrix(int size) {
 }
 
 
-matrix
-matrix::Multiply(matrix &right) {
+rs_matrix
+rs_matrix::Multiply(rs_matrix &right) {
     if (cols != right.rows) {
-        return matrix{};
+        return rs_matrix{};
     }
 
-    matrix result = matrix::newMatrix(rows, right.cols);
+    rs_matrix result = rs_matrix::newMatrix(rows, right.cols);
 
     for (int r = 0; r < result.rows; r++) {
         for (int c = 0; c < result.cols; c++) {
@@ -52,9 +52,9 @@ matrix::Multiply(matrix &right) {
     return result;
 }
 
-matrix
-matrix::Augment(matrix &right) {
-    matrix result = matrix::newMatrix(this->rows, this->cols + right.cols);
+rs_matrix
+rs_matrix::Augment(rs_matrix &right) {
+    rs_matrix result = rs_matrix::newMatrix(this->rows, this->cols + right.cols);
 
     for (int r = 0; r < this->rows; r++) {
         for (int c = 0; c < this->cols; c++) {
@@ -68,9 +68,9 @@ matrix::Augment(matrix &right) {
     return result;
 }
 
-matrix
-matrix::SubMatrix(int rmin, int cmin, int rmax, int cmax) {
-    matrix result = matrix::newMatrix(rmax - rmin, cmax - cmin);
+rs_matrix
+rs_matrix::SubMatrix(int rmin, int cmin, int rmax, int cmax) {
+    rs_matrix result = rs_matrix::newMatrix(rmax - rmin, cmax - cmin);
     for (int r = rmin; r < rmax; r++) {
         for (int c = cmin; c < cmax; c++) {
             result.at(r - rmin, c - cmin) = at(r, c);
@@ -81,7 +81,7 @@ matrix::SubMatrix(int rmin, int cmin, int rmax, int cmax) {
 
 // SwapRows Exchanges two rows in the matrix.
 int
-matrix::SwapRows(int r1, int r2) {
+rs_matrix::SwapRows(int r1, int r2) {
     if (r1 < 0 || rows <= r1 || r2 < 0 || rows <= r2) {
         return -1;
     }
@@ -91,28 +91,28 @@ matrix::SwapRows(int r1, int r2) {
 }
 
 bool
-matrix::IsSquare() {
+rs_matrix::IsSquare() {
     return this->rows == this->cols;
 }
 
-matrix
-matrix::Invert() {
+rs_matrix
+rs_matrix::Invert() {
     if (!IsSquare()) {
-        return matrix{};
+        return rs_matrix{};
     }
-    auto work = matrix::identityMatrix(rows);
-    work = matrix::Augment(work);
+    auto work = rs_matrix::identityMatrix(rows);
+    work = rs_matrix::Augment(work);
 
     auto ret = work.gaussianElimination();
     if (ret != 0) {
-        return matrix{};
+        return rs_matrix{};
     }
 
     return work.SubMatrix(0, rows, rows, rows * 2);
 }
 
 int
-matrix::gaussianElimination() {
+rs_matrix::gaussianElimination() {
     auto rows = this->rows;
     auto columns = this->cols;
     // Clear out the part below the main diagonal and scale the main
@@ -169,9 +169,9 @@ matrix::gaussianElimination() {
     return 0;
 }
 
-matrix
-matrix::vandermonde(int rows, int cols) {
-    matrix result = matrix::newMatrix(rows, cols);
+rs_matrix
+rs_matrix::vandermonde(int rows, int cols) {
+    rs_matrix result = rs_matrix::newMatrix(rows, cols);
     for (int r = 0; r < rows; r++) {
         for (int c = 0; c < cols; c++) {
             result.at(r, c) = galExp(byte(r), byte(c));

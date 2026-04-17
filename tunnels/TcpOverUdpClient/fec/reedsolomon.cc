@@ -30,7 +30,7 @@ ReedSolomon::New(int dataShards, int parityShards) {
     // Start with a Vandermonde matrix.  This matrix would work,
     // in theory, but doesn't have the property that the data
     // shards are unchanged after encoding.
-    matrix vm = matrix::vandermonde(r.m_totalShards, r.m_dataShards);
+    rs_matrix vm = rs_matrix::vandermonde(r.m_totalShards, r.m_dataShards);
 
     // Multiply by the inverse of the top square of the matrix.
     // This will make the top square be the identity matrix, but
@@ -151,7 +151,7 @@ ReedSolomon::Reconstruct(std::vector<row_type> &shards) {
         // shards that we have and build a square matrix.  This
         // matrix could be used to generate the shards that we have
         // from the original data.
-        auto subMatrix = matrix::newMatrix(m_dataShards, m_dataShards);
+        auto subMatrix = rs_matrix::newMatrix(m_dataShards, m_dataShards);
         for (subMatrixRow = 0; subMatrixRow < validIndices.size(); subMatrixRow++) {
             for (int c = 0; c < m_dataShards; c++) {
                 subMatrix.at(subMatrixRow, c) = m.at(validIndices[subMatrixRow], c);

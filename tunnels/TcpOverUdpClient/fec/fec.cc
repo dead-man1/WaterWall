@@ -6,9 +6,16 @@
 #include <sys/time.h>
 #include <iostream>
 #include <stdexcept>
+
 #include "fec.h"
-#include "sess.h"
 #include "encoding.h"
+
+static uint32_t currentMs(void)
+{
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    return (uint32_t) ((time.tv_sec * 1000) + (time.tv_usec / 1000));
+}
 
 FEC::FEC(ReedSolomon enc) :enc(enc) {}
 
@@ -80,14 +87,21 @@ FEC::Input(fecPacket &pkt) {
 
 
     // insertion
-    auto n = this->rx.size() -1;
     int insertIdx = 0;
-    for (int i=n;i>=0;i--) {
-        if (pkt.seqid == rx[i].seqid) {
-            return recovered;
-        } else if (pkt.seqid > rx[i].seqid) {
-            insertIdx = i + 1;
-            break;
+
+    if (! this->rx.empty()) {
+        insertIdx = (int) this->rx.size();
+        for (int i = (int) this->rx.size() - 1; i >= 0; --i) {
+            if (pkt.seqid == rx[i].seqid) {
+                return recovered;
+            }
+            if (pkt.seqid > rx[i].seqid) {
+                insertIdx = i + 1;
+                break;
+            }
+            if (i == 0) {
+                insertIdx = 0;
+            }
         }
     }
     // insert into ordered rx queue

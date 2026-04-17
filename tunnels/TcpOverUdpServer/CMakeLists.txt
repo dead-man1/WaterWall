@@ -27,33 +27,41 @@ add_library(TcpOverUdpServer STATIC
   
 )
 
-if(NOT TUNNELS_KCP_INCLUDE_SET)
-    set(TUNNELS_KCP_INCLUDE_SET TRUE CACHE INTERNAL "")
-    add_library(kcp OBJECT
-        kcp/ikcp.c
-    )
-    target_include_directories(kcp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/kcp)
+set(TCP_OVER_UDP_FEC_DIR ${CMAKE_CURRENT_LIST_DIR}/../TcpOverUdpClient/fec)
+set(TCP_OVER_UDP_KCP_DIR ${CMAKE_CURRENT_LIST_DIR}/kcp)
 
-    # add_library(fec OBJECT
-    #     fec/fec.cc
-    #     fec/reedsolomon.cc
-    #     fec/sess.cc
-    #     fec/matrix.cc
-    #     fec/galois.cc
-    #     fec/galois_noasm.cc
-    #     fec/inversion_tree.cc
-    # )
-    # target_include_directories(fec PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/kcp)
-    # target_include_directories(fec PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/fec)
+add_library(tcp_over_udp_server_kcp OBJECT
+    ${TCP_OVER_UDP_KCP_DIR}/ikcp.c
+)
+target_include_directories(tcp_over_udp_server_kcp PUBLIC ${TCP_OVER_UDP_KCP_DIR})
+
+if(NOT TARGET tcp_over_udp_fec)
+    add_library(tcp_over_udp_fec OBJECT
+        ${TCP_OVER_UDP_FEC_DIR}/ww_fec.cc
+        ${TCP_OVER_UDP_FEC_DIR}/fec.cc
+        ${TCP_OVER_UDP_FEC_DIR}/reedsolomon.cc
+        ${TCP_OVER_UDP_FEC_DIR}/matrix.cc
+        ${TCP_OVER_UDP_FEC_DIR}/galois.cc
+        ${TCP_OVER_UDP_FEC_DIR}/galois_noasm.cc
+        ${TCP_OVER_UDP_FEC_DIR}/inversion_tree.cc
+    )
+    target_compile_features(tcp_over_udp_fec PRIVATE cxx_std_17)
+    target_include_directories(tcp_over_udp_fec PUBLIC ${TCP_OVER_UDP_FEC_DIR})
+    set_property(TARGET tcp_over_udp_fec PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
 endif()
 
 
+target_include_directories(TcpOverUdpServer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${TCP_OVER_UDP_FEC_DIR}
+    ${TCP_OVER_UDP_KCP_DIR}
+)
+target_sources(TcpOverUdpServer PRIVATE
+    $<TARGET_OBJECTS:tcp_over_udp_fec>
+    $<TARGET_OBJECTS:tcp_over_udp_server_kcp>
+)
 
-target_include_directories(TcpOverUdpServer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-# target_link_libraries(TcpOverUdpServer fec)
-
-target_link_libraries(TcpOverUdpServer ww  kcp)
+target_link_libraries(TcpOverUdpServer PRIVATE ww)
 if(NOT APPLE)
     target_precompile_headers(TcpOverUdpServer REUSE_FROM ww)
 endif()

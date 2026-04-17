@@ -2,6 +2,67 @@
 
 #include "loggers/network_logger.h"
 
+static bool tcpoverudpclientQueuePacketContext(context_queue_t *queue, line_t *l, const uint8_t *packet, size_t packet_len)
+{
+    if (packet_len == 0 || packet_len > UINT32_MAX)
+    {
+        return false;
+    }
+
+    buffer_pool_t *pool = lineGetBufferPool(l);
+    sbuf_t        *buf  = NULL;
+
+    if (packet_len <= bufferpoolGetSmallBufferSize(pool))
+    {
+        buf = bufferpoolGetSmallBuffer(pool);
+    }
+    else if (packet_len <= bufferpoolGetLargeBufferSize(pool))
+    {
+        buf = bufferpoolGetLargeBuffer(pool);
+    }
+    else
+    {
+        return false;
+    }
+
+    if (packet_len > sbufGetMaximumWriteableSize(buf))
+    {
+        lineReuseBuffer(l, buf);
+        return false;
+    }
+
+    sbufSetLength(buf, (uint32_t) packet_len);
+    sbufWriteLarge(buf, packet, (uint32_t) packet_len);
+    context_t *ctx = contextCreatePayload(l, buf);
+    contextqueuePush(queue, ctx);
+    return true;
+}
+
+static bool tcpoverudpclientEmitOuterPacket(void *ctx, const uint8_t *packet, size_t packet_len)
+{
+    tcpoverudpclient_lstate_t *ls = (tcpoverudpclient_lstate_t *) ctx;
+
+    if (ls == NULL || ls->line == NULL || ! lineIsAlive(ls->line))
+    {
+        return false;
+    }
+
+    return tcpoverudpclientQueuePacketContext(&ls->cq_u, ls->line, packet, packet_len);
+}
+
+bool tcpoverudpclientInputKcpPacket(void *ctx, const uint8_t *packet, size_t packet_len)
+{
+    tcpoverudpclient_lstate_t *ls = (tcpoverudpclient_lstate_t *) ctx;
+
+    if (ls == NULL || ls->k_handle == NULL || packet == NULL || packet_len > INT_MAX)
+    {
+        return false;
+    }
+
+    ikcp_input(ls->k_handle, (const char *) packet, (long) packet_len);
+    return true;
+}
+
 bool tcpoverudpclientUpdateKcp(tcpoverudpclient_lstate_t *ls, bool flush)
 {
     assert(ls != NULL && ls->k_handle != NULL && ls->line != NULL && lineIsAlive(ls->line));
@@ -108,21 +169,15 @@ int tcpoverudpclientKUdpOutput(const char *data, int len, ikcpcb *kcp, void *use
         contextqueuePush(&ls->cq_d, ctx);
     }
 
-    sbuf_t *buf = bufferpoolGetSmallBuffer(lineGetBufferPool(l));
-
-#ifdef DEBUG
-    if (sbufGetMaximumWriteableSize(buf) < (uint32_t) KCP_MTU || (uint32_t) len > (uint32_t) KCP_MTU)
+    if (ls->fec_encoder != NULL)
     {
-        LOGF("tcpoverudpclientKUdpOutput: logical bug detected, buffer is too small, cannot send %d bytes", len);
-
-        terminateProgram(1);
+        if (! tcpoverudpFecEncodePacket(ls->fec_encoder, (const uint8_t *) data, (size_t) len,
+                                        tcpoverudpclientEmitOuterPacket, ls))
+        {
+            return -1;
+        }
+        return 0;
     }
-#endif
 
-    sbufSetLength(buf, (uint32_t) len);
-    sbufWriteLarge(buf, data, len);
-    context_t *ctx = contextCreatePayload(l, buf);
-    contextqueuePush(&ls->cq_u, ctx);
-
-    return 0;
+    return tcpoverudpclientQueuePacketContext(&ls->cq_u, l, (const uint8_t *) data, (size_t) len) ? 0 : -1;
 }

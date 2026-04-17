@@ -31,7 +31,11 @@ It should usually sit opposite `TcpOverUdpClient`.
 {
   "name": "tcp-over-udp-server",
   "type": "TcpOverUdpServer",
-  "settings": {},
+  "settings": {
+    "fec": true,
+    "fec-data-shards": 10,
+    "fec-parity-shards": 3
+  },
   "next": "service-stream-node"
 }
 ```
@@ -51,11 +55,21 @@ It should usually sit opposite `TcpOverUdpClient`.
 
 ### `settings`
 
-There are no required tunnel-specific settings in the current implementation.
+There are no required tunnel-specific settings.
 
 ## Optional `settings` Fields
 
-There are no tunnel-specific optional settings in the current implementation.
+- `fec` `(boolean)`
+  Enables Reed-Solomon forward error correction around the KCP datagrams.
+  If omitted or `false`, the tunnel keeps the old KCP-only behavior.
+
+- `fec-data-shards` `(number)`
+  Number of source shards per FEC block when `fec` is enabled.
+  Default: `10`
+
+- `fec-parity-shards` `(number)`
+  Number of parity shards per FEC block when `fec` is enabled.
+  Default: `3`
 
 ## Detailed Behavior
 
@@ -91,6 +105,21 @@ The current implementation uses built-in KCP settings and does not expose them i
 - no-receive timeout `6000 ms`
 
 KCP MTU is also taken from `GLOBAL_MTU_SIZE`.
+If FEC is enabled, the tunnel subtracts the FEC wire overhead from the outer KCP/UDP packet budget so the transport stays inside the same MTU envelope.
+
+### Optional FEC layer
+
+When `fec` is enabled, the server expects the previous side to carry FEC-wrapped KCP packets that match the configured shard counts.
+
+On receive, it:
+
+- feeds direct data shards into KCP immediately
+- tries to reconstruct missing KCP datagrams from parity shards
+- ignores invalid FEC packets conservatively
+
+On send, it wraps outbound KCP datagrams in the same FEC format and emits parity shards after each configured data block.
+
+When `fec` is disabled, the behavior remains the original KCP-only transport path.
 
 ### Data flow direction
 
@@ -119,6 +148,6 @@ If the KCP send queue grows too large, `TcpOverUdpServer` schedules a pause towa
 ## Notes And Caveats
 
 - `TcpOverUdpServer` is intended to be paired with `TcpOverUdpClient`.
-- There are no tunnel-specific JSON settings today.
+- FEC must be enabled on both peers with matching shard settings.
 - The previous node should preserve packet boundaries.
 - `UpStreamEst` and `DownStreamInit` are disabled in the current implementation.

@@ -16,7 +16,18 @@ void tcpoverudpclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
     ls->last_recv = wloopNowMS(getWorkerLoop(lineGetWID(l)));
     ls->ping_sent = false;
 
-    ikcp_input(ls->k_handle, (void *) sbufGetMutablePtr(buf), (int) sbufGetLength(buf));
+    if (ls->fec_decoder != NULL)
+    {
+        if (! tcpoverudpFecDecodePacket(ls->fec_decoder, (const uint8_t *) sbufGetRawPtr(buf), sbufGetLength(buf),
+                                        tcpoverudpclientInputKcpPacket, ls))
+        {
+            LOGW("TcpOverUdpClient: dropped invalid FEC packet");
+        }
+    }
+    else
+    {
+        ikcp_input(ls->k_handle, (const char *) sbufGetRawPtr(buf), (long) sbufGetLength(buf));
+    }
     lineReuseBuffer(l, buf);
 
     // Update KCP state after input to process received data

@@ -11,11 +11,14 @@ static void kcpPrintLog(const char *log, struct IKCPCB *kcp, void *user)
 
 void tcpoverudpserverLinestateInitialize(tcpoverudpserver_lstate_t *ls, line_t *l, tunnel_t *t)
 {
-    // tcpoverudpserver_tstate_t *ts = tunnelGetState(t);
-
-    // uint32_t new_session_id = atomicIncRelaxed(&ts->session_identifier);
+    tcpoverudpserver_tstate_t *ts = tunnelGetState(t);
 
     ikcpcb *k_handle = ikcp_create(0, ls);
+    if (k_handle == NULL)
+    {
+        LOGF("TcpOverUdpServer: failed to create KCP handle");
+        terminateProgram(1);
+    }
 
     /* configuring the high-efficiency KCP settings */
 
@@ -26,7 +29,12 @@ void tcpoverudpserverLinestateInitialize(tcpoverudpserver_lstate_t *ls, line_t *
 
     ikcp_wndsize(k_handle, kTcpOverUdpServerKcpSendWindow, kTcpOverUdpServerKcpRecvWindow);
 
-    ikcp_setmtu(k_handle, KCP_MTU);
+    if (ikcp_setmtu(k_handle, tcpoverudpserverGetKcpMtu(ts)) != 0)
+    {
+        ikcp_release(k_handle);
+        LOGF("TcpOverUdpServer: failed to set KCP MTU");
+        terminateProgram(1);
+    }
 
     k_handle->cwnd = kTcpOverUdpServerKcpSendWindow / 4;
 
@@ -40,8 +48,30 @@ void tcpoverudpserverLinestateInitialize(tcpoverudpserver_lstate_t *ls, line_t *
 
     weventSetUserData(k_timer, ls);
 
+    tcpoverudp_fec_encoder_t *fec_encoder = NULL;
+    tcpoverudp_fec_decoder_t *fec_decoder = NULL;
+
+    if (ts->fec_enabled)
+    {
+        fec_encoder = tcpoverudpFecEncoderCreate(ts->fec_data_shards, ts->fec_parity_shards);
+        fec_decoder = tcpoverudpFecDecoderCreate(ts->fec_data_shards, ts->fec_parity_shards);
+
+        if (fec_encoder == NULL || fec_decoder == NULL)
+        {
+            tcpoverudpFecEncoderDestroy(&fec_encoder);
+            tcpoverudpFecDecoderDestroy(&fec_decoder);
+            weventSetUserData(k_timer, NULL);
+            wtimerDelete(k_timer);
+            ikcp_release(k_handle);
+            LOGF("TcpOverUdpServer: failed to initialize FEC state");
+            terminateProgram(1);
+        }
+    }
+
     *ls = (tcpoverudpserver_lstate_t) {.k_handle     = k_handle,
                                        .k_timer      = k_timer,
+                                       .fec_encoder  = fec_encoder,
+                                       .fec_decoder  = fec_decoder,
                                        .tunnel       = t,
                                        .line         = l,
                                        .last_recv    = wloopNowMS(getWorkerLoop(lineGetWID(l))),
@@ -70,6 +100,9 @@ void tcpoverudpserverLinestateDestroy(tcpoverudpserver_lstate_t *ls)
 
     contextqueueDestroy(&ls->cq_u);
     contextqueueDestroy(&ls->cq_d);
+
+    tcpoverudpFecEncoderDestroy(&ls->fec_encoder);
+    tcpoverudpFecDecoderDestroy(&ls->fec_decoder);
 
     if (ls->k_handle != NULL)
     {

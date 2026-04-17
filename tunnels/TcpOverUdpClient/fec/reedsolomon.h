@@ -49,7 +49,7 @@ private:
     int m_parityShards; // Number of parity shards, should not be modified.
     int m_totalShards; // Total number of shards. Calculated, and should not be modified.
 
-    matrix m;
+    rs_matrix m;
     inversionTree tree;
     std::vector<row_type> parity;
 

@@ -8,12 +8,12 @@
 inversionTree inversionTree::newInversionTree(int dataShards, int parityShards) {
     inversionTree tree;
     tree.m_root.m_children.resize(dataShards + parityShards, nullptr);
-    tree.m_root.m_matrix = matrix::identityMatrix(dataShards);
+    tree.m_root.m_matrix = rs_matrix::identityMatrix(dataShards);
     return tree;
 }
 
 
-matrix
+rs_matrix
 inversionTree::GetInvertedMatrix(std::vector<int> &invalidIndices) {
     if (invalidIndices.size() == 0) {
         return m_root.m_matrix;
@@ -23,7 +23,7 @@ inversionTree::GetInvertedMatrix(std::vector<int> &invalidIndices) {
 }
 
 int
-inversionTree::InsertInvertedMatrix(std::vector<int> &invalidIndices, matrix &matrix, int shards) {
+inversionTree::InsertInvertedMatrix(std::vector<int> &invalidIndices, rs_matrix &matrix, int shards) {
     // If no invalid indices were given then we are done because the
     // m_root node is already set with the identity matrix.
     if (invalidIndices.size() == 0) {
@@ -42,7 +42,7 @@ inversionTree::InsertInvertedMatrix(std::vector<int> &invalidIndices, matrix &ma
     return 0;
 }
 
-matrix
+rs_matrix
 inversionNode::getInvertedMatrix(std::vector<int> &invalidIndices, int parent) {
     // Get the child node to search next from the list of m_children.  The
     // list of m_children starts relative to the parent index passed in
@@ -56,7 +56,7 @@ inversionNode::getInvertedMatrix(std::vector<int> &invalidIndices, int parent) {
     // If the child node doesn't exist in the list yet, fail fast by
     // returning, so we can construct and insert the proper inverted matrix.
     if (node == nullptr) {
-        return matrix{};
+        return rs_matrix{};
     }
 
     // If there's more than one invalid index left in the list we should
@@ -80,7 +80,7 @@ inversionNode::getInvertedMatrix(std::vector<int> &invalidIndices, int parent) {
 void
 inversionNode::insertInvertedMatrix(
         std::vector<int> &invalidIndices,
-        struct matrix &matrix,
+        struct rs_matrix &matrix,
         int shards,
         int parent) {
     // As above, get the child node to search next from the list of m_children.

@@ -33,7 +33,11 @@ This pair is useful when you want stream semantics on top of a datagram path.
 {
   "name": "tcp-over-udp-client",
   "type": "TcpOverUdpClient",
-  "settings": {},
+  "settings": {
+    "fec": true,
+    "fec-data-shards": 10,
+    "fec-parity-shards": 3
+  },
   "next": "udp-path-node"
 }
 ```
@@ -53,11 +57,21 @@ This pair is useful when you want stream semantics on top of a datagram path.
 
 ### `settings`
 
-There are no required tunnel-specific settings in the current implementation.
+There are no required tunnel-specific settings.
 
 ## Optional `settings` Fields
 
-There are no tunnel-specific optional settings in the current implementation.
+- `fec` `(boolean)`
+  Enables Reed-Solomon forward error correction around the KCP datagrams.
+  If omitted or `false`, the tunnel keeps the old KCP-only behavior.
+
+- `fec-data-shards` `(number)`
+  Number of source shards per FEC block when `fec` is enabled.
+  Default: `10`
+
+- `fec-parity-shards` `(number)`
+  Number of parity shards per FEC block when `fec` is enabled.
+  Default: `3`
 
 ## Detailed Behavior
 
@@ -98,6 +112,21 @@ The code also sets KCP MTU from `GLOBAL_MTU_SIZE` and uses an effective write pa
 
 - `GLOBAL_MTU_SIZE - 20 - 8 - 24 - 1`
 
+If FEC is enabled, the tunnel subtracts the FEC wire overhead from the outer KCP/UDP packet budget so the transport stays within the same path MTU envelope.
+
+### Optional FEC layer
+
+When `fec` is enabled, the tunnel wraps each outbound KCP datagram in a Reed-Solomon FEC packet and emits parity packets after each configured data-shard block.
+
+On receive, it:
+
+- accepts FEC-wrapped KCP datagrams
+- feeds normal data packets into KCP immediately
+- tries to recover missing KCP datagrams from parity packets
+- drops invalid FEC packets conservatively
+
+When `fec` is disabled, none of this extra framing is used and the node behaves exactly like the old KCP-only implementation.
+
 ### Data flow direction
 
 - Stream to UDP/KCP side: previous node -> `TcpOverUdpClient` -> next node
@@ -127,6 +156,6 @@ This is how the tunnel prevents unbounded growth while the packet path is conges
 ## Notes And Caveats
 
 - `TcpOverUdpClient` is intended to be paired with `TcpOverUdpServer`.
-- There are no tunnel-specific JSON knobs today; KCP behavior is hard-coded.
+- FEC must be enabled on both peers with matching shard settings.
 - The next node should preserve datagram boundaries.
 - `UpStreamEst` and `DownStreamInit` are disabled in the current implementation.

@@ -31,9 +31,18 @@ void tcpoverudpserverTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
 
     // Break buffer into chunks of less than 4096 bytes and send in order
 
+    tcpoverudpserver_tstate_t *ts = tunnelGetState(t);
+    int                       kcp_write_mtu = tcpoverudpserverGetKcpWriteMtu(ts);
+
+    if (UNLIKELY(kcp_write_mtu <= 0))
+    {
+        lineReuseBuffer(l, buf);
+        return;
+    }
+
     while (sbufGetLength(buf) > 0)
     {
-        int write_size = min(KCP_MTU_WRITE, sbufGetLength(buf));
+        int write_size = min(kcp_write_mtu, (int) sbufGetLength(buf));
 
         sbufShiftLeft(buf, kFrameHeaderLength);
         sbufWriteUI8(buf, kFrameFlagData);
