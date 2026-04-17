@@ -45,9 +45,19 @@ typedef struct
 #if defined (WCRYPTO_BACKEND_OPENSSL) 
 
 /**
- * @brief OpenSSL EVP_MAC context typedef for BLAKE2s.
+ * @brief Concrete BLAKE2s context wrapper for the OpenSSL backend.
+ *
+ * OpenSSL exposes the underlying hash/MAC contexts as opaque types, so the
+ * public backend-neutral API stores pointers to the active implementation.
  */
-typedef struct evp_mac_ctx_st blake2s_ctx_t;
+typedef struct
+{
+    struct evp_md_ctx_st  *md_ctx;
+    struct evp_md_st      *md;
+    struct evp_mac_ctx_st *mac_ctx;
+    struct evp_mac_st     *mac;
+    size_t                 outlen;
+} blake2s_ctx_t;
 
 #endif
 

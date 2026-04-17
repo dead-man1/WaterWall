@@ -16,8 +16,8 @@ option(WW_STATICLIB "Build as static library" ON)
 option(ASMLIB_OVERRIDE "Try to link against asm lib and override standard functions" OFF)
 
 # Crypto backend options (only one can be enabled)
-option(WCRYPTO_BACKEND_SODIUM "Enable Sodium backend" ON)
-option(WCRYPTO_BACKEND_OPENSSL "Enable OpenSSL backend" OFF)
+option(WCRYPTO_BACKEND_SODIUM "Enable Sodium backend" OFF)
+option(WCRYPTO_BACKEND_OPENSSL "Enable OpenSSL backend" ON)
 option(WCRYPTO_BACKEND_SOFTWARE "Enable Software backend" OFF)
 
 # Windows-specific options
@@ -341,7 +341,9 @@ elseif(WCRYPTO_BACKEND_OPENSSL)
         crypto/imp_openssl/aes256gcm.c
         crypto/imp_openssl/blake2s.c
         crypto/imp_openssl/chacha20poly1305.c
+        crypto/imp_openssl/xchacha20poly1305.c
         crypto/imp_openssl/x25519.c
+        crypto/impl_software/chacha20.c
     )
     target_compile_definitions(ww PUBLIC WCRYPTO_BACKEND_OPENSSL=1)
     
@@ -486,8 +488,36 @@ if(NOT MSVC)
     target_compile_options(sodium PRIVATE -Wno-attributes)
 endif()
 
-
 set(LIBS ${LIBS} sodium)
+
+
+# Openssl Library
+
+
+if(WCRYPTO_BACKEND_OPENSSL AND NOT TARGET openssl)
+   
+# add openssl (default version is latest 3.3.0 +)
+CPMAddPackage(
+    NAME openssl-cmake
+    URL https://github.com/jimmy-park/openssl-cmake/archive/main.tar.gz
+    OPTIONS
+    "OPENSSL_CONFIGURE_OPTIONS no-shared\\\\;no-tests"
+    "BUILD_SHARED_LIBS OFF"
+    "OPENSSL_CONFIGURE_VERBOSE OFF"
+    "OPENSSL_BUILD_VERBOSE TRUE"
+)
+
+
+set(LIBS ${LIBS} OpenSSL::SSL)
+set(LIBS ${LIBS} OpenSSL::Crypto)
+set(LIBS ${LIBS} OpenSSL::applink)
+
+endif()
+
+
+
+
+
 
 ################################################################################
 # LWIP Library Configuration
