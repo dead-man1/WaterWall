@@ -495,20 +495,71 @@ set(LIBS ${LIBS} sodium)
 
 
 if(WCRYPTO_BACKEND_OPENSSL AND NOT TARGET openssl)
-   
-# add openssl (default version is latest 3.3.0 +)
-CPMAddPackage(
-    NAME openssl-cmake
-    URL https://github.com/jimmy-park/openssl-cmake/archive/main.tar.gz
-    OPTIONS
-    "OPENSSL_CONFIGURE_OPTIONS no-shared\\\\;no-tests"
-    "BUILD_SHARED_LIBS OFF"
-    "OPENSSL_TEST OFF"
-    "OPENSSL_CONFIGURE_VERBOSE OFF"
-    "OPENSSL_BUILD_VERBOSE TRUE"
-    "OPENSSL_ENABLE_PARALLEL TRUE"
-    "OPENSSL_CONFIGURE_VERBOSE TRUE"
-)
+    set(WW_OPENSSL_CPM_OPTIONS
+        "OPENSSL_CONFIGURE_OPTIONS no-shared\\\\;no-tests"
+        "BUILD_SHARED_LIBS OFF"
+        "OPENSSL_TEST OFF"
+        "OPENSSL_CONFIGURE_VERBOSE OFF"
+        "OPENSSL_BUILD_VERBOSE TRUE"
+        "OPENSSL_ENABLE_PARALLEL TRUE"
+        "OPENSSL_CONFIGURE_VERBOSE TRUE"
+    )
+
+    if(ANDROID)
+        if(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+            set(WW_OPENSSL_TARGET_PLATFORM android-arm)
+        elseif(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+            set(WW_OPENSSL_TARGET_PLATFORM android-arm64)
+        elseif(CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
+            set(WW_OPENSSL_TARGET_PLATFORM android-x86)
+        elseif(CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+            set(WW_OPENSSL_TARGET_PLATFORM android-x86_64)
+        endif()
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+            set(WW_OPENSSL_TARGET_PLATFORM linux-aarch64)
+        endif()
+    endif()
+
+    if(DEFINED WW_OPENSSL_TARGET_PLATFORM)
+        list(APPEND WW_OPENSSL_CPM_OPTIONS
+            "OPENSSL_TARGET_PLATFORM ${WW_OPENSSL_TARGET_PLATFORM}"
+        )
+    endif()
+
+    # openssl-cmake chooses the OpenSSL Configure target, but it does not
+    # automatically inherit CMake's cross-compiler/binutils selection.
+    # Export the active toolchain so ARM cross-builds use the same tools.
+    set(WW_OPENSSL_PREV_ENV_CC "$ENV{CC}")
+    set(WW_OPENSSL_PREV_ENV_CXX "$ENV{CXX}")
+    set(WW_OPENSSL_PREV_ENV_AR "$ENV{AR}")
+    set(WW_OPENSSL_PREV_ENV_RANLIB "$ENV{RANLIB}")
+
+    if(CMAKE_C_COMPILER)
+        set(ENV{CC} "${CMAKE_C_COMPILER}")
+    endif()
+    if(CMAKE_CXX_COMPILER)
+        set(ENV{CXX} "${CMAKE_CXX_COMPILER}")
+    endif()
+    if(CMAKE_AR)
+        set(ENV{AR} "${CMAKE_AR}")
+    endif()
+    if(CMAKE_RANLIB)
+        set(ENV{RANLIB} "${CMAKE_RANLIB}")
+    endif()
+
+    # add openssl (default version is latest 3.3.0 +)
+    CPMAddPackage(
+        NAME openssl-cmake
+        URL https://github.com/jimmy-park/openssl-cmake/archive/main.tar.gz
+        OPTIONS
+        ${WW_OPENSSL_CPM_OPTIONS}
+    )
+
+    set(ENV{CC} "${WW_OPENSSL_PREV_ENV_CC}")
+    set(ENV{CXX} "${WW_OPENSSL_PREV_ENV_CXX}")
+    set(ENV{AR} "${WW_OPENSSL_PREV_ENV_AR}")
+    set(ENV{RANLIB} "${WW_OPENSSL_PREV_ENV_RANLIB}")
 
 
 set(LIBS ${LIBS} OpenSSL::SSL)
