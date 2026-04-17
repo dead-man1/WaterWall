@@ -1,0 +1,270 @@
+#include "structure.h"
+
+#include "loggers/network_logger.h"
+
+int tlsserverOnServername(SSL *ssl, int *ad, void *arg)
+{
+    tlsserver_tstate_t *ts = arg;
+    const char         *sni;
+
+    if (ts->expected_sni == NULL)
+    {
+        return SSL_TLSEXT_ERR_OK;
+    }
+
+    sni = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+
+    if (sni == NULL || stricmp(sni, ts->expected_sni) != 0)
+    {
+        LOGW("TlsServer: rejected TLS connection due to SNI mismatch, expected=\"%s\", got=\"%s\"",
+             ts->expected_sni, sni != NULL ? sni : "<none>");
+        *ad = SSL_AD_UNRECOGNIZED_NAME;
+        return SSL_TLSEXT_ERR_ALERT_FATAL;
+    }
+
+    return SSL_TLSEXT_ERR_OK;
+}
+
+int tlsserverOnAlpnSelect(SSL *ssl, const unsigned char **out, unsigned char *outlen, const unsigned char *in,
+                          unsigned int inlen, void *arg)
+{
+    discard ssl;
+    tlsserver_tstate_t *ts     = arg;
+    for (unsigned int i = 0; i < ts->alpns_length; ++i)
+    {
+        unsigned int client_offset = 0;
+
+        while (client_offset < inlen)
+        {
+            unsigned int        current_len = in[client_offset];
+            const unsigned char *cur        = &in[client_offset + 1];
+
+            if (ts->alpns[i].name_length == current_len &&
+                memoryCompare(cur, ts->alpns[i].name, current_len) == 0)
+            {
+                *out    = cur;
+                *outlen = (unsigned char) current_len;
+                return SSL_TLSEXT_ERR_OK;
+            }
+
+            client_offset += 1U + current_len;
+        }
+    }
+
+    LOGW("TlsServer: rejected TLS connection due to ALPN mismatch");
+#ifdef SSL_AD_NO_APPLICATION_PROTOCOL
+    return SSL_TLSEXT_ERR_ALERT_FATAL;
+#else
+    return SSL_TLSEXT_ERR_NOACK;
+#endif
+}
+
+void tlsserverPrintSSLState(const SSL *ssl)
+{
+    LOGD("TlsServer: OpenSSL State: %s", SSL_state_string_long(ssl));
+}
+
+void tlsserverPrintSSLError(void)
+{
+    BIO *bio = BIO_new(BIO_s_mem());
+    if (bio == NULL)
+    {
+        LOGE("TlsServer: failed to allocate BIO for OpenSSL error printing");
+        return;
+    }
+
+    ERR_print_errors(bio);
+
+    char  *buf = NULL;
+    size_t len = BIO_get_mem_data(bio, &buf);
+    if (len > 0)
+    {
+        LOGE("TlsServer: OpenSSL Error: %.*s", (int) len, buf);
+    }
+    BIO_free(bio);
+}
+
+void tlsserverTunnelstateDestroy(tlsserver_tstate_t *ts)
+{
+    if (ts->threadlocal_ssl_contexts != NULL)
+    {
+        int worker_count = getWorkersCount();
+        for (int i = 0; i < worker_count; ++i)
+        {
+            if (ts->threadlocal_ssl_contexts[i] != NULL)
+            {
+                SSL_CTX_free(ts->threadlocal_ssl_contexts[i]);
+            }
+        }
+        memoryFree(ts->threadlocal_ssl_contexts);
+        ts->threadlocal_ssl_contexts = NULL;
+    }
+
+    if (ts->alpns != NULL)
+    {
+        for (unsigned int i = 0; i < ts->alpns_length; ++i)
+        {
+            memoryFree(ts->alpns[i].name);
+        }
+        memoryFree(ts->alpns);
+        ts->alpns = NULL;
+    }
+
+    ts->alpns_length = 0;
+
+    memoryFree(ts->expected_sni);
+    memoryFree(ts->cert_file);
+    memoryFree(ts->key_file);
+    memoryFree(ts->ciphers);
+    ts->expected_sni = NULL;
+    ts->cert_file = NULL;
+    ts->key_file  = NULL;
+    ts->ciphers   = NULL;
+}
+
+bool tlsserverFlushSslOutput(tunnel_t *t, line_t *l, tlsserver_lstate_t *ls)
+{
+    while (true)
+    {
+        sbuf_t *ssl_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(l));
+        int     avail   = (int) sbufGetMaximumWriteableSize(ssl_buf);
+        int     n       = BIO_read(SSL_get_wbio(ls->ssl), sbufGetMutablePtr(ssl_buf), avail);
+
+        if (n > 0)
+        {
+            sbufSetLength(ssl_buf, n);
+            if (! withLineLockedWithBuf(l, tunnelPrevDownStreamPayload, t, ssl_buf))
+            {
+                return false;
+            }
+            continue;
+        }
+
+        lineReuseBuffer(l, ssl_buf);
+
+        if (! BIO_should_retry(SSL_get_wbio(ls->ssl)))
+        {
+            return false;
+        }
+        return true;
+    }
+}
+
+bool tlsserverEncryptAndSendApplicationData(tunnel_t *t, line_t *l, tlsserver_lstate_t *ls, sbuf_t *buf)
+{
+    int len = (int) sbufGetLength(buf);
+
+    while (len > 0)
+    {
+        int            n      = SSL_write(ls->ssl, sbufGetRawPtr(buf), len);
+        enum sslstatus status = getSslStatus(ls->ssl, n);
+
+        if (n > 0)
+        {
+            sbufShiftRight(buf, n);
+            len -= n;
+
+            if (! tlsserverFlushSslOutput(t, l, ls))
+            {
+                lineReuseBuffer(l, buf);
+                return false;
+            }
+        }
+
+        if (status == kSslstatusFail)
+        {
+            lineReuseBuffer(l, buf);
+            return false;
+        }
+
+        if (n == 0)
+        {
+            break;
+        }
+    }
+
+    lineReuseBuffer(l, buf);
+    return true;
+}
+
+bool tlsserverFlushPendingDownQueue(tunnel_t *t, line_t *l, tlsserver_lstate_t *ls)
+{
+    while (bufferqueueGetBufCount(&ls->pending_down) > 0)
+    {
+        sbuf_t *buf = bufferqueuePopFront(&ls->pending_down);
+        if (! tlsserverEncryptAndSendApplicationData(t, l, ls, buf))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool tlsserverSendCloseNotify(tunnel_t *t, line_t *l, tlsserver_lstate_t *ls)
+{
+    if (ls->resources_released || ls->ssl == NULL || ! ls->handshake_completed || ls->close_notify_sent)
+    {
+        return true;
+    }
+
+    int shutdown_result = SSL_shutdown(ls->ssl);
+
+    if (! tlsserverFlushSslOutput(t, l, ls))
+    {
+        return false;
+    }
+
+    if (shutdown_result >= 0 || (SSL_get_shutdown(ls->ssl) & SSL_SENT_SHUTDOWN) != 0)
+    {
+        ls->close_notify_sent = true;
+        return true;
+    }
+
+    return false;
+}
+
+void tlsserverCloseLineFatal(tunnel_t *t, line_t *l, bool close_next_first)
+{
+    if (! lineIsAlive(l))
+    {
+        tlsserverLinestateDestroy(lineGetState(l, t));
+        return;
+    }
+
+    lineLock(l);
+
+    tlsserver_lstate_t *ls         = lineGetState(l, t);
+    bool                close_next = ! ls->next_finished;
+    bool                close_prev = ! ls->prev_finished;
+
+    ls->next_finished = true;
+    ls->prev_finished = true;
+
+    tlsserverLinestateDestroy(ls);
+
+    if (close_next_first)
+    {
+        if (close_next)
+        {
+            tunnelNextUpStreamFinish(t, l);
+        }
+        if (lineIsAlive(l) && close_prev)
+        {
+            tunnelPrevDownStreamFinish(t, l);
+        }
+    }
+    else
+    {
+        if (close_prev)
+        {
+            tunnelPrevDownStreamFinish(t, l);
+        }
+        if (lineIsAlive(l) && close_next)
+        {
+            tunnelNextUpStreamFinish(t, l);
+        }
+    }
+
+    lineUnlock(l);
+}

@@ -160,6 +160,7 @@ option(INCLUDE_TCP_OVER_UDP_SERVER      "link TcpOverUdpServer staticly to the c
 option(INCLUDE_BRIDGE                   "link Bridge staticly to the core"               TRUE)
 option(INCLUDE_OPENSSL_SERVER           "link OpenSSlServer staticly to the core"        FALSE)
 option(INCLUDE_TLS_CLIENT               "link TLSClient staticly to the core"            TRUE)
+option(INCLUDE_TLS_SERVER               "link TLSServer staticly to the core"            TRUE)
 option(INCLUDE_TROJAN_AUTH_SERVER       "link TrojanAuthServer staticly to the core"     FALSE)
 option(INCLUDE_TROJAN_SOCKS_SERVER      "link TrojanSocksServer staticly to the core"    FALSE)
 option(INCLUDE_HTTP_SERVER              "link HttpServer staticly to the core"           TRUE)
@@ -191,6 +192,12 @@ option(INCLUDE_RAWSOCKET                "link RawSocket staticly to the core"   
 option(INCLUDE_DISTURBER                "link Disturber staticly to the core"            TRUE)
 option(INCLUDE_SPEEDLIMIT               "link SpeedLimit staticly to the core"           TRUE)
 
+# Determine if OpenSSL is required based on included tunnels
+if(INCLUDE_TLS_SERVER)
+  set(PROJECT_REQUIRERS_OPENSSL TRUE CACHE INTERNAL "if any of the tunnels that require openssl is included, this will be set to true" FORCE)
+else()
+  set(PROJECT_REQUIRERS_OPENSSL FALSE CACHE INTERNAL "if any of the tunnels that require openssl is included, this will be set to true" FORCE)
+endif()
 
 
 #--------------------------------------------------------------------------------
@@ -511,6 +518,14 @@ if(INCLUDE_TLS_CLIENT)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TlsClient)
   target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TlsClient)
   target_link_libraries(Waterwall TlsClient)
+endif()
+
+#tls server
+if(INCLUDE_TLS_SERVER)
+  target_compile_definitions(Waterwall PUBLIC INCLUDE_TLS_SERVER=1)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TlsServer)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/TlsServer)
+  target_link_libraries(Waterwall TlsServer)
 endif()
 
 #trojan auth server

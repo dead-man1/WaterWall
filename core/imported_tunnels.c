@@ -84,6 +84,10 @@
 #include "tunnels/TlsClient/include/interface.h"
 #endif
 
+#ifdef INCLUDE_TLS_SERVER
+#include "tunnels/TlsServer/include/interface.h"
+#endif
+
 #ifdef INCLUDE_LOGGER_TUNNEL
 #include "tunnels/logger/logger_tunnel.h"
 #endif
@@ -325,6 +329,10 @@ void loadImportedTunnelsIntoCore(void)
 
 #ifdef INCLUDE_TLS_CLIENT
     USING(TlsClient);
+#endif
+
+#ifdef INCLUDE_TLS_SERVER
+    USING(TlsServer);
 #endif
 
 #ifdef INCLUDE_LOGGER_TUNNEL

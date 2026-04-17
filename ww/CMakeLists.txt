@@ -494,7 +494,7 @@ set(LIBS ${LIBS} sodium)
 # Openssl Library
 
 
-if(WCRYPTO_BACKEND_OPENSSL)
+if(PROJECT_REQUIRERS_OPENSSL OR WCRYPTO_BACKEND_OPENSSL)
     if(NOT TARGET OpenSSL::SSL OR NOT TARGET OpenSSL::Crypto)
         set(WW_OPENSSL_CPM_OPTIONS
             "OPENSSL_CONFIGURE_OPTIONS no-shared\\\\;no-tests"
