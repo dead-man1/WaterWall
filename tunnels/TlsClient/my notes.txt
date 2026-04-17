@@ -579,3 +579,23 @@ so the rule is:
 - do not assume the x86 list is enough for arm builds
 - when a new architecture-specific asm export appears, add it to the symbol list
   so `make_prefix_headers.go` / `make_prefix_headers.py` can rename it too
+
+this is not only about p256.
+
+android/arm can also collide on crypto asm helper symbols such as:
+
+- `sha1_block_data_order_neon`
+- `sha256_block_data_order_neon`
+- `sha512_block_data_order_neon`
+- `sha512_block_data_order_hw`
+- `gcm_init_neon`
+- `gcm_gmult_neon`
+- `gcm_ghash_neon`
+- `gcm_init_v8`
+- `gcm_gmult_v8`
+- `gcm_ghash_v8`
+
+same rule:
+
+- if boring ssl exports it and openssl may export the same public name on that
+  architecture, it belongs in `boringssl_symbols.txt`

@@ -347,7 +347,7 @@ set(BORINGSSL_PREFIX_SYMBOLS ${CMAKE_CURRENT_SOURCE_DIR}/boringssl_symbols.txt)
 
 If you want to reproduce this yourself in another project, this symbol list is one of the most important files. Without it, the prefix build cannot be generated correctly.
 
-This file must include architecture-specific exported assembly names too, not just the common C API. In this repo, that matters for ARM builds because BoringSSL exports plain AArch64 P-256 helpers such as `ecp_nistz256_mul_mont`, `ecp_nistz256_point_add`, `ecp_nistz256_ord_mul_mont`, and the capability variable `OPENSSL_armcap_P`. If those names are missing from the list, the generated prefix headers will leave them untouched and the final link can still collide with OpenSSL.
+This file must include architecture-specific exported assembly names too, not just the common C API. In this repo, that matters for ARM builds because BoringSSL exports plain AArch64 P-256 helpers such as `ecp_nistz256_mul_mont`, `ecp_nistz256_point_add`, `ecp_nistz256_ord_mul_mont`, the capability variable `OPENSSL_armcap_P`, and ARM crypto helpers such as `sha256_block_data_order_neon` and `gcm_ghash_neon`. If those names are missing from the list, the generated prefix headers will leave them untouched and the final link can still collide with OpenSSL.
 
 ### Step 4. Let BoringSSL generate prefixed headers
 
@@ -464,7 +464,7 @@ These are the mistakes most likely to break this setup:
 
 - forgetting that the generated prefix headers come from `util/make_prefix_headers.py` or `util/make_prefix_headers.go`
 - forgetting to set `BORINGSSL_PREFIX_SYMBOLS`
-- forgetting to add architecture-specific exported symbols like `OPENSSL_armcap_P` or ARM `ecp_nistz256_*` entry points to `boringssl_symbols.txt`
+- forgetting to add architecture-specific exported symbols like `OPENSSL_armcap_P`, ARM `ecp_nistz256_*` entry points, or ARM SHA/GCM asm helpers to `boringssl_symbols.txt`
 - linking prefixed BoringSSL but compiling consumers without `BORINGSSL_PREFIX`
 - adding `boringssl/include` but forgetting `symbol_prefix_include`
 - trying to mix unprefixed and prefixed BoringSSL objects in the same target
