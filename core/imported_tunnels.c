@@ -240,6 +240,10 @@
 #include "tunnels/MuxClient/include/interface.h"
 #endif
 
+#ifdef INCLUDE_SPEEDLIMIT
+#include "tunnels/SpeedLimit/include/interface.h"
+#endif
+
 void loadImportedTunnelsIntoCore(void)
 {
 
@@ -477,5 +481,9 @@ void loadImportedTunnelsIntoCore(void)
 
 #ifdef INCLUDE_MUX_CLIENT
     USING(MuxClient);
+#endif
+
+#ifdef INCLUDE_SPEEDLIMIT
+    USING(SpeedLimit);
 #endif
 }
