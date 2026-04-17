@@ -8,6 +8,29 @@ enum
     kIpv4FragmentMask    = 0x3FFF
 };
 
+static uint8_t pingclientPeekPacketVersion(sbuf_t *buf)
+{
+    if (sbufGetLength(buf) == 0)
+    {
+        return 0;
+    }
+
+    const uint8_t *packet = (const uint8_t *) sbufGetRawPtr(buf);
+    return (uint8_t) (packet[0] >> 4);
+}
+
+static void pingclientFormatIpv4(char *dest, size_t dest_len, uint32_t addr)
+{
+    ip4_addr_t ipaddr;
+    ip4AddrSetU32(&ipaddr, addr);
+    stringCopyN(dest, ip4AddrNetworkToAddress(&ipaddr), dest_len);
+}
+
+static void pingclientLogIpv6Drop(const char *path)
+{
+    LOGW("PingClient: dropping IPv6 packet on %s path because PingClient only supports IPv4", path);
+}
+
 static bool pingclientValidateIpv4PacketBytes(const uint8_t *packet, uint32_t available_len, uint16_t *packet_len_out)
 {
     if (available_len < sizeof(struct ip_hdr))
@@ -55,6 +78,16 @@ static bool pingclientChooseRoundupPayloadLength(uint16_t payload_with_size_len,
     }
 
     return false;
+}
+
+static bool pingclientStrategyNeedsIcmpEnvelope(const pingclient_tstate_t *state)
+{
+    return state->strategy != kPingClientStrategyChangeOnlyIpv4ProtocolNumber;
+}
+
+static bool pingclientStrategyNeedsInnerIpv4Validation(const pingclient_tstate_t *state)
+{
+    return state->strategy != kPingClientStrategyWrapOnlyIcmpHeader;
 }
 
 static sbuf_t *pingclientPreparePayloadBuffer(tunnel_t *t, line_t *l, sbuf_t *buf, uint16_t *icmp_payload_len_out)
@@ -123,6 +156,22 @@ static sbuf_t *pingclientPreparePayloadBuffer(tunnel_t *t, line_t *l, sbuf_t *bu
     return buf;
 }
 
+static void pingclientLogSourceDestMismatch(const pingclient_tstate_t *state, const struct ip_hdr *ipheader)
+{
+    char expected_src[40];
+    char expected_dest[40];
+    char actual_src[40];
+    char actual_dest[40];
+
+    pingclientFormatIpv4(expected_src, sizeof(expected_src), state->source_addr);
+    pingclientFormatIpv4(expected_dest, sizeof(expected_dest), state->dest_addr);
+    pingclientFormatIpv4(actual_src, sizeof(actual_src), ipheader->src.addr);
+    pingclientFormatIpv4(actual_dest, sizeof(actual_dest), ipheader->dest.addr);
+
+    LOGW("PingClient: ICMP tunnel packet failed source/dest verification, expected %s -> %s but got %s -> %s",
+         expected_src, expected_dest, actual_src, actual_dest);
+}
+
 static bool pingclientMatchEnvelope(const pingclient_tstate_t *state, sbuf_t *buf, uint16_t *outer_header_len_out)
 {
     if (sbufGetLength(buf) < kPingClientEncapsulationOverhead)
@@ -176,11 +225,31 @@ static bool pingclientMatchEnvelope(const pingclient_tstate_t *state, sbuf_t *bu
         return false;
     }
 
+    if (state->strategy == kPingClientStrategyWrapNewIpAndIcmpHeader &&
+        (ipheader->src.addr != state->source_addr || ipheader->dest.addr != state->dest_addr))
+    {
+        pingclientLogSourceDestMismatch(state, ipheader);
+        return false;
+    }
+
     *outer_header_len_out = (uint16_t) (ip_header_len + kPingClientIcmpHeaderLength);
     return true;
 }
 
-void pingclientEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
+static bool pingclientHandleUnmatchedDownstreamPacket(tunnel_t *t, line_t *l, sbuf_t *buf)
+{
+    if (pingclientPeekPacketVersion(buf) == 6)
+    {
+        pingclientLogIpv6Drop("downstream");
+        lineReuseBuffer(l, buf);
+        return false;
+    }
+
+    tunnelPrevDownStreamPayload(t, l, buf);
+    return true;
+}
+
+static void pingclientEncapsulateWithIcmp(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     pingclient_tstate_t *state = tunnelGetState(t);
     uint16_t             icmp_payload_len;
@@ -188,15 +257,31 @@ void pingclientEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
     sbuf_t *prepared_buf = pingclientPreparePayloadBuffer(t, l, buf, &icmp_payload_len);
     if (prepared_buf == NULL)
     {
+        if (pingclientPeekPacketVersion(buf) == 6)
+        {
+            pingclientLogIpv6Drop("upstream");
+        }
+        else
+        {
+            LOGW("PingClient: dropping upstream packet because encapsulation requires a valid IPv4 packet");
+        }
+
         lineReuseBuffer(l, buf);
         return;
     }
     buf = prepared_buf;
 
-    const struct ip_hdr *inner_ipheader = (const struct ip_hdr *) sbufGetRawPtr(buf);
-    const uint32_t       outer_src_addr = inner_ipheader->src.addr;
-    const uint32_t       outer_dest_addr = inner_ipheader->dest.addr;
+    const struct ip_hdr *inner_ipheader  = (const struct ip_hdr *) sbufGetRawPtr(buf);
+    uint32_t             outer_src_addr  = inner_ipheader->src.addr;
+    uint32_t             outer_dest_addr = inner_ipheader->dest.addr;
+    uint8_t              outer_ttl       = state->ttl;
+    uint8_t              outer_tos       = state->tos;
 
+    if (state->strategy == kPingClientStrategyWrapNewIpAndIcmpHeader)
+    {
+        outer_src_addr  = state->source_addr;
+        outer_dest_addr = state->dest_addr;
+    }
     if (sbufGetLeftCapacity(buf) < kPingClientEncapsulationOverhead)
     {
         LOGW("PingClient: dropping packet without enough left padding for IPv4+ICMP encapsulation");
@@ -206,18 +291,18 @@ void pingclientEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
 
     sbufShiftLeft(buf, kPingClientEncapsulationOverhead);
 
-    uint8_t               *packet     = sbufGetMutablePtr(buf);
-    struct ip_hdr         *ipheader   = (struct ip_hdr *) packet;
-    struct icmp_echo_hdr  *icmpheader = (struct icmp_echo_hdr *) (packet + kPingClientIpv4HeaderLength);
+    uint8_t              *packet     = sbufGetMutablePtr(buf);
+    struct ip_hdr        *ipheader   = (struct ip_hdr *) packet;
+    struct icmp_echo_hdr *icmpheader = (struct icmp_echo_hdr *) (packet + kPingClientIpv4HeaderLength);
 
     memorySet(packet, 0, kPingClientEncapsulationOverhead);
 
     IPH_VHL_SET(ipheader, 4, sizeof(struct ip_hdr) / 4U);
-    IPH_TOS_SET(ipheader, state->tos);
+    IPH_TOS_SET(ipheader, outer_tos);
     IPH_LEN_SET(ipheader, lwip_htons((uint16_t) (icmp_payload_len + kPingClientEncapsulationOverhead)));
     IPH_ID_SET(ipheader, lwip_htons((uint16_t) (atomicAdd(&(state->ipv4_identification), 1U) + 1U)));
     IPH_OFFSET_SET(ipheader, 0);
-    IPH_TTL_SET(ipheader, state->ttl);
+    IPH_TTL_SET(ipheader, outer_ttl);
     IPH_PROTO_SET(ipheader, IP_PROTO_ICMP);
     IPH_CHKSUM_SET(ipheader, 0);
     ipheader->src.addr  = outer_src_addr;
@@ -235,20 +320,20 @@ void pingclientEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
     tunnelNextUpStreamPayload(t, l, buf);
 }
 
-void pingclientDecapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
+static void pingclientDecapsulateIcmp(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     pingclient_tstate_t *state = tunnelGetState(t);
     uint16_t             outer_header_len;
 
     if (! pingclientMatchEnvelope(state, buf, &outer_header_len))
     {
-        tunnelPrevDownStreamPayload(t, l, buf);
+        pingclientHandleUnmatchedDownstreamPacket(t, l, buf);
         return;
     }
 
-    uint8_t  *icmp_payload         = sbufGetMutablePtr(buf) + outer_header_len;
-    uint16_t  icmp_payload_len     = (uint16_t) (sbufGetLength(buf) - outer_header_len);
-    bool      payload_decoded_in_place = false;
+    uint8_t *icmp_payload             = sbufGetMutablePtr(buf) + outer_header_len;
+    uint16_t icmp_payload_len         = (uint16_t) (sbufGetLength(buf) - outer_header_len);
+    bool     payload_decoded_in_place = false;
 
     if (state->payload_xor_enabled)
     {
@@ -285,26 +370,111 @@ void pingclientDecapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
         inner_packet_ptr = icmp_payload + kPingClientSizePrefixLength;
     }
 
-    uint16_t validated_inner_len;
-    if (! pingclientValidateIpv4PacketBytes(inner_packet_ptr, inner_packet_len, &validated_inner_len))
+    uint16_t payload_len_after_strip = inner_packet_len;
+
+    if (pingclientStrategyNeedsInnerIpv4Validation(state))
     {
-        if (payload_decoded_in_place)
+        uint16_t validated_inner_len;
+        if (! pingclientValidateIpv4PacketBytes(inner_packet_ptr, inner_packet_len, &validated_inner_len))
         {
-            pingclientXorPayload(icmp_payload, icmp_payload_len, state->payload_xor_byte);
+            if (payload_decoded_in_place)
+            {
+                pingclientXorPayload(icmp_payload, icmp_payload_len, state->payload_xor_byte);
+            }
+            tunnelPrevDownStreamPayload(t, l, buf);
+            return;
         }
-        tunnelPrevDownStreamPayload(t, l, buf);
-        return;
+
+        payload_len_after_strip = validated_inner_len;
     }
 
     sbufShiftRight(buf, outer_header_len);
 
     if (state->roundup_payload_size)
     {
-        memoryMove(sbufGetMutablePtr(buf), sbufGetMutablePtr(buf) + kPingClientSizePrefixLength, validated_inner_len);
+        memoryMove(sbufGetMutablePtr(buf), sbufGetMutablePtr(buf) + kPingClientSizePrefixLength, payload_len_after_strip);
     }
 
-    sbufSetLength(buf, validated_inner_len);
+    sbufSetLength(buf, payload_len_after_strip);
     lineSetRecalculateChecksum(l, false);
 
     tunnelPrevDownStreamPayload(t, l, buf);
+}
+
+static void pingclientSwapIpv4ProtocolToIcmp(tunnel_t *t, line_t *l, sbuf_t *buf)
+{
+    pingclient_tstate_t *state = tunnelGetState(t);
+    uint16_t             packet_len;
+
+    if (! pingclientValidateIpv4PacketBytes(sbufGetRawPtr(buf), sbufGetLength(buf), &packet_len))
+    {
+        discard packet_len;
+        if (pingclientPeekPacketVersion(buf) == 6)
+        {
+            pingclientLogIpv6Drop("upstream");
+        }
+        else
+        {
+            LOGW("PingClient: dropping upstream packet because protocol-swap mode requires a valid IPv4 packet");
+        }
+        lineReuseBuffer(l, buf);
+        return;
+    }
+
+    struct ip_hdr *ipheader = (struct ip_hdr *) sbufGetMutablePtr(buf);
+    if (IPH_PROTO(ipheader) == state->swap_identifier)
+    {
+        IPH_PROTO_SET(ipheader, IP_PROTO_ICMP);
+        lineSetRecalculateChecksum(l, true);
+    }
+
+    tunnelNextUpStreamPayload(t, l, buf);
+}
+
+static void pingclientRestoreIpv4ProtocolFromIcmp(tunnel_t *t, line_t *l, sbuf_t *buf)
+{
+    pingclient_tstate_t *state = tunnelGetState(t);
+    uint16_t             packet_len;
+
+    if (! pingclientValidateIpv4PacketBytes(sbufGetRawPtr(buf), sbufGetLength(buf), &packet_len))
+    {
+        discard packet_len;
+        pingclientHandleUnmatchedDownstreamPacket(t, l, buf);
+        return;
+    }
+
+    struct ip_hdr *ipheader = (struct ip_hdr *) sbufGetMutablePtr(buf);
+    if (IPH_PROTO(ipheader) == IP_PROTO_ICMP)
+    {
+        IPH_PROTO_SET(ipheader, state->swap_identifier);
+        lineSetRecalculateChecksum(l, true);
+    }
+
+    tunnelPrevDownStreamPayload(t, l, buf);
+}
+
+void pingclientEncapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
+{
+    pingclient_tstate_t *state = tunnelGetState(t);
+
+    if (! pingclientStrategyNeedsIcmpEnvelope(state))
+    {
+        pingclientSwapIpv4ProtocolToIcmp(t, l, buf);
+        return;
+    }
+
+    pingclientEncapsulateWithIcmp(t, l, buf);
+}
+
+void pingclientDecapsulatePacket(tunnel_t *t, line_t *l, sbuf_t *buf)
+{
+    pingclient_tstate_t *state = tunnelGetState(t);
+
+    if (! pingclientStrategyNeedsIcmpEnvelope(state))
+    {
+        pingclientRestoreIpv4ProtocolFromIcmp(t, l, buf);
+        return;
+    }
+
+    pingclientDecapsulateIcmp(t, l, buf);
 }

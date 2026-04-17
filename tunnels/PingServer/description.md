@@ -1,52 +1,107 @@
 # PingServer Node
 
-`PingServer` is the server-side peer for `PingClient`. It unwraps matching IPv4 ICMP echo-request tunnel packets on the upstream path and re-wraps downstream IPv4 packets into fresh ICMP echo-request packets.
+`PingServer` is the server-side peer for `PingClient`. On the upstream path it reverses the configured packet disguise logic, and on the downstream path it reapplies the matching strategy toward the client side.
 
 It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on the chain's worker packet lines and does not add per-line state.
 
 ## What It Does
 
-- upstream payload decapsulates:
-  outer IPv4 header -> ICMP echo header -> original IPv4 packet
-- downstream payload encapsulates raw IPv4 packets into real IPv4 ICMP echo-request packets
-- outgoing server packets are also ICMP echo requests, never ICMP echo replies
-- the configured ICMP identifier is matched before decapsulation
-- `xor-byte` can XOR the ICMP payload bytes before server-side encapsulation and restore them during decapsulation
-- `roundup-size` can add a 2-byte original-size prefix and pad the ICMP payload up to `64`, `128`, `256`, `512`, `1024`, or the maximum supported ICMP payload size
-- outer IPv4 and ICMP checksums are calculated immediately when server-side encapsulation happens
-- total packet size is capped at `1500` bytes, so oversized payloads are logged and dropped
+- upstream applies the configured reverse transform for packets coming from the client side
+- downstream applies the forward transform toward the client side
+- only IPv4 is supported at runtime
+- any IPv6 packet that reaches `PingServer` is logged and dropped
+- `xor-byte` and `roundup-size` only affect the ICMP envelope modes
+- `identifier`, `sequence-start`, and `ipv4-id-start` are only meaningful for the ICMP envelope modes
+
+## `strategy`
+
+### `warp-in-new-ip-and-icmp-header`
+
+- upstream expects:
+  `outer IPv4 header -> ICMP echo header -> original IPv4 packet`
+- downstream recreates that same envelope
+- requires both `source` and `dest` in `settings`
+- verifies the configured outer source and destination before decapsulation
+- if ICMP framing and identifier match but source or destination does not, `PingServer` logs a runtime warning and leaves the packet unchanged for the next node
+
+### `warp-in-icmp-header-and-update-ipv4-header`
+
+- still uses a full outer IPv4 packet plus ICMP header
+- does not ask for `source` or `dest`
+- keeps outer source and destination from the current IPv4 packet
+- keeps the configured `ttl` and `tos` behavior of the existing tunnel
+- still requires the recovered payload to be a valid IPv4 packet before decapsulation succeeds
+
+Important note:
+This mode still creates a fresh outer IPv4 header. That is necessary because the original IPv4 header must stay inside the ICMP payload so the peer can restore the original packet exactly.
+
+### `warp-in-only-icmp-header`
+
+- still produces an outer IPv4 plus ICMP envelope
+- does not ask for `source` or `dest`
+- keeps outer source and destination from the current IPv4 packet
+- keeps configured `ttl` and `tos` for the new outer IPv4 header
+- treats the recovered ICMP payload as opaque bytes and does not insist it is a valid IPv4 packet before passing it upstream
+
+### `change-only-ip4-packet-identifier-number`
+
+- does not add an ICMP header and does not prepend a new IPv4 header
+- only swaps the IPv4 protocol number in place
+- requires `swap-identifier`
+- downstream changes packets whose current IPv4 protocol matches `swap-identifier` into `ICMP`
+- upstream changes matching `ICMP` packets back to `swap-identifier`
+- this mode does not use `identifier`, `sequence-start`, `ipv4-id-start`, `xor-byte`, or `roundup-size`
+
+`swap-identifier` accepts:
+
+- `"TCP"`
+- `"UDP"`
+- `"ICMP"`
+- an integer protocol number between `0` and `255`
 
 ## Optional `settings`
 
+- `strategy` `(string)`
+  Controls packet transformation mode.
+  Default: `warp-in-icmp-header-and-update-ipv4-header`
+
 - `identifier` `(integer)`
-  ICMP echo identifier.
+  ICMP echo identifier for the ICMP envelope modes.
   Default: `44975` (`0xAFAF`)
 
 - `sequence-start` `(integer)`
-  Initial ICMP echo sequence number counter.
+  Initial ICMP echo sequence counter for the ICMP envelope modes.
   Default: `0`
 
 - `ipv4-id-start` `(integer)`
-  Initial outer IPv4 identification counter.
+  Initial outer IPv4 identification counter for the ICMP envelope modes.
   Default: `0`
 
 - `ttl` `(integer)`
-  Outer IPv4 TTL.
+  Default outer IPv4 TTL for the modes that create a fresh outer IPv4 header.
   Default: `64`
 
 - `tos` `(integer)`
-  Outer IPv4 TOS byte.
+  Default outer IPv4 TOS byte for the modes that create a fresh outer IPv4 header.
   Default: `0`
 
 - `xor-byte` `(integer)`
-  XOR byte applied to the ICMP payload only.
-  Omit this field to disable XOR.
+  XOR byte applied only to the ICMP payload in the ICMP envelope modes.
 
 - `roundup-size` `(boolean)`
-  When `true`, the ICMP payload stores:
-  `2-byte original-size -> original IPv4 packet -> random filler`
-  and rounds the payload length up to the next supported bucket.
+  Pads only the ICMP payload in the ICMP envelope modes.
   Default: `false`
+
+- `source` `(string)`
+  Required only when `strategy` is `warp-in-new-ip-and-icmp-header`.
+  Must be a single IPv4 address.
+
+- `dest` `(string)`
+  Required only when `strategy` is `warp-in-new-ip-and-icmp-header`.
+  Must be a single IPv4 address.
+
+- `swap-identifier` `(string or integer)`
+  Required only when `strategy` is `change-only-ip4-packet-identifier-number`.
 
 ## Example
 
@@ -55,7 +110,10 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
   "name": "icmp-server",
   "type": "PingServer",
   "settings": {
+    "strategy": "warp-in-new-ip-and-icmp-header",
     "identifier": 4660,
+    "source": "203.0.113.20",
+    "dest": "198.51.100.10",
     "xor-byte": 90,
     "roundup-size": true,
     "sequence-start": 0,
@@ -67,9 +125,7 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
 
 ## Notes
 
-- only IPv4 inner packets are encapsulated by this tunnel
-- outer IPv4 source and destination are copied from the current inner IPv4 packet
-- only matching IPv4 ICMP echo-request envelopes with the configured identifier are decapsulated on the upstream path
-- this tunnel does not own IP rewriting or endpoint validation; use an IP rewrite/manipulation tunnel elsewhere in the packet chain if needed
-- fragmented outer ICMP packets are not reassembled here, so they are passed through unchanged
-- with `roundup-size`, packets larger than `1470` bytes are dropped because the 2-byte size prefix must still fit inside the `1500` byte total packet limit
+- `required_padding_left` remains `28` bytes so the tunnel can prepend the worst-case IPv4 plus ICMP envelope safely
+- fragmented outer ICMP packets are not decapsulated here
+- unmatched IPv4 traffic is still forwarded unchanged in the same direction
+- only IPv6 is dropped unconditionally

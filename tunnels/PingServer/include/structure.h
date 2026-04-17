@@ -9,8 +9,12 @@ typedef struct pingserver_tstate_s
     atomic_uint icmp_sequence;
     atomic_uint ipv4_identification;
     uint16_t    identifier;
+    uint32_t    source_addr;
+    uint32_t    dest_addr;
     uint8_t     ttl;
     uint8_t     tos;
+    uint8_t     strategy;
+    uint8_t     swap_identifier;
     uint8_t     payload_xor_byte;
     bool        payload_xor_enabled;
     bool        roundup_payload_size;
@@ -23,6 +27,11 @@ typedef struct pingserver_lstate_s
 
 enum
 {
+    kPingServerStrategyWrapNewIpAndIcmpHeader = 1,
+    kPingServerStrategyWrapIcmpHeaderAndReuseIpv4Addrs,
+    kPingServerStrategyWrapOnlyIcmpHeader,
+    kPingServerStrategyChangeOnlyIpv4ProtocolNumber,
+
     kPingServerNetworkMtu            = 1500,
     kPingServerIpv4HeaderLength      = sizeof(struct ip_hdr),
     kPingServerIcmpHeaderLength      = sizeof(struct icmp_echo_hdr),
