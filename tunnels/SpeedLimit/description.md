@@ -11,17 +11,17 @@ This tunnel does not change protocol data. It only decides how quickly payload i
 
 ## What It Does
 
-- Applies one byte-rate limit to payload crossing the tunnel
+- Applies rate limit to payload crossing the tunnel
 - Uses a token bucket, so traffic is released again as tokens refill over time
 - Can keep a separate limit per line, one shared limit for the whole tunnel, or one shared limit per worker
-- In `pause` mode, buffers excess stream data and resumes later
-- In `drop` mode, discards whole payload chunks when there are not enough tokens
+- In `pause` work mode, buffers excess stream data and resumes later
+- In `drop` work mode, discards whole payload chunks when there are not enough tokens
 
 The configured limit applies to both directions combined for the selected bucket.
 
 That means if one bucket is limited to `1 MB/s`, upload and download through that same bucket together share that `1 MB/s`.
 
-## Typical Placement
+## Work Mode
 
 ### Stream shaping
 
@@ -114,14 +114,9 @@ You must also set:
 - `limit-mode` `(string)`
 - `work-mode` `(string)`
 
-## Optional `settings` Fields
 
-- `token-recharge-rate` `(integer)`
-  Milliseconds between token recharges.
 
-  Default: `10`
-
-## `limit-mode` Meanings
+## `limit-mode`
 
 - `per-connection`
 - `per-line`
@@ -171,6 +166,13 @@ When the bucket is empty:
 - the tunnel does not queue it for later
 
 This is the safer choice for packet tunnels and UDP-style traffic.
+
+## Optional `settings` Fields
+
+- `token-recharge-rate` `(integer)`
+  Milliseconds between token recharges.
+
+  Default: `10`
 
 ## How `token-recharge-rate` Works
 

@@ -37,10 +37,10 @@ typedef struct speedlimit_lstate_s
     wtimer_t       *up_timer;
     wtimer_t       *down_timer;
     speedlimit_bucket_t line_bucket;
-    bool           prev_side_paused_local;
-    bool           prev_side_paused_external;
-    bool           next_side_paused_local;
-    bool           next_side_paused_external;
+    uint16_t        prev_side_external_pause_depth;
+    uint16_t        next_side_external_pause_depth;
+    bool            prev_side_locally_paused;
+    bool            next_side_locally_paused;
 } speedlimit_lstate_t;
 
 enum
@@ -90,12 +90,11 @@ void speedlimitTunnelDownStreamResume(tunnel_t *t, line_t *l);
 void speedlimitLinestateInitialize(speedlimit_lstate_t *ls, tunnel_t *t, line_t *l);
 void speedlimitLinestateDestroy(speedlimit_lstate_t *ls);
 
-void speedlimitHandleUpstreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
-void speedlimitHandleDownstreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf);
-void speedlimitHandleUpstreamPause(tunnel_t *t, line_t *l);
-void speedlimitHandleDownstreamPause(tunnel_t *t, line_t *l);
-void speedlimitHandleUpstreamResume(tunnel_t *t, line_t *l);
-void speedlimitHandleDownstreamResume(tunnel_t *t, line_t *l);
+uint64_t speedlimitPeekAvailableUnits(tunnel_t *t, line_t *l);
+size_t   speedlimitGrantBytes(tunnel_t *t, line_t *l, size_t requested_bytes, bool allow_partial);
+uint32_t speedlimitGetRetryDelayMs(tunnel_t *t, line_t *l);
+void     speedlimitScheduleUpstreamDrain(speedlimit_lstate_t *ls, uint32_t delay_ms);
+void     speedlimitScheduleDownstreamDrain(speedlimit_lstate_t *ls, uint32_t delay_ms);
 
 void speedlimitUpstreamDrainTimerCallback(wtimer_t *timer);
 void speedlimitDownstreamDrainTimerCallback(wtimer_t *timer);

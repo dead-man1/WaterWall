@@ -130,7 +130,7 @@ static void speedlimitRefillAtomicBucket(const speedlimit_tstate_t *ts, speedlim
     }
 }
 
-static uint64_t speedlimitPeekAvailableUnits(tunnel_t *t, line_t *l)
+uint64_t speedlimitPeekAvailableUnits(tunnel_t *t, line_t *l)
 {
     speedlimit_tstate_t *ts     = tunnelGetState(t);
     uint64_t             now_ms = speedlimitNowMs(l);
@@ -170,7 +170,7 @@ static uint64_t speedlimitPeekLastRefillMs(tunnel_t *t, line_t *l)
     }
 }
 
-static size_t speedlimitGrantBytes(tunnel_t *t, line_t *l, size_t requested_bytes, bool allow_partial)
+size_t speedlimitGrantBytes(tunnel_t *t, line_t *l, size_t requested_bytes, bool allow_partial)
 {
     speedlimit_tstate_t *ts = tunnelGetState(t);
     if (requested_bytes == 0)
@@ -246,7 +246,7 @@ static size_t speedlimitGrantBytes(tunnel_t *t, line_t *l, size_t requested_byte
     return grant_bytes;
 }
 
-static uint32_t speedlimitGetRetryDelayMs(tunnel_t *t, line_t *l)
+uint32_t speedlimitGetRetryDelayMs(tunnel_t *t, line_t *l)
 {
     speedlimit_tstate_t *ts           = tunnelGetState(t);
     uint64_t             now_ms       = speedlimitNowMs(l);
@@ -284,7 +284,7 @@ static uint32_t speedlimitGetRetryDelayMs(tunnel_t *t, line_t *l)
     return (uint32_t) wait_ms;
 }
 
-static void speedlimitScheduleUpstreamDrain(speedlimit_lstate_t *ls, uint32_t delay_ms)
+void speedlimitScheduleUpstreamDrain(speedlimit_lstate_t *ls, uint32_t delay_ms)
 {
     if (delay_ms == 0)
     {
@@ -306,7 +306,7 @@ static void speedlimitScheduleUpstreamDrain(speedlimit_lstate_t *ls, uint32_t de
     weventSetUserData(ls->up_timer, ls);
 }
 
-static void speedlimitScheduleDownstreamDrain(speedlimit_lstate_t *ls, uint32_t delay_ms)
+void speedlimitScheduleDownstreamDrain(speedlimit_lstate_t *ls, uint32_t delay_ms)
 {
     if (delay_ms == 0)
     {
@@ -327,272 +327,4 @@ static void speedlimitScheduleDownstreamDrain(speedlimit_lstate_t *ls, uint32_t 
         terminateProgram(1);
     }
     weventSetUserData(ls->down_timer, ls);
-}
-
-static void speedlimitDrainUpstream(speedlimit_lstate_t *ls)
-{
-    tunnel_t *t = ls->tunnel;
-    line_t   *l = ls->line;
-
-    if (bufferqueueGetBufCount(&ls->up_queue) == 0)
-    {
-        if (ls->prev_side_paused_local)
-        {
-            ls->prev_side_paused_local = false;
-            if (! ls->prev_side_paused_external)
-            {
-                tunnelPrevDownStreamResume(t, l);
-            }
-        }
-        return;
-    }
-
-    sbuf_t *front = (sbuf_t *) bufferqueueFront(&ls->up_queue);
-    assert(front != NULL);
-
-    size_t grant_bytes = speedlimitGrantBytes(t, l, sbufGetLength(front), true);
-    if (grant_bytes == 0)
-    {
-        speedlimitScheduleUpstreamDrain(ls, speedlimitGetRetryDelayMs(t, l));
-        return;
-    }
-
-    sbuf_t *queued_buf = bufferqueuePopFront(&ls->up_queue);
-    sbuf_t *send_buf   = queued_buf;
-    if (grant_bytes < sbufGetLength(queued_buf))
-    {
-        send_buf = sbufSlice(queued_buf, (uint32_t) grant_bytes);
-        bufferqueuePushFront(&ls->up_queue, queued_buf);
-    }
-
-    if (bufferqueueGetBufCount(&ls->up_queue) > 0)
-    {
-        uint32_t delay_ms = (speedlimitPeekAvailableUnits(t, l) >= kSpeedLimitUnitsPerByte)
-                                ? kSpeedLimitImmediateMs
-                                : speedlimitGetRetryDelayMs(t, l);
-        speedlimitScheduleUpstreamDrain(ls, delay_ms);
-    }
-    else if (ls->prev_side_paused_local)
-    {
-        speedlimitScheduleUpstreamDrain(ls, kSpeedLimitImmediateMs);
-    }
-
-    tunnelNextUpStreamPayload(t, l, send_buf);
-}
-
-static void speedlimitDrainDownstream(speedlimit_lstate_t *ls)
-{
-    tunnel_t *t = ls->tunnel;
-    line_t   *l = ls->line;
-
-    if (bufferqueueGetBufCount(&ls->down_queue) == 0)
-    {
-        if (ls->next_side_paused_local)
-        {
-            ls->next_side_paused_local = false;
-            if (! ls->next_side_paused_external)
-            {
-                tunnelNextUpStreamResume(t, l);
-            }
-        }
-        return;
-    }
-
-    sbuf_t *front = (sbuf_t *) bufferqueueFront(&ls->down_queue);
-    assert(front != NULL);
-
-    size_t grant_bytes = speedlimitGrantBytes(t, l, sbufGetLength(front), true);
-    if (grant_bytes == 0)
-    {
-        speedlimitScheduleDownstreamDrain(ls, speedlimitGetRetryDelayMs(t, l));
-        return;
-    }
-
-    sbuf_t *queued_buf = bufferqueuePopFront(&ls->down_queue);
-    sbuf_t *send_buf   = queued_buf;
-    if (grant_bytes < sbufGetLength(queued_buf))
-    {
-        send_buf = sbufSlice(queued_buf, (uint32_t) grant_bytes);
-        bufferqueuePushFront(&ls->down_queue, queued_buf);
-    }
-
-    if (bufferqueueGetBufCount(&ls->down_queue) > 0)
-    {
-        uint32_t delay_ms = (speedlimitPeekAvailableUnits(t, l) >= kSpeedLimitUnitsPerByte)
-                                ? kSpeedLimitImmediateMs
-                                : speedlimitGetRetryDelayMs(t, l);
-        speedlimitScheduleDownstreamDrain(ls, delay_ms);
-    }
-    else if (ls->next_side_paused_local)
-    {
-        speedlimitScheduleDownstreamDrain(ls, kSpeedLimitImmediateMs);
-    }
-
-    tunnelPrevDownStreamPayload(t, l, send_buf);
-}
-
-void speedlimitUpstreamDrainTimerCallback(wtimer_t *timer)
-{
-    speedlimit_lstate_t *ls = weventGetUserdata(timer);
-    if (ls == NULL)
-    {
-        return;
-    }
-
-    ls->up_timer = NULL;
-    if (ls->line == NULL || ls->tunnel == NULL || ! lineIsAlive(ls->line))
-    {
-        return;
-    }
-
-    speedlimitDrainUpstream(ls);
-}
-
-void speedlimitDownstreamDrainTimerCallback(wtimer_t *timer)
-{
-    speedlimit_lstate_t *ls = weventGetUserdata(timer);
-    if (ls == NULL)
-    {
-        return;
-    }
-
-    ls->down_timer = NULL;
-    if (ls->line == NULL || ls->tunnel == NULL || ! lineIsAlive(ls->line))
-    {
-        return;
-    }
-
-    speedlimitDrainDownstream(ls);
-}
-
-void speedlimitHandleUpstreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
-{
-    speedlimit_tstate_t *ts = tunnelGetState(t);
-    speedlimit_lstate_t *ls = lineGetState(l, t);
-
-    if (ts->work_mode == kSpeedLimitWorkModeDrop)
-    {
-        if (speedlimitGrantBytes(t, l, sbufGetLength(buf), false) == sbufGetLength(buf))
-        {
-            tunnelNextUpStreamPayload(t, l, buf);
-        }
-        else
-        {
-            lineReuseBuffer(l, buf);
-        }
-        return;
-    }
-
-    if (bufferqueueGetBufCount(&ls->up_queue) == 0 &&
-        speedlimitGrantBytes(t, l, sbufGetLength(buf), false) == sbufGetLength(buf))
-    {
-        tunnelNextUpStreamPayload(t, l, buf);
-        return;
-    }
-
-    bufferqueuePushBack(&ls->up_queue, buf);
-
-    {
-        uint32_t delay_ms = (speedlimitPeekAvailableUnits(t, l) >= kSpeedLimitUnitsPerByte)
-                                ? kSpeedLimitImmediateMs
-                                : speedlimitGetRetryDelayMs(t, l);
-        speedlimitScheduleUpstreamDrain(ls, delay_ms);
-    }
-
-    if (! ls->prev_side_paused_local)
-    {
-        ls->prev_side_paused_local = true;
-        if (! ls->prev_side_paused_external)
-        {
-            tunnelPrevDownStreamPause(t, l);
-        }
-    }
-}
-
-void speedlimitHandleDownstreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
-{
-    speedlimit_tstate_t *ts = tunnelGetState(t);
-    speedlimit_lstate_t *ls = lineGetState(l, t);
-
-    if (ts->work_mode == kSpeedLimitWorkModeDrop)
-    {
-        if (speedlimitGrantBytes(t, l, sbufGetLength(buf), false) == sbufGetLength(buf))
-        {
-            tunnelPrevDownStreamPayload(t, l, buf);
-        }
-        else
-        {
-            lineReuseBuffer(l, buf);
-        }
-        return;
-    }
-
-    if (bufferqueueGetBufCount(&ls->down_queue) == 0 &&
-        speedlimitGrantBytes(t, l, sbufGetLength(buf), false) == sbufGetLength(buf))
-    {
-        tunnelPrevDownStreamPayload(t, l, buf);
-        return;
-    }
-
-    bufferqueuePushBack(&ls->down_queue, buf);
-
-    {
-        uint32_t delay_ms = (speedlimitPeekAvailableUnits(t, l) >= kSpeedLimitUnitsPerByte)
-                                ? kSpeedLimitImmediateMs
-                                : speedlimitGetRetryDelayMs(t, l);
-        speedlimitScheduleDownstreamDrain(ls, delay_ms);
-    }
-
-    if (! ls->next_side_paused_local)
-    {
-        ls->next_side_paused_local = true;
-        if (! ls->next_side_paused_external)
-        {
-            tunnelNextUpStreamPause(t, l);
-        }
-    }
-}
-
-void speedlimitHandleUpstreamPause(tunnel_t *t, line_t *l)
-{
-    speedlimit_lstate_t *ls       = lineGetState(l, t);
-    ls->next_side_paused_external = true;
-
-    if (! ls->next_side_paused_local)
-    {
-        tunnelNextUpStreamPause(t, l);
-    }
-}
-
-void speedlimitHandleDownstreamPause(tunnel_t *t, line_t *l)
-{
-    speedlimit_lstate_t *ls       = lineGetState(l, t);
-    ls->prev_side_paused_external = true;
-
-    if (! ls->prev_side_paused_local)
-    {
-        tunnelPrevDownStreamPause(t, l);
-    }
-}
-
-void speedlimitHandleUpstreamResume(tunnel_t *t, line_t *l)
-{
-    speedlimit_lstate_t *ls       = lineGetState(l, t);
-    ls->next_side_paused_external = false;
-
-    if (! ls->next_side_paused_local)
-    {
-        tunnelNextUpStreamResume(t, l);
-    }
-}
-
-void speedlimitHandleDownstreamResume(tunnel_t *t, line_t *l)
-{
-    speedlimit_lstate_t *ls       = lineGetState(l, t);
-    ls->prev_side_paused_external = false;
-
-    if (! ls->prev_side_paused_local)
-    {
-        tunnelPrevDownStreamResume(t, l);
-    }
 }

@@ -14,10 +14,10 @@ void speedlimitLinestateInitialize(speedlimit_lstate_t *ls, tunnel_t *t, line_t 
                                  .down_timer              = NULL,
                                  .line_bucket             = {.tokens_units = ts->bucket_capacity_units,
                                                              .last_refill_ms = 0},
-                                 .prev_side_paused_local  = false,
-                                 .prev_side_paused_external = false,
-                                 .next_side_paused_local  = false,
-                                 .next_side_paused_external = false};
+                                 .prev_side_external_pause_depth = 0,
+                                 .next_side_external_pause_depth = 0,
+                                 .prev_side_locally_paused      = false,
+                                 .next_side_locally_paused      = false};
 }
 
 void speedlimitLinestateDestroy(speedlimit_lstate_t *ls)
