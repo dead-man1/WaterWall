@@ -2,9 +2,7 @@
 // Created by 理 傅 on 2017/1/2.
 //
 
-#include <err.h>
-#include <sys/time.h>
-#include <iostream>
+#include <chrono>
 #include <stdexcept>
 
 #include "fec.h"
@@ -12,9 +10,8 @@
 
 static uint32_t currentMs(void)
 {
-    struct timeval time;
-    gettimeofday(&time, NULL);
-    return (uint32_t) ((time.tv_sec * 1000) + (time.tv_usec / 1000));
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
 }
 
 FEC::FEC(ReedSolomon enc) :enc(enc) {}
@@ -44,9 +41,7 @@ FEC::Decode(byte *data, size_t sz) {
     fecPacket pkt;
     data = decode32u(data, &pkt.seqid);
     data = decode16u(data, &pkt.flag);
-    struct timeval time;
-    gettimeofday(&time, NULL);
-    pkt.ts = uint32_t(time.tv_sec * 1000 + time.tv_usec/1000);
+    pkt.ts = currentMs();
     pkt.data = std::make_shared<std::vector<byte>>(data, data+sz - fecHeaderSize);
     return pkt;
 }

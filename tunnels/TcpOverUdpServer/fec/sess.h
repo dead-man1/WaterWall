@@ -1,10 +1,12 @@
 #ifndef KCP_SESS_H
 #define KCP_SESS_H
 
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+
 #include "ikcp.h"
 #include "fec.h"
-#include <sys/types.h>
-#include <sys/time.h>
 
 class UDPSession  {
 private:
@@ -77,9 +79,8 @@ private:
 };
 
 inline uint32_t currentMs() {
-    struct timeval time;
-    gettimeofday(&time, NULL);
-    return uint32_t((time.tv_sec * 1000) + (time.tv_usec / 1000));
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
 }
 
 
