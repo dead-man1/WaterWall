@@ -6,6 +6,9 @@ It takes cleartext payload from the previous tunnel, encrypts it into TLS record
 
 This node is meant for the client side of a chain, usually between an application protocol tunnel and a transport adapter such as `TcpConnector`.
 
+This node does a real Tls hadshake and mimics chorme behaviour, verified with JA4 hash and built with help of wireshark and inspecting chromes behaviour. it uses the exact libraries used in google chrome to do this (BoringSSl, LibBrotli)
+
+
 ## What It Does
 
 - Creates a client-side TLS session for each Waterwall line.
@@ -164,6 +167,7 @@ That includes:
 
 - hardcoded ALPN list containing `h2` and `http/1.1`
 - ALPS application settings for `h2` and `http/1.1`
+  `h2` is the fixed Chrome payload `0x026832`, not a serialized HTTP/2 `SETTINGS` frame
 - OCSP stapling extension
 - signed certificate timestamp extension
 - certificate compression support with Brotli
@@ -178,3 +182,305 @@ The bundled BoringSSL tree also contains local patches used by this tunnel.
 - The active create path hardcodes a Chrome-like ALPN advertisement instead of using a user-provided ALPN list.
 - Certificate verification is enabled in the current implementation and uses the built-in CA bundle.
 - `Est` reflects transport establishment, not TLS handshake completion.
+
+## Advanced Details
+
+This section is a programmer-facing summary of the concrete shaping work in `TlsClient` and its vendored BoringSSL copy.
+
+### Baseline capture and fingerprint goal
+
+The implementation work was driven by real Chrome captures and compared primarily against modern TLS fingerprints such as JA4.
+
+- The practical target is Chrome-like behavior on the wire, not just using BoringSSL defaults.
+- JA4 alignment matters more than JA3 for this tunnel because Chrome permutes extension order and JA3 is sensitive to that ordering.
+- Matching JA3 exactly is not expected on every connection once extension permutation is enabled.
+
+### Fixed ALPN advertisement
+
+The active create path does not accept a user-provided ALPN list.
+
+- `TlsClient` always advertises `h2` and `http/1.1`.
+- This keeps the ALPN list stable and aligned with the Chrome-like handshake shaping in this node.
+
+### TLS version and extension behavior
+
+The SSL context is configured to stay in the same protocol band this tunnel was designed for.
+
+- minimum protocol version is TLS 1.2
+- maximum protocol version is TLS 1.3
+- GREASE is enabled
+- TLS extension permutation is enabled
+- ECH grease is enabled on each `SSL` object
+- OCSP stapling and signed certificate timestamps are enabled
+
+### Cipher suite ordering patch
+
+The bundled BoringSSL client handshake logic is patched so the advertised cipher suites follow a Chrome-style fixed order instead of BoringSSL's default selection logic.
+
+- TLS 1.3 cipher order is forced
+- TLS 1.2 cipher order is forced
+- this change lives in the local `handshake_client.cc` patch
+- the purpose is wire-level ordering control, not cryptographic behavior changes
+
+### Supported groups and signature algorithms
+
+The context also pins the advertised key exchange and signature preferences.
+
+- supported groups are configured explicitly rather than using library defaults
+- signature algorithms are configured explicitly in Chrome-like order
+- this reduces drift across BoringSSL updates and keeps the ClientHello layout predictable
+
+### Certificate compression support
+
+Chrome supports Brotli certificate decompression, so this tunnel does too.
+
+- the repo includes a local Brotli decompressor object for certificate decompression
+- `SSL_CTX_add_cert_compression_alg` is used with Brotli decompression only
+- compression is not offered for local certificate output, matching the intended client-side behavior here
+
+### ALPS handling
+
+ALPS needed special care because it is easy to feed the wrong bytes into the BoringSSL API.
+
+- `SSL_add_application_settings` expects the raw per-protocol application settings value
+- for `h2`, the configured payload is the fixed Chrome value `0x026832`
+- for `http/1.1`, the configured payload is empty
+- this value must not be replaced with a serialized HTTP/2 `SETTINGS` frame
+- BoringSSL builds the final ALPS wire representation itself once the per-protocol values are configured
+
+### CA verification and session behavior
+
+The tunnel is still a real verifying TLS client, not just a fingerprint shaper.
+
+- peer verification remains enabled
+- CA roots are loaded from the built-in bundle in `utils/cacert.h`
+- client session caching is enabled
+- application data is buffered until the TLS handshake completes
+
+### Vendored BoringSSL integration
+
+The BoringSSL copy under `tunnels/TlsClient/boringssl` is used as a library dependency, not as a standalone product inside the Waterwall build.
+
+- `crypto` and `ssl` are consumed as static libraries
+- symbol prefixing is enabled so the vendored BoringSSL symbols do not collide with other OpenSSL-family code
+- prefix header generation supports Go when available and falls back to Python when it is not
+
+### Static-only build cleanup
+
+The Waterwall build was also cleaned up so this subtree does not introduce extra executables.
+
+- the vendored BoringSSL CMake now honors `BUILD_TOOL`
+- `TlsClient` forces `BUILD_TOOL OFF`
+- the `bssl` executable is therefore not created in the Waterwall build
+- local CMake logic only touches the `bssl` target when that target actually exists
+- the result is a static-library-oriented integration where `Waterwall` remains the only executable we want from this project path
+
+## Prefixing BoringSSL Beside OpenSSL
+
+This section is a step-by-step tutorial for how this project links both OpenSSL and BoringSSL statically in one final executable without symbol collisions.
+
+### Why prefixing is needed
+
+Both libraries export many of the same public symbol names such as `SSL_new`, `SSL_connect`, `X509_free`, and large parts of the ASN.1 and EVP APIs.
+
+If you statically link plain OpenSSL and plain BoringSSL into the same executable:
+
+- the linker will see duplicate global symbols
+- one library may satisfy references intended for the other
+- even if the link succeeds, runtime behavior can become undefined
+
+The fix is to rebuild one of them with a unique symbol prefix. In this project, the vendored BoringSSL copy is the one that gets renamed.
+
+### What this project does
+
+The final `Waterwall` executable links:
+
+- the main `ww` core, which may use OpenSSL as its crypto backend from [ww/CMakeLists.txt](/root/WaterWall/ww/CMakeLists.txt:497)
+- the `TlsClient` tunnel, which links its own vendored BoringSSL static libraries from [tunnels/TlsClient/CMakeLists.txt](/root/WaterWall/tunnels/TlsClient/CMakeLists.txt:119)
+
+The key design choice is:
+
+- OpenSSL keeps its normal symbol names
+- BoringSSL is rebuilt with the prefix `WW_BSSL`
+
+That means a normal OpenSSL function such as `SSL_new` and a vendored BoringSSL function such as `WW_BSSL_SSL_new` can coexist in the same final binary.
+
+### Step 1. Keep the two dependency trees separate
+
+Do not try to make one library pretend to be the other.
+
+- the regular OpenSSL build is pulled in by the `ww` layer through `openssl-cmake`
+- the BoringSSL build lives under `tunnels/TlsClient/boringssl`
+- `TlsClient` links only against the vendored BoringSSL `crypto` and `ssl` targets
+
+In this repo, those pieces are wired from:
+
+- [ww/CMakeLists.txt](/root/WaterWall/ww/CMakeLists.txt:497)
+- [tunnels/TlsClient/CMakeLists.txt](/root/WaterWall/tunnels/TlsClient/CMakeLists.txt:124)
+
+### Step 2. Choose a unique BoringSSL prefix
+
+Pick a short prefix that is unlikely to collide with anything else.
+
+This project uses:
+
+```cmake
+set(WW_BORINGSSL_PREFIX WW_BSSL)
+set(BORINGSSL_PREFIX ${WW_BORINGSSL_PREFIX})
+```
+
+That is configured in [tunnels/TlsClient/CMakeLists.txt](/root/WaterWall/tunnels/TlsClient/CMakeLists.txt:119).
+
+### Step 3. Provide the symbol list BoringSSL should rename
+
+BoringSSL needs a list of exported symbols that will be rewritten with the new prefix.
+
+This project stores that list in:
+
+- [tunnels/TlsClient/boringssl_symbols.txt](/root/WaterWall/tunnels/TlsClient/boringssl_symbols.txt)
+
+and passes it to the vendored build with:
+
+```cmake
+set(BORINGSSL_PREFIX_SYMBOLS ${CMAKE_CURRENT_SOURCE_DIR}/boringssl_symbols.txt)
+```
+
+If you want to reproduce this yourself in another project, this symbol list is one of the most important files. Without it, the prefix build cannot be generated correctly.
+
+### Step 4. Let BoringSSL generate prefixed headers
+
+Once `BORINGSSL_PREFIX` and `BORINGSSL_PREFIX_SYMBOLS` are set, the vendored BoringSSL CMake generates helper headers that rewrite symbol declarations to the prefixed names.
+
+In this repo, the generated files are placed under:
+
+- `tunnels/TlsClient/<build-dir>/boringssl/symbol_prefix_include`
+
+The relevant logic lives in [tunnels/TlsClient/boringssl/CMakeLists.txt](/root/WaterWall/tunnels/TlsClient/boringssl/CMakeLists.txt:88).
+
+The actual generator is:
+
+- Go path: `tunnels/TlsClient/boringssl/util/make_prefix_headers.go`
+- Python path: [tunnels/TlsClient/boringssl/util/make_prefix_headers.py](/root/WaterWall/tunnels/TlsClient/boringssl/util/make_prefix_headers.py)
+
+In Waterwall, the vendored BoringSSL build tries Go first when `GO_EXECUTABLE` is available. If Go is not available, it falls back to the Python script. Both generators do the same job: they read `boringssl_symbols.txt` and create the prefix-header files consumed by the build.
+
+Generated files include:
+
+- `boringssl_prefix_symbols.h`
+- `boringssl_prefix_symbols_asm.h`
+- `boringssl_prefix_symbols_nasm.inc`
+
+Those generated headers are what make BoringSSL compile and export `WW_BSSL_*` symbols instead of the default names.
+
+### Step 5. Add the generated prefix include directory to every BoringSSL consumer
+
+This step is easy to miss.
+
+Any target in your project that includes BoringSSL headers and calls BoringSSL APIs must see:
+
+- the normal BoringSSL headers
+- the generated symbol-prefix include directory
+- the `BORINGSSL_PREFIX` compile definition
+
+In this repo, that is done for both `TlsClient` and `DecompressBrotli` in [tunnels/TlsClient/CMakeLists.txt](/root/WaterWall/tunnels/TlsClient/CMakeLists.txt:126):
+
+```cmake
+target_include_directories(TlsClient PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/boringssl/include
+    ${WW_BORINGSSL_PREFIX_INCLUDE_DIR}
+)
+target_compile_definitions(TlsClient PRIVATE BORINGSSL_PREFIX=${WW_BORINGSSL_PREFIX})
+```
+
+and similarly for `DecompressBrotli`.
+
+If a target links to prefixed BoringSSL but does not compile with the same prefix configuration, it will still emit calls to the unprefixed names and the build will fail or bind incorrectly.
+
+### Step 6. Build BoringSSL as static libraries
+
+The project keeps the vendored BoringSSL integration library-oriented.
+
+- `BUILD_SHARED_LIBS OFF`
+- `BUILD_TOOL OFF`
+- `BUILD_TESTING OFF`
+- `INSTALL_ENABLED OFF`
+
+This is configured in [tunnels/TlsClient/CMakeLists.txt](/root/WaterWall/tunnels/TlsClient/CMakeLists.txt:36) and honored by the vendored BoringSSL CMake in [tunnels/TlsClient/boringssl/CMakeLists.txt](/root/WaterWall/tunnels/TlsClient/boringssl/CMakeLists.txt:44).
+
+The reason is simple:
+
+- we want `crypto` and `ssl`
+- we do not want extra tools or executables from the vendored subtree in the Waterwall build
+
+### Step 7. Link only the prefixed BoringSSL libraries into the tunnel
+
+After the vendored subtree is added, the tunnel links against its static `crypto` and `ssl` targets:
+
+```cmake
+target_link_libraries(TlsClient PRIVATE ww BrotliDec DecompressBrotli crypto ssl)
+```
+
+This is in [tunnels/TlsClient/CMakeLists.txt](/root/WaterWall/tunnels/TlsClient/CMakeLists.txt:191).
+
+Because those libraries were built with the `WW_BSSL` prefix, their exported symbols no longer collide with the OpenSSL symbols used elsewhere in the program.
+
+### Step 8. Let the main program link its normal OpenSSL backend
+
+The `ww` core still uses ordinary OpenSSL through imported CMake targets:
+
+- `OpenSSL::SSL`
+- `OpenSSL::Crypto`
+
+That setup is in [ww/CMakeLists.txt](/root/WaterWall/ww/CMakeLists.txt:497).
+
+So the final executable effectively contains:
+
+- normal OpenSSL for the `ww` backend path
+- prefixed BoringSSL for `TlsClient`
+
+That is the whole trick.
+
+### Step 9. Verify the dual-link design
+
+When reproducing this pattern yourself, verify all of these:
+
+1. OpenSSL-linked code compiles without any BoringSSL prefix definition.
+2. BoringSSL-linked code compiles with `BORINGSSL_PREFIX=<your prefix>`.
+3. BoringSSL consumers include the generated prefix include directory.
+4. The final link has no duplicate symbol errors.
+5. Only the executable targets you actually want are generated.
+
+In this repo, the expected result is:
+
+- `Waterwall` is the final executable
+- vendored BoringSSL contributes static `crypto` and `ssl`
+- the extra `bssl` tool is not built
+
+### Common mistakes
+
+These are the mistakes most likely to break this setup:
+
+- forgetting that the generated prefix headers come from `util/make_prefix_headers.py` or `util/make_prefix_headers.go`
+- forgetting to set `BORINGSSL_PREFIX_SYMBOLS`
+- linking prefixed BoringSSL but compiling consumers without `BORINGSSL_PREFIX`
+- adding `boringssl/include` but forgetting `symbol_prefix_include`
+- trying to mix unprefixed and prefixed BoringSSL objects in the same target
+- assuming JA4 or handshake shaping work is related to symbol prefixing; it is not
+- disabling the BoringSSL tool target in CMake but still referencing `bssl` properties unconditionally
+
+### How to repeat this in another project
+
+If you want to do this yourself from scratch, the shortest working recipe is:
+
+1. Keep OpenSSL and BoringSSL as separate dependency trees.
+2. Pick a unique BoringSSL prefix such as `MYAPP_BSSL`.
+3. Prepare a symbol list file for BoringSSL renaming.
+4. Run BoringSSL's prefix-header generator from `util/make_prefix_headers.go` or `util/make_prefix_headers.py` through CMake.
+5. Configure the BoringSSL build with `BORINGSSL_PREFIX` and `BORINGSSL_PREFIX_SYMBOLS`.
+6. Add both `boringssl/include` and the generated prefix include directory to every BoringSSL consumer.
+7. Compile every BoringSSL consumer with `BORINGSSL_PREFIX=<same prefix>`.
+8. Link the resulting static BoringSSL `crypto` and `ssl` libraries only where you need them.
+9. Link ordinary OpenSSL normally in the rest of the program.
+10. Build the final executable and confirm there are no duplicate symbol conflicts.
+
+That is the complete pattern this repository uses.

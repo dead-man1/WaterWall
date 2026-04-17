@@ -4,24 +4,22 @@
 
 void tlsclientLinestateInitialize(tlsclient_lstate_t *ls, SSL_CTX *sctx)
 {
+    // Chrome's h2 ALPS payload is a fixed three-byte value captured on the wire.
+    // Do not replace this with a serialized HTTP/2 SETTINGS frame.
+    static const uint8_t kChromeH2AlpsPayload[] = {0x02, 0x68, 0x32};
+    static const void   *kChromeH1AlpsPayload   = NULL;
+    static const uint8_t kChromeH1AlpsPayloadLen = 0;
+
+    static_assert(sizeof(kChromeH2AlpsPayload) == 3, "Chrome h2 ALPS payload must stay 0x026832");
 
     ls->rbio = BIO_new(BIO_s_mem());
     ls->wbio = BIO_new(BIO_s_mem());
     ls->ssl  = SSL_new(sctx);
     ls->bq   = bufferqueueCreate(2);
 
-    // ALPS settings for HTTP/2 (matches Chrome's 0x026832)
-    static const uint8_t h2_alps_settings[] = {0x02, 0x68, 0x32};
-
-    // ALPS settings for HTTP/1.1 (typically empty for HTTP/1.1)
-    // C shows warning for zero sized arrays (zero or negative size array 'h1_alps_settings' GCC), so hardcode...
-    // static const uint8_t h1_alps_settings[] = {};
-    static const void   *h1_alps_settings_ptr = NULL;
-    static const uint8_t kH1AlpsSettingsLen   = 0;
-
     // Add ALPS for h2
-    if (SSL_add_application_settings(ls->ssl, (const uint8_t *) "h2", 2, h2_alps_settings, sizeof(h2_alps_settings)) !=
-        1)
+    if (SSL_add_application_settings(ls->ssl, (const uint8_t *) "h2", 2, kChromeH2AlpsPayload,
+                                     sizeof(kChromeH2AlpsPayload)) != 1)
     {
         LOGF("Failed to add ALPS for HTTP/2   (part of matching Chrome)");
         SSL_free(ls->ssl);
@@ -34,8 +32,8 @@ void tlsclientLinestateInitialize(tlsclient_lstate_t *ls, SSL_CTX *sctx)
     }
 
     // Add ALPS for http/1.1
-    if (SSL_add_application_settings(ls->ssl, (const uint8_t *) "http/1.1", 8, h1_alps_settings_ptr,
-                                     kH1AlpsSettingsLen) != 1)
+    if (SSL_add_application_settings(ls->ssl, (const uint8_t *) "http/1.1", 8, kChromeH1AlpsPayload,
+                                     kChromeH1AlpsPayloadLen) != 1)
     {
         LOGF("Failed to add ALPS for HTTP/1   (part of matching Chrome)");
         SSL_free(ls->ssl);

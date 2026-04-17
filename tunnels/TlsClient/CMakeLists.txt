@@ -10,7 +10,7 @@
    
 # Description:
     # Line 44 of bssl cmake: set INSTALL_ENABLED to zero
-    # At around line 720 of bssl cmake: add_executable(bssl ${BSSL_SOURCES}) is excluded if APPLE
+    # BUILD_TOOL is forced OFF so the vendored bssl executable is not built in Waterwall
 
 # I saved the original p256_64.h file as p256_64.h.original
 # and the diff of changes that I made to p256_64.h is p256_64.h.patch
@@ -116,17 +116,26 @@ target_include_directories(TlsClient PRIVATE
 # BoringSSL Configuration
 #==============================================================================
 
+set(WW_BORINGSSL_PREFIX WW_BSSL)
+set(BORINGSSL_PREFIX ${WW_BORINGSSL_PREFIX})
+set(BORINGSSL_PREFIX_SYMBOLS ${CMAKE_CURRENT_SOURCE_DIR}/boringssl_symbols.txt)
+set(WW_BORINGSSL_PREFIX_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/boringssl/symbol_prefix_include)
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/boringssl boringssl)
 
 target_include_directories(DecompressBrotli PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/boringssl/include
+    ${WW_BORINGSSL_PREFIX_INCLUDE_DIR}
 )
+target_compile_definitions(DecompressBrotli PRIVATE BORINGSSL_PREFIX=${WW_BORINGSSL_PREFIX})
 
 target_link_libraries(DecompressBrotli PRIVATE crypto ssl)
 
 target_include_directories(TlsClient PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/boringssl/include
+    ${WW_BORINGSSL_PREFIX_INCLUDE_DIR}
 )
+target_compile_definitions(TlsClient PRIVATE BORINGSSL_PREFIX=${WW_BORINGSSL_PREFIX})
 
 #==============================================================================
 # Platform-specific Configurations
@@ -141,7 +150,7 @@ if(APPLE)
 endif()
 
 # Fix for MinGW64 format string warnings
-if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
+if(TARGET bssl AND WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
     target_compile_options(bssl PRIVATE -Wno-format)
 endif()
 
@@ -149,7 +158,9 @@ if(WIN32)
     # BoringSSL on Windows points to some functions in assembly that their assembly files are only compiled on Linux
     # Adding this to switch to C version on Windows
     # More notes are above
-    target_compile_definitions(bssl       PRIVATE WW_BSSL_WIN_FIAT_NO_ASM=1)
+    if(TARGET bssl)
+        target_compile_definitions(bssl PRIVATE WW_BSSL_WIN_FIAT_NO_ASM=1)
+    endif()
     target_compile_definitions(ssl        PRIVATE WW_BSSL_WIN_FIAT_NO_ASM=1)
     target_compile_definitions(crypto     PRIVATE WW_BSSL_WIN_FIAT_NO_ASM=1)
     target_compile_definitions(pki        PRIVATE WW_BSSL_WIN_FIAT_NO_ASM=1)
@@ -168,7 +179,7 @@ set_target_properties(pki PROPERTIES UNITY_BUILD OFF)
 set_target_properties(fipsmodule PROPERTIES UNITY_BUILD OFF)
 set_target_properties(decrepit PROPERTIES UNITY_BUILD OFF)
 
-if(NOT APPLE)
+if(TARGET bssl AND NOT APPLE)
     set_target_properties(bssl PROPERTIES UNITY_BUILD OFF)
 endif()
 

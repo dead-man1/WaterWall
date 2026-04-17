@@ -473,3 +473,70 @@ JA4 is a newer, more robust fingerprinting method designed to handle modern TLS 
 Your goal is to mimic Google Chrome’s handshake signature, likely to avoid detection or ensure compatibility by making your client look like a standard Chrome browser. Here’s my take:Matching JA4: This is good. It shows that your program accurately reflects Chrome’s TLS implementation in the ways that matter most for modern fingerprinting. JA4 is the more reliable and future-proof method, especially as TLS evolves with features like TLS 1.3 and QUIC.
 Not Matching JA3: This is not bad—it’s correct and expected. Since Chrome randomizes extension order, its JA3 fingerprint varies with each connection. Your program doing the same means it behaves like Chrome, producing a different JA3 each time rather than a fixed one that could be tracked or flagged. Not matching the specific JA3 from your Wireshark capture just confirms that your randomization is working as intended.
 
+------------------------------------------------------------------------------
+
+important correction after more testing:
+
+the ALPS value that we feed to `SSL_add_application_settings()` for `h2` must be
+the raw application settings bytes only, not a serialized HTTP/2 SETTINGS frame
+and not the whole ALPS extension body.
+
+the bad idea was to take a valid nghttp2 SETTINGS payload and pass it to
+boringssl directly. that was wrong for what chrome is doing here.
+
+the corrected behavior is:
+
+    // Chrome's h2 ALPS payload is a fixed three-byte value captured on the wire.
+    // Do not replace this with a serialized HTTP/2 SETTINGS frame.
+    static const uint8_t kChromeH2AlpsPayload[] = {0x02, 0x68, 0x32};
+
+    static const void   *kChromeH1AlpsPayload    = NULL;
+    static const uint8_t kChromeH1AlpsPayloadLen = 0;
+
+and then:
+
+    SSL_add_application_settings(ls->ssl, (const uint8_t *) "h2", 2,
+                                 kChromeH2AlpsPayload, sizeof(kChromeH2AlpsPayload));
+
+    SSL_add_application_settings(ls->ssl, (const uint8_t *) "http/1.1", 8,
+                                 kChromeH1AlpsPayload, kChromeH1AlpsPayloadLen);
+
+so the main rule is:
+
+- `h2` ALPS payload = constant `0x026832`
+- `http/1.1` ALPS payload = empty
+- do not pass a packed HTTP/2 SETTINGS frame to boringssl for ALPS
+- boringssl itself builds the final ALPS wire format around the per-protocol payloads
+
+------------------------------------------------------------------------------
+
+build cleanup for boring ssl integration:
+
+my goal was to keep waterwall as the only executable from this part of the tree
+and still use boringssl freely as static libraries from code.
+
+so i updated boringssl cmake behavior like this:
+
+- keep `INSTALL_ENABLED` disabled in the vendored boring ssl build
+- add `BUILD_TOOL` support in boring ssl cmake and default it to `ON` only when boring ssl is built standalone
+- wrap `add_executable(bssl ...)` with `if(BUILD_TOOL AND NOT APPLE)`
+- guard `install(TARGETS bssl)` with `if(TARGET bssl)`
+- keep `BUILD_TOOL OFF`, `BUILD_TESTING OFF`, and `BUILD_SHARED_LIBS OFF` from `TlsClient/CMakeLists.txt`
+- guard local `bssl`-specific compile options / definitions / properties with `if(TARGET bssl)` so configuration does not fail when the tool target is disabled
+
+result:
+
+- `crypto` and `ssl` are still available and linked as static libraries
+- `TlsClient` can still use boringssl normally in code
+- the extra `bssl` executable is no longer generated in the waterwall build
+- the only executable target we want from this project path stays `Waterwall`
+
+------------------------------------------------------------------------------
+
+small boring ssl integration quality-of-life improvement:
+
+symbol prefix header generation now works with go if it exists, but it can also
+fall back to python3 and `util/make_prefix_headers.py`.
+
+that means the prefixed boring ssl build is easier to configure on machines
+where go is not present, while still keeping the symbol-prefix mechanism.
