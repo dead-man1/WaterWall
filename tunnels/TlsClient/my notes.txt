@@ -540,3 +540,42 @@ fall back to python3 and `util/make_prefix_headers.py`.
 
 that means the prefixed boring ssl build is easier to configure on machines
 where go is not present, while still keeping the symbol-prefix mechanism.
+
+------------------------------------------------------------------------------
+
+important arm / aarch64 symbol-prefix correction:
+
+when boring ssl and openssl are linked into the same final executable, it is
+not enough to prefix only the common c entry points and the x86 p256 variants.
+
+on arm64, boring ssl also exports plain aarch64 p256 assembly entry points like:
+
+- `ecp_nistz256_mul_mont`
+- `ecp_nistz256_sqr_mont`
+- `ecp_nistz256_div_by_2`
+- `ecp_nistz256_mul_by_2`
+- `ecp_nistz256_mul_by_3`
+- `ecp_nistz256_sub`
+- `ecp_nistz256_point_double`
+- `ecp_nistz256_point_add`
+- `ecp_nistz256_point_add_affine`
+- `ecp_nistz256_ord_mul_mont`
+- `ecp_nistz256_ord_sqr_mont`
+- `ecp_nistz256_select_w5`
+- `ecp_nistz256_select_w7`
+
+and arm builds also need the global capability variable:
+
+- `OPENSSL_armcap_P`
+
+if these names are missing from `boringssl_symbols.txt`, the prefix generator
+will not rewrite them, and the final link can fail with multiple-definition
+errors against openssl's own arm objects.
+
+so the rule is:
+
+- every exported boring ssl symbol that can survive into the final archive must
+  be listed in `boringssl_symbols.txt`
+- do not assume the x86 list is enough for arm builds
+- when a new architecture-specific asm export appears, add it to the symbol list
+  so `make_prefix_headers.go` / `make_prefix_headers.py` can rename it too
