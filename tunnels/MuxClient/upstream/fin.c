@@ -2,22 +2,26 @@
 
 #include "loggers/network_logger.h"
 
-// static void localAsyncCloseLine(worker_t *worker, void *arg1, void *arg2, void *arg3)
-// {
-//     discard worker;
-//     discard arg3;
+static void muxclientCloseOwnedParentLineFromUpstreamFinish(tunnel_t *t, muxclient_tstate_t *ts, wid_t wid,
+                                                            line_t *parent_l, muxclient_lstate_t *parent_ls)
+{
+    lineLock(parent_l);
 
-//     tunnel_t           *t  = arg1;
-//     line_t             *l  = arg2;
-//     muxclient_lstate_t *ls = lineGetState(l, t);
+    if (ts->unsatisfied_lines[wid] == parent_l)
+    {
+        ts->unsatisfied_lines[wid] = NULL;
+    }
 
-//     if (lineIsAlive(l))
-//     {
-//         muxclientLinestateDestroy(ls);
-//         tunnelPrevDownStreamFinish(t, l);
-//     }
-//     lineUnlock(l);
-// }
+    muxclientLinestateDestroy(parent_ls);
+    tunnelNextUpStreamFinish(t, parent_l);
+
+    if (lineIsAlive(parent_l))
+    {
+        lineDestroy(parent_l);
+    }
+
+    lineUnlock(parent_l);
+}
 
 void muxclientTunnelUpStreamFinish(tunnel_t *t, line_t *child_l)
 {
@@ -65,19 +69,12 @@ void muxclientTunnelUpStreamFinish(tunnel_t *t, line_t *child_l)
 
     if (! withLineLockedWithBuf(parent_l, tunnelNextUpStreamPayload, t, finishpacket_buf))
     {
+        tunnelPrevDownStreamFinish(t, child_l);
         return;
     }
 
     if (muxclientCheckConnectionIsExhausted(ts, parent_ls) && parent_ls->children_count == 0)
     {
-        // If the parent connection is exhausted and has no children, we can close it
-
-        if (ts->unsatisfied_lines[wid] == parent_l)
-        {
-            ts->unsatisfied_lines[wid] = NULL;
-        }
-        muxclientLinestateDestroy(parent_ls);
-        tunnelNextUpStreamFinish(t, parent_l);
-        lineDestroy(parent_l);
+        muxclientCloseOwnedParentLineFromUpstreamFinish(t, ts, wid, parent_l, parent_ls);
     }
 }

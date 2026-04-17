@@ -31,18 +31,17 @@ void muxclientTunnelUpStreamInit(tunnel_t *t, line_t *child_l)
 
     cid_t new_cid = parent_ls->connection_id + 1;
 
+    muxclientLinestateInitialize(child_ls, child_l, true, new_cid);
+    muxclientJoinConnection(parent_ls, child_ls);
+
     sbuf_t *initpacket_buf = bufferpoolGetLargeBuffer(lineGetBufferPool(parent_l));
     muxclientMakeMuxFrame(initpacket_buf, new_cid, kMuxFlagOpen);
 
     if (! withLineLockedWithBuf(parent_l, tunnelNextUpStreamPayload, t, initpacket_buf))
     {
-        tunnelPrevDownStreamFinish(t, child_l);
         return;
     }
 
     parent_ls->connection_id = new_cid;
-    muxclientLinestateInitialize(child_ls, child_l, true, new_cid);
-    muxclientJoinConnection(parent_ls, child_ls);
-
     tunnelPrevDownStreamEst(t, child_l);
 }

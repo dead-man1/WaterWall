@@ -4,6 +4,23 @@
 
 static muxserver_lstate_t *findChildByConnectionId(muxserver_lstate_t *parent_ls, uint32_t cid);
 
+static void muxserverCloseOwnedChildLineFromUpstreamPayload(tunnel_t *t, line_t *child_l,
+                                                            muxserver_lstate_t *child_ls)
+{
+    lineLock(child_l);
+
+    muxserverLeaveConnection(child_ls);
+    muxserverLinestateDestroy(child_ls);
+    tunnelNextUpStreamFinish(t, child_l);
+
+    if (lineIsAlive(child_l))
+    {
+        lineDestroy(child_l);
+    }
+
+    lineUnlock(child_l);
+}
+
 static sbuf_t *tryReadCompleteFrame(muxserver_lstate_t *parent_ls, mux_frame_t *frame)
 {
     if (bufferstreamGetBufLen(&(parent_ls->read_stream)) < kMuxFrameLength)
@@ -103,10 +120,7 @@ static void processFrameForChild(tunnel_t *t, line_t *parent_l, mux_frame_t *fra
     case kMuxFlagClose:
         LOGD("MuxServer: UpStreamPayload: Close frame received, cid: %u", frame->cid);
         lineReuseBuffer(parent_l, frame_buffer);
-        muxserverLeaveConnection(child_ls);
-        muxserverLinestateDestroy(child_ls);
-        tunnelNextUpStreamFinish(t, child_l);
-        lineDestroy(child_l);
+        muxserverCloseOwnedChildLineFromUpstreamPayload(t, child_l, child_ls);
         break;
 
     case kMuxFlagFlowPause:
@@ -154,10 +168,7 @@ static void handleOverFlow(tunnel_t *t, line_t *parent_l)
     {
         muxserver_lstate_t *temp    = child_ls->child_next;
         line_t             *child_l = child_ls->l;
-        muxserverLeaveConnection(child_ls);
-        muxserverLinestateDestroy(child_ls);
-        tunnelNextUpStreamFinish(t, child_l);
-        lineDestroy(child_l);
+        muxserverCloseOwnedChildLineFromUpstreamPayload(t, child_l, child_ls);
         child_ls = temp;
     }
 

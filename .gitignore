@@ -8,7 +8,7 @@ ww/cmake/version.txt
 gen.py
 cacert.pem
 todo.txt
-
+.codex
 #compiled bins
 /dist
 *.exe

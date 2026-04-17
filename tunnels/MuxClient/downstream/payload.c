@@ -2,6 +2,29 @@
 
 #include "loggers/network_logger.h"
 
+static void muxclientCloseOwnedParentLineFromDownstreamPayload(tunnel_t *t, muxclient_tstate_t *ts, line_t *parent_l,
+                                                               muxclient_lstate_t *parent_ls)
+{
+    wid_t wid = lineGetWID(parent_l);
+
+    lineLock(parent_l);
+
+    if (ts->unsatisfied_lines[wid] == parent_l)
+    {
+        ts->unsatisfied_lines[wid] = NULL;
+    }
+
+    muxclientLinestateDestroy(parent_ls);
+    tunnelNextUpStreamFinish(t, parent_l);
+
+    if (lineIsAlive(parent_l))
+    {
+        lineDestroy(parent_l);
+    }
+
+    lineUnlock(parent_l);
+}
+
 static sbuf_t *tryReadCompleteFrame(muxclient_lstate_t *parent_ls, mux_frame_t *frame)
 {
     if (bufferstreamGetBufLen(&(parent_ls->read_stream)) < kMuxFrameLength)
@@ -69,7 +92,6 @@ static bool handleCloseFrame(tunnel_t *t, line_t *parent_l, mux_frame_t *frame, 
                              muxclient_tstate_t *ts, muxclient_lstate_t *parent_ls, muxclient_lstate_t *child_ls)
 {
     line_t *child_l = child_ls->l;
-    wid_t   wid     = lineGetWID(parent_l);
 
     LOGD("MuxClient: DownStreamPayload: Close frame received, cid: %u", frame->cid);
     lineReuseBuffer(parent_l, frame_buffer);
@@ -79,13 +101,7 @@ static bool handleCloseFrame(tunnel_t *t, line_t *parent_l, mux_frame_t *frame, 
 
     if (muxclientCheckConnectionIsExhausted(ts, parent_ls) && parent_ls->children_count == 0)
     {
-        if (ts->unsatisfied_lines[wid] == parent_l)
-        {
-            ts->unsatisfied_lines[wid] = NULL;
-        }
-        muxclientLinestateDestroy(parent_ls);
-        tunnelNextUpStreamFinish(t, parent_l);
-        lineDestroy(parent_l);
+        muxclientCloseOwnedParentLineFromDownstreamPayload(t, ts, parent_l, parent_ls);
         return false;
     }
     return true;
@@ -152,10 +168,6 @@ static void handleOverFlow(tunnel_t *t, line_t *parent_l)
 {
     muxclient_tstate_t *ts        = tunnelGetState(t);
     muxclient_lstate_t *parent_ls = lineGetState(parent_l, t);
-    if (ts->unsatisfied_lines[lineGetWID(parent_l)] == parent_l)
-    {
-        ts->unsatisfied_lines[lineGetWID(parent_l)] = NULL;
-    }
 
     muxclient_lstate_t *child_ls = parent_ls->child_next;
     while (child_ls)
@@ -168,9 +180,7 @@ static void handleOverFlow(tunnel_t *t, line_t *parent_l)
         child_ls = temp;
     }
 
-    muxclientLinestateDestroy(parent_ls);
-    tunnelNextUpStreamFinish(t, parent_l);
-    lineDestroy(parent_l);
+    muxclientCloseOwnedParentLineFromDownstreamPayload(t, ts, parent_l, parent_ls);
 }
 
 void muxclientTunnelDownStreamPayload(tunnel_t *t, line_t *parent_l, sbuf_t *buf)
