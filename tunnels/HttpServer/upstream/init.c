@@ -31,7 +31,6 @@ void httpserverTunnelUpStreamInit(tunnel_t *t, line_t *l)
 
     if (! withLineLocked(l, tunnelNextUpStreamInit, t))
     {
-        httpserverLinestateDestroy(ls);
         lineUnlock(l);
         return;
     }

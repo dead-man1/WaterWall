@@ -16,6 +16,6 @@ void tlsserverTunnelUpStreamInit(tunnel_t *t, line_t *l)
 
     if (! withLineLocked(l, tunnelNextUpStreamInit, t))
     {
-        tlsserverLinestateDestroy(ls);
+        return;
     }
 }
