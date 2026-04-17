@@ -128,6 +128,14 @@
             ]
         },
         {
+            "name": "windows-rwd",
+            "configurePreset": "windows",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
             "name": "windows-debug",
             "configurePreset": "windows",
             "configuration": "Debug",
@@ -143,8 +151,40 @@
             ]
         },
         {
+            "name": "windows-arm32-debug",
+            "configurePreset": "windows-arm32",
+            "configuration": "Debug",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
+            "name": "windows-arm32-rwd",
+            "configurePreset": "windows-arm32",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
             "name": "windows-arm64",
             "configurePreset": "windows-arm64",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
+            "name": "windows-arm64-debug",
+            "configurePreset": "windows-arm64",
+            "configuration": "Debug",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
+            "name": "windows-arm64-rwd",
+            "configurePreset": "windows-arm64",
+            "configuration": "RelWithDebInfo",
             "inherits": [
                 "host-windows"
             ]
@@ -157,8 +197,40 @@
             ]
         },
         {
+            "name": "windows-x86-debug",
+            "configurePreset": "windows-x86",
+            "configuration": "Debug",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
+            "name": "windows-x86-rwd",
+            "configurePreset": "windows-x86",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
             "name": "windows-x86-64",
             "configurePreset": "windows-x86-64",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
+            "name": "windows-x86-64-debug",
+            "configurePreset": "windows-x86-64",
+            "configuration": "Debug",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
+            "name": "windows-x86-64-rwd",
+            "configurePreset": "windows-x86-64",
+            "configuration": "RelWithDebInfo",
             "inherits": [
                 "host-windows"
             ]
@@ -179,8 +251,32 @@
             ]
         },
         {
+            "name": "windows-msys-clang-rwd",
+            "configurePreset": "windows-msys-clang",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
             "name": "windows-mingw",
             "configurePreset": "windows-mingw",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
+            "name": "windows-mingw-debug",
+            "configurePreset": "windows-mingw",
+            "configuration": "Debug",
+            "inherits": [
+                "host-windows"
+            ]
+        },
+        {
+            "name": "windows-mingw-rwd",
+            "configurePreset": "windows-mingw",
+            "configuration": "RelWithDebInfo",
             "inherits": [
                 "host-windows"
             ]

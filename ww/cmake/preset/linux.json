@@ -106,6 +106,22 @@
             ]
         },
         {
+            "name": "linux-clang-x64-debug",
+            "configurePreset": "linux-clang-x64",
+            "configuration": "Debug",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
+            "name": "linux-clang-x64-rwd",
+            "configurePreset": "linux-clang-x64",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
             "name": "linux-clang-avx512f-x64",
             "configurePreset": "linux-clang-avx512f-x64",
             "inherits": [
@@ -113,8 +129,40 @@
             ]
         },
         {
+            "name": "linux-clang-avx512f-x64-debug",
+            "configurePreset": "linux-clang-avx512f-x64",
+            "configuration": "Debug",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
+            "name": "linux-clang-avx512f-x64-rwd",
+            "configurePreset": "linux-clang-avx512f-x64",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
             "name": "linux-gcc-x64",
             "configurePreset": "linux-gcc-x64",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
+            "name": "linux-gcc-x64-debug",
+            "configurePreset": "linux-gcc-x64",
+            "configuration": "Debug",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
+            "name": "linux-gcc-x64-rwd",
+            "configurePreset": "linux-gcc-x64",
+            "configuration": "RelWithDebInfo",
             "inherits": [
                 "host-linux"
             ]
@@ -143,6 +191,22 @@
             ]
         },
         {
+            "name": "linux-gcc-x64-old-cpu-debug",
+            "configurePreset": "linux-gcc-x64-old-cpu",
+            "configuration": "Debug",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
+            "name": "linux-gcc-x64-old-cpu-rwd",
+            "configurePreset": "linux-gcc-x64-old-cpu",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
             "name": "linux-gcc-arm64",
             "configurePreset": "linux-gcc-arm64",
             "inherits": [
@@ -150,8 +214,40 @@
             ]
         },
         {
+            "name": "linux-gcc-arm64-debug",
+            "configurePreset": "linux-gcc-arm64",
+            "configuration": "Debug",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
+            "name": "linux-gcc-arm64-rwd",
+            "configurePreset": "linux-gcc-arm64",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
             "name": "linux-gcc-arm64-old-cpu",
             "configurePreset": "linux-gcc-arm64-old-cpu",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
+            "name": "linux-gcc-arm64-old-cpu-debug",
+            "configurePreset": "linux-gcc-arm64-old-cpu",
+            "configuration": "Debug",
+            "inherits": [
+                "host-linux"
+            ]
+        },
+        {
+            "name": "linux-gcc-arm64-old-cpu-rwd",
+            "configurePreset": "linux-gcc-arm64-old-cpu",
+            "configuration": "RelWithDebInfo",
             "inherits": [
                 "host-linux"
             ]

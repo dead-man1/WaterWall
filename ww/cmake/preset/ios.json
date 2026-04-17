@@ -45,8 +45,44 @@
             ]
         },
         {
+            "name": "ios-debug",
+            "configurePreset": "ios",
+            "configuration": "Debug",
+            "inherits": [
+                "host-macos",
+                "build-options"
+            ]
+        },
+        {
+            "name": "ios-rwd",
+            "configurePreset": "ios",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-macos",
+                "build-options"
+            ]
+        },
+        {
             "name": "ios_sim",
             "configurePreset": "ios_sim",
+            "inherits": [
+                "host-macos",
+                "build-options"
+            ]
+        },
+        {
+            "name": "ios_sim-debug",
+            "configurePreset": "ios_sim",
+            "configuration": "Debug",
+            "inherits": [
+                "host-macos",
+                "build-options"
+            ]
+        },
+        {
+            "name": "ios_sim-rwd",
+            "configurePreset": "ios_sim",
+            "configuration": "RelWithDebInfo",
             "inherits": [
                 "host-macos",
                 "build-options"

@@ -23,6 +23,22 @@
             "inherits": [
                 "host-macos"
             ]
+        },
+        {
+            "name": "macos-debug",
+            "configurePreset": "macos",
+            "configuration": "Debug",
+            "inherits": [
+                "host-macos"
+            ]
+        },
+        {
+            "name": "macos-rwd",
+            "configurePreset": "macos",
+            "configuration": "RelWithDebInfo",
+            "inherits": [
+                "host-macos"
+            ]
         }
     ],
     "testPresets": [
