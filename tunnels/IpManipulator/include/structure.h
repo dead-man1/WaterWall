@@ -38,6 +38,9 @@ typedef struct ipmanipulator_tstate_s
     bool     trick_echo_sni_random_tcp_sequence;
     char    *trick_echo_sni_first_sni;
     uint16_t trick_echo_sni_first_sni_len;
+    uint32_t trick_echo_sni_count;
+    uint32_t trick_echo_sni_replay_delay_ms;
+    uint32_t trick_echo_sni_final_delay_ms;
     int      trick_echo_sni_ttl;
 
     enum tcp_bit_action_dynamic_value up_tcp_bit_cwr_action;

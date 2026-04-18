@@ -47,6 +47,9 @@ Typical use cases include:
     "protoswap-tcp-2": 254,
     "protoswap-udp": 252,
     "first-sni": "cover.example.net",
+    "echo-sni-count": 3,
+    "echo-sni-replay-delay": 20,
+    "echo-sni-final-delay": 50,
     "echo-sni-ttl": 1,
     "echo-sni-random-tcp-sequence": true,
     "sni-blender": true,
@@ -115,6 +118,29 @@ If none of the supported trick settings are present, tunnel creation fails with:
   Optional.
 
   When present, the crafted EchoSNI packet is sent with this IPv4 TTL value.
+
+- `echo-sni-count` `(integer)`
+  Optional.
+
+  Number of crafted EchoSNI packets to send before the original ClientHello.
+
+  Defaults to `1`.
+
+- `echo-sni-replay-delay` `(integer)`
+  Optional.
+
+  Delay in milliseconds between crafted EchoSNI replays after the first one.
+
+  Defaults to `0`.
+
+  This value only matters when `echo-sni-count` is greater than `1`.
+
+- `echo-sni-final-delay` `(integer)`
+  Optional.
+
+  Delay in milliseconds between the last crafted EchoSNI packet and the original ClientHello.
+
+  Defaults to `0`.
 
 - `echo-sni-random-tcp-sequence` `(boolean)`
   Optional.

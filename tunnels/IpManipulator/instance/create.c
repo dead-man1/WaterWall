@@ -88,11 +88,17 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
         state->trick_sni_blender = true;
     }
 
-    state->trick_echo_sni_ttl = -1;
+    state->trick_echo_sni_count           = 1;
+    state->trick_echo_sni_replay_delay_ms = 0;
+    state->trick_echo_sni_final_delay_ms  = 0;
+    state->trick_echo_sni_ttl             = -1;
 
     bool has_first_sni = getStringFromJsonObject(&state->trick_echo_sni_first_sni, settings, "first-sni");
     if (has_first_sni)
     {
+        int echo_sni_count = 1;
+        int replay_delay_ms = 0;
+        int final_delay_ms  = 0;
         size_t first_sni_len = stringLength(state->trick_echo_sni_first_sni);
 
         if (first_sni_len == 0)
@@ -105,6 +111,44 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
         if (first_sni_len > UINT16_MAX)
         {
             LOGF("IpManipulator: EchoSNI field \"first-sni\" must fit in 16-bit TLS length fields");
+            tunnelDestroy(t);
+            return NULL;
+        }
+
+        if (getIntFromJsonObject(&echo_sni_count, settings, "echo-sni-count"))
+        {
+            if (echo_sni_count <= 0)
+            {
+                LOGF("IpManipulator: EchoSNI field \"echo-sni-count\" must be greater than zero");
+                tunnelDestroy(t);
+                return NULL;
+            }
+        }
+
+        if (getIntFromJsonObject(&replay_delay_ms, settings, "echo-sni-replay-delay"))
+        {
+            if (replay_delay_ms < 0)
+            {
+                LOGF("IpManipulator: EchoSNI field \"echo-sni-replay-delay\" must be zero or greater");
+                tunnelDestroy(t);
+                return NULL;
+            }
+        }
+
+        if (getIntFromJsonObject(&final_delay_ms, settings, "echo-sni-final-delay"))
+        {
+            if (final_delay_ms < 0)
+            {
+                LOGF("IpManipulator: EchoSNI field \"echo-sni-final-delay\" must be zero or greater");
+                tunnelDestroy(t);
+                return NULL;
+            }
+        }
+
+        if (echo_sni_count > 1 && replay_delay_ms > 0 &&
+            ((uint64_t) (echo_sni_count - 1) * (uint64_t) replay_delay_ms) > UINT32_MAX)
+        {
+            LOGF("IpManipulator: EchoSNI replay schedule exceeds supported delay range");
             tunnelDestroy(t);
             return NULL;
         }
@@ -122,6 +166,9 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
         getBoolFromJsonObject(&state->trick_echo_sni_random_tcp_sequence, settings, "echo-sni-random-tcp-sequence");
 
         state->trick_echo_sni_first_sni_len = (uint16_t) first_sni_len;
+        state->trick_echo_sni_count         = (uint32_t) echo_sni_count;
+        state->trick_echo_sni_replay_delay_ms = (uint32_t) replay_delay_ms;
+        state->trick_echo_sni_final_delay_ms  = (uint32_t) final_delay_ms;
         state->trick_echo_sni               = true;
     }
 

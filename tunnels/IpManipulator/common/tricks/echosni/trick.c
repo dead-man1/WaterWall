@@ -370,10 +370,75 @@ static sbuf_t *craftEchoSniPacket(tunnel_t *t, line_t *l, sbuf_t *buf, const ech
     return clone;
 }
 
+static void prepareEchoSniPacketForSend(tunnel_t *t, sbuf_t *packet)
+{
+    ipmanipulator_tstate_t *state = tunnelGetState(t);
+
+    if (state->trick_echo_sni_ttl >= 0)
+    {
+        struct ip_hdr *fake_ipheader = (struct ip_hdr *) sbufGetMutablePtr(packet);
+        IPH_TTL_SET(fake_ipheader, (uint8_t) state->trick_echo_sni_ttl);
+    }
+
+    if (state->trick_echo_sni_random_tcp_sequence)
+    {
+        setTcpSequenceRandom(sbufGetMutablePtr(packet), sbufGetLength(packet));
+    }
+}
+
+static void echosnitrickSendEchoPacket(tunnel_t *t, line_t *l, sbuf_t *buf)
+{
+    prepareEchoSniPacketForSend(t, buf);
+    lineSetRecalculateChecksum(l, true);
+    tunnelNextUpStreamPayload(t, l, buf);
+}
+
+static void echosnitrickSendOriginalPacket(tunnel_t *t, line_t *l, sbuf_t *buf)
+{
+    /*
+        Packet lines are shared worker state, so delayed sends cannot rely on the
+        current recalculate_checksum scratch flag still belonging to this packet.
+        Recomputing here is safe for the original packet and preserves correctness
+        if earlier tricks in the same pass already changed it.
+    */
+    lineSetRecalculateChecksum(l, true);
+    tunnelNextUpStreamPayload(t, l, buf);
+}
+
+static void echosnitrickSendLastEchoThenOriginal(tunnel_t *t, line_t *l, sbuf_t *buf)
+{
+    ipmanipulator_tstate_t *state = tunnelGetState(t);
+    echosni_match_t         match = {0};
+
+    if (parseClientHelloSni((const uint8_t *) sbufGetRawPtr(buf), sbufGetLength(buf), &match))
+    {
+        sbuf_t *fake_packet = craftEchoSniPacket(t, l, buf, &match);
+        if (fake_packet != NULL)
+        {
+            echosnitrickSendEchoPacket(t, l, fake_packet);
+
+            if (! lineIsAlive(l))
+            {
+                reuseBuffer(buf);
+                return;
+            }
+        }
+    }
+
+    if (state->trick_echo_sni_final_delay_ms > 0)
+    {
+        lineScheduleDelayedTaskWithBuf(l, echosnitrickSendOriginalPacket, state->trick_echo_sni_final_delay_ms, t, buf);
+        return;
+    }
+
+    echosnitrickSendOriginalPacket(t, l, buf);
+}
+
 bool echosnitrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     ipmanipulator_tstate_t *state = tunnelGetState(t);
     echosni_match_t         match = {0};
+    buffer_pool_t          *pool = lineGetBufferPool(l);
 
     if (! parseClientHelloSni((const uint8_t *) sbufGetRawPtr(buf), sbufGetLength(buf), &match))
     {
@@ -386,27 +451,12 @@ bool echosnitrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         return false;
     }
 
-    LOGD("IpManipulator: EchoSNI injected SNI \"%s\" before forwarding the original ClientHello",
-         state->trick_echo_sni_first_sni);
-
-    buffer_pool_t *pool              = lineGetBufferPool(l);
-    bool           original_recalc   = lineGetRecalculateChecksum(l);
+    LOGD("IpManipulator: EchoSNI injected SNI \"%s\" %u time(s) before forwarding the original ClientHello",
+         state->trick_echo_sni_first_sni, state->trick_echo_sni_count);
 
     lineLock(l);
 
-    if (state->trick_echo_sni_ttl >= 0)
-    {
-        struct ip_hdr *fake_ipheader = (struct ip_hdr *) sbufGetMutablePtr(fake_packet);
-        IPH_TTL_SET(fake_ipheader, (uint8_t) state->trick_echo_sni_ttl);
-    }
-
-    if (state->trick_echo_sni_random_tcp_sequence)
-    {
-        setTcpSequenceRandom(sbufGetMutablePtr(fake_packet), sbufGetLength(fake_packet));
-    }
-
-    lineSetRecalculateChecksum(l, true);
-    tunnelNextUpStreamPayload(t, l, fake_packet);
+    echosnitrickSendEchoPacket(t, l, fake_packet);
 
     if (! lineIsAlive(l))
     {
@@ -415,14 +465,67 @@ bool echosnitrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         return true;
     }
 
-    lineSetRecalculateChecksum(l, original_recalc);
-    tunnelNextUpStreamPayload(t, l, buf);
-
-    if (! lineIsAlive(l))
+    if (state->trick_echo_sni_count == 1)
     {
+        if (state->trick_echo_sni_final_delay_ms > 0)
+        {
+            lineScheduleDelayedTaskWithBuf(l, echosnitrickSendOriginalPacket, state->trick_echo_sni_final_delay_ms, t,
+                                           buf);
+            lineUnlock(l);
+            return true;
+        }
+
+        echosnitrickSendOriginalPacket(t, l, buf);
         lineUnlock(l);
         return true;
     }
+
+    if (state->trick_echo_sni_replay_delay_ms == 0)
+    {
+        for (uint32_t echo_index = 1; echo_index < state->trick_echo_sni_count; ++echo_index)
+        {
+            sbuf_t *extra_echo = craftEchoSniPacket(t, l, buf, &match);
+            if (extra_echo == NULL)
+            {
+                break;
+            }
+
+            echosnitrickSendEchoPacket(t, l, extra_echo);
+            if (! lineIsAlive(l))
+            {
+                reuseBuffer(buf);
+                lineUnlock(l);
+                return true;
+            }
+        }
+
+        if (state->trick_echo_sni_final_delay_ms > 0)
+        {
+            lineScheduleDelayedTaskWithBuf(l, echosnitrickSendOriginalPacket, state->trick_echo_sni_final_delay_ms, t,
+                                           buf);
+            lineUnlock(l);
+            return true;
+        }
+
+        echosnitrickSendOriginalPacket(t, l, buf);
+        lineUnlock(l);
+        return true;
+    }
+
+    for (uint32_t echo_index = 1; echo_index + 1 < state->trick_echo_sni_count; ++echo_index)
+    {
+        sbuf_t *scheduled_echo = craftEchoSniPacket(t, l, buf, &match);
+        if (scheduled_echo == NULL)
+        {
+            break;
+        }
+
+        uint32_t delay_ms = echo_index * state->trick_echo_sni_replay_delay_ms;
+        lineScheduleDelayedTaskWithBuf(l, echosnitrickSendEchoPacket, delay_ms, t, scheduled_echo);
+    }
+
+    lineScheduleDelayedTaskWithBuf(l, echosnitrickSendLastEchoThenOriginal,
+                                   (state->trick_echo_sni_count - 1) * state->trick_echo_sni_replay_delay_ms, t, buf);
 
     lineUnlock(l);
     return true;
