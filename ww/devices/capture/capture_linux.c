@@ -427,11 +427,11 @@ static WTHREAD_ROUTINE(routineReadFromCapture) // NOLINT
                 }
 
                 // Length was set in netfilterGetPacket via sbufSetLength
-                if (UNLIKELY(sbufGetLength(bufs[queued_count]) > GLOBAL_MTU_SIZE))
+                if (UNLIKELY(sbufGetLength(bufs[queued_count]) > kMaxAllowedPacketLength))
                 {
                     // we are capturing packets and this can happen, so we just log it
-                    LOGW("CaptureDevice: ReadThread: discarded a packet -> size %d exceeds GLOBAL_MTU_SIZE %d",
-                         sbufGetLength(bufs[queued_count]), GLOBAL_MTU_SIZE);
+                    LOGW("CaptureDevice: ReadThread: discarded a packet -> size %d exceeds kMaxAllowedPacketLength %d",
+                         sbufGetLength(bufs[queued_count]), kMaxAllowedPacketLength);
                     bufferpoolReuseBuffer(cdev->reader_buffer_pool, bufs[queued_count]);
                     continue;
                 }

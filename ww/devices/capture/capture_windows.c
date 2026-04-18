@@ -391,11 +391,11 @@ static WTHREAD_ROUTINE(routineReadFromCapture) // NOLINT
 
         sbufSetLength(buf, read_packet_len);
 
-        if (UNLIKELY(sbufGetLength(buf) > GLOBAL_MTU_SIZE))
+        if (UNLIKELY(sbufGetLength(buf) > kMaxAllowedPacketLength))
         {
             // we are capturing packets and this can happen, so we just log it
-            LOGW("CaptureDevice: ReadThread: discarded a packet -> size %d exceeds GLOBAL_MTU_SIZE %d",
-                 sbufGetLength(buf), GLOBAL_MTU_SIZE);
+            LOGW("CaptureDevice: ReadThread: discarded a packet -> size %d exceeds kMaxAllowedPacketLength %d",
+                 sbufGetLength(buf), kMaxAllowedPacketLength);
   
             bufferpoolReuseBuffer(cdev->reader_buffer_pool, buf);
             continue;

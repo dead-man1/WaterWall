@@ -42,9 +42,9 @@ static WTHREAD_ROUTINE(routineWriteToRaw) // NOLINT
 
         int cnt  = 0;
         int len0 = sbufGetLength(buf);
-        if (UNLIKELY(GLOBAL_MTU_SIZE < len0))
+        if (UNLIKELY(kMaxAllowedPacketLength < len0))
         {
-            LOGE("RawDevice: WriteThread: Packet size %d exceeds GLOBAL_MTU_SIZE %d", len0, GLOBAL_MTU_SIZE);
+            LOGE("RawDevice: WriteThread: Packet size %d exceeds kMaxAllowedPacketLength %d", len0, kMaxAllowedPacketLength);
             LOGF("RawDevice: This is related to the MTU size, (core.json) please set a correct value for 'mtu' in the "
                  "'misc' section");
             bufferpoolReuseBuffer(rdev->writer_buffer_pool, buf);

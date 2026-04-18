@@ -160,7 +160,7 @@ enum ram_profiles_e
 
 #define SMALL_BUFFER_SIZE 1500
 
-#define kMaxAllowedPacketLength (65535 - 2) // value of uint16_t, since we use 2 bytes to store the length of the packet in the buffer
+#define kMaxAllowedPacketLength SMALL_BUFFER_SIZE
 
 /*
     large buffer size is used for large buffers that are allocated for Tcp Read/Write buffers
