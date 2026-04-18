@@ -390,7 +390,7 @@ static void echosnitrickSendEchoPacket(tunnel_t *t, line_t *l, sbuf_t *buf)
 {
     prepareEchoSniPacketForSend(t, buf);
     lineSetRecalculateChecksum(l, true);
-    tunnelNextUpStreamPayload(t, l, buf);
+    ipmanipulatorSendUpstreamFinal(t, l, buf);
 }
 
 static void echosnitrickSendOriginalPacket(tunnel_t *t, line_t *l, sbuf_t *buf)
@@ -402,7 +402,7 @@ static void echosnitrickSendOriginalPacket(tunnel_t *t, line_t *l, sbuf_t *buf)
         if earlier tricks in the same pass already changed it.
     */
     lineSetRecalculateChecksum(l, true);
-    tunnelNextUpStreamPayload(t, l, buf);
+    ipmanipulatorSendUpstreamFinal(t, l, buf);
 }
 
 static void echosnitrickSendLastEchoThenOriginal(tunnel_t *t, line_t *l, sbuf_t *buf)

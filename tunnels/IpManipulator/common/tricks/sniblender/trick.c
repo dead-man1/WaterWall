@@ -203,7 +203,7 @@ bool sniblendertrickUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
     {
         int packet_i                = shuffled_indices[idx];
         l->recalculate_checksum     = true;
-        tunnelNextUpStreamPayload(t, l, crafted_packets[packet_i]);
+        ipmanipulatorSendUpstreamFinal(t, l, crafted_packets[packet_i]);
         crafted_packets[packet_i] = NULL;
     }
 

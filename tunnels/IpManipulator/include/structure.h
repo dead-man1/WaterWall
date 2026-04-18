@@ -24,6 +24,8 @@ typedef struct ipmanipulator_tstate_s
     uint64_t trick_sni_blender : 1;
     uint64_t trick_echo_sni : 1;
     uint64_t trick_tcp_bit_changes : 1;
+    uint64_t trick_packet_duplicate : 1;
+    uint64_t trick_bit_transport : 1;
 
     int trick_proto_swap_tcp_number;
     int trick_proto_swap_tcp_number_2;
@@ -34,6 +36,7 @@ typedef struct ipmanipulator_tstate_s
 
     int trick_sni_blender_packets_count;
     int trick_sni_blender_packets_delay_max;
+    int trick_packet_duplicate_count;
 
     bool     trick_echo_sni_random_tcp_sequence;
     char    *trick_echo_sni_first_sni;
@@ -102,3 +105,6 @@ void ipmanipulatorDownStreamResume(tunnel_t *t, line_t *l);
 
 void ipmanipulatorLinestateInitialize(ipmanipulator_lstate_t *ls);
 void ipmanipulatorLinestateDestroy(ipmanipulator_lstate_t *ls);
+
+void ipmanipulatorSendUpstreamFinal(tunnel_t *t, line_t *l, sbuf_t *buf);
+void ipmanipulatorSendDownstreamFinal(tunnel_t *t, line_t *l, sbuf_t *buf);

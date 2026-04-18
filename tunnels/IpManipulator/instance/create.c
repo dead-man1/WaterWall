@@ -88,6 +88,22 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
         state->trick_sni_blender = true;
     }
 
+    if (getIntFromJsonObject(&state->trick_packet_duplicate_count, settings, "packet-duplicate"))
+    {
+        if (state->trick_packet_duplicate_count <= 0)
+        {
+            LOGF("IpManipulator: packet-duplicate must be greater than zero");
+            tunnelDestroy(t);
+            return NULL;
+        }
+
+        state->trick_packet_duplicate = true;
+    }
+
+    bool bit_transport_enabled = false;
+    getBoolFromJsonObject(&bit_transport_enabled, settings, "bit-transport");
+    state->trick_bit_transport = bit_transport_enabled;
+
     state->trick_echo_sni_count           = 1;
     state->trick_echo_sni_replay_delay_ms = 0;
     state->trick_echo_sni_final_delay_ms  = 0;
@@ -208,7 +224,7 @@ tunnel_t *ipmanipulatorCreate(node_t *node)
          state->up_tcp_bit_syn_action != kDvsNoAction || state->up_tcp_bit_fin_action != kDvsNoAction);
 
     if (! (state->trick_proto_swap || state->trick_sni_blender || state->trick_echo_sni ||
-           state->trick_tcp_bit_changes))
+           state->trick_tcp_bit_changes || state->trick_packet_duplicate || state->trick_bit_transport))
     {
         LOGF("IpManipulator: no tricks are enabled, nothing to do");
         tunnelDestroy(t);

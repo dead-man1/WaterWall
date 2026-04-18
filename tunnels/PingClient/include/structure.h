@@ -14,7 +14,7 @@ typedef struct pingclient_tstate_s
     uint8_t     ttl;
     uint8_t     tos;
     uint8_t     strategy;
-    uint8_t     swap_identifier;
+    uint8_t     swap_protocol;
     uint8_t     payload_xor_byte;
     bool        payload_xor_enabled;
     bool        roundup_payload_size;

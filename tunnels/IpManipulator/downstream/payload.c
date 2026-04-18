@@ -17,7 +17,11 @@ void ipmanipulatorDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
     if (state->trick_tcp_bit_changes)
     {
-        tcpbitchangetrickDownStreamPayload(t, l, buf);
+        tcpbitchangetrickDownStreamPayload(t, l, &buf);
+        if (buf == NULL)
+        {
+            return;
+        }
     }
 
     if (state->trick_sni_blender)
@@ -25,5 +29,5 @@ void ipmanipulatorDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         sniblendertrickDownStreamPayload(t, l, buf);
     }
 
-    tunnelPrevDownStreamPayload(t, l, buf);
+    ipmanipulatorSendDownstreamFinal(t, l, buf);
 }

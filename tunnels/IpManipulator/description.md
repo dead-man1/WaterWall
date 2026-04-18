@@ -4,17 +4,19 @@
 
 It is meant for layer-3 chains where the payload is already a raw IP packet, not a normal TCP stream line.
 
-The current implementation provides three classes of tricks:
+The current implementation provides these classes of tricks:
 
 - protocol-number swapping
 - TLS ClientHello echo (`EchoSNI`)
 - TLS ClientHello fragmentation and shuffle (`sni-blender`)
 - TCP flag bit rewriting
+- final-packet duplication
 
 ## What It Does
 
 - Reads raw packet payload on the upstream and downstream packet paths.
 - Applies enabled packet tricks in place.
+- Optionally duplicates the final outgoing packet after all other enabled tricks.
 - Marks packets for checksum recalculation when it changes protocol or TCP flags.
 - Can replace one outgoing TLS ClientHello packet with multiple shuffled IP fragments.
 
@@ -54,6 +56,7 @@ Typical use cases include:
     "echo-sni-random-tcp-sequence": true,
     "sni-blender": true,
     "sni-blender-packets": 4,
+    "packet-duplicate": 2,
     "up-tcp-bit-psh": "off",
     "up-tcp-bit-ack": "toggle",
     "dw-tcp-bit-syn": "packet->ack"
@@ -109,6 +112,15 @@ If none of the supported trick settings are present, tunnel creation fails with:
   Valid range in the current implementation:
   - `1` to `16`
 
+### Packet duplication settings
+
+- `packet-duplicate` `(integer)`
+  Optional.
+
+  Duplicates each final outgoing packet this many times, then sends the original packet once.
+
+  This is applied as the last step of `IpManipulator`, after all other enabled tricks have finished shaping the packet.
+
 ### EchoSNI settings
 
 - `first-sni` `(string)`
@@ -158,14 +170,14 @@ The current implementation supports these key prefixes:
 
 Supported suffixes are:
 
-- `cwr`
-- `ece`
-- `urg`
-- `ack`
-- `psh`
-- `rst`
-- `syn`
-- `fin`
+- `"up-tcp-bit-cwr":"off",`
+- `"up-tcp-bit-ece":"off",`
+- `"up-tcp-bit-urg":"off",`
+- `"up-tcp-bit-ack":"off",`
+- `"up-tcp-bit-psh":"off",`
+- `"up-tcp-bit-rst":"off",`
+- `"up-tcp-bit-syn":"on",`
+- `"up-tcp-bit-fin":"off"`
 
 Example keys:
 
@@ -191,6 +203,13 @@ Supported values are:
 - `packet->fin`
 
 `flip` and `switch` are accepted as aliases for `toggle`.
+
+- `bit-transport` `(boolean)`
+  Optional.
+
+  When `true`, directions with configured TCP-bit rewrite actions append the original TCP flags byte to the end of the TCP transport payload before rewriting flags.
+
+  Directions with no TCP-bit rewrite actions treat that final payload byte as the transported original flags, restore the TCP flags from it, and shrink the packet by one byte.
 
 ## Detailed Behavior
 
@@ -277,6 +296,12 @@ If any flag changes:
 - `line->recalculate_checksum` is set to `true`
 
 This happens independently on upstream and downstream using the `up-...` and `dw-...` setting families.
+
+If `bit-transport` is enabled:
+
+- rewrite directions append one extra payload byte carrying the original TCP flags before applying any configured TCP-bit actions
+- restore directions copy that byte back into the TCP flags field and reduce the IPv4 packet length by one byte
+- fragmented IPv4 packets are skipped so the tunnel only operates on whole TCP packets with a real TCP header and transport payload
 
 ## Notes And Caveats
 

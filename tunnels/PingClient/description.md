@@ -16,7 +16,7 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it does not c
 
 ## `strategy`
 
-### `warp-in-new-ip-and-icmp-header`
+### `wrap-in-new-ip-and-icmp-header`
 
 - wraps the whole inner IPv4 packet as:
   `new outer IPv4 header -> ICMP echo header -> original IPv4 packet`
@@ -24,8 +24,9 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it does not c
 - uses those configured IPv4 addresses for the outer packet
 - on decapsulation, the packet must also match the configured outer source and destination
 - if ICMP framing and identifier match but source or destination does not, `PingClient` logs a runtime warning and leaves the packet unchanged for the previous node
+- source/destination verification accepts both the configured direction and the reversed direction
 
-### `warp-in-icmp-header-and-update-ipv4-header`
+### `wrap-in-icmp-header-and-reuse-ipv4-addresses`
 
 - still emits a full outer IPv4 packet plus ICMP header
 - does not ask for `source` or `dest`
@@ -36,7 +37,7 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it does not c
 Important note:
 This mode cannot literally reuse the same IPv4 header in place. To restore the original packet losslessly on the peer, the original IPv4 header must remain inside the ICMP payload, so `PingClient` still creates a fresh 20-byte outer IPv4 header.
 
-### `warp-in-only-icmp-header`
+### `wrap-in-only-icmp-header`
 
 - emits the same outer IPv4 plus ICMP envelope shape as the normal ICMP modes
 - does not ask for `source` or `dest`
@@ -44,16 +45,16 @@ This mode cannot literally reuse the same IPv4 header in place. To restore the o
 - keeps configured `ttl` and `tos` for the new outer IPv4 header
 - treats the recovered ICMP payload as opaque bytes on decapsulation instead of insisting that it is a valid IPv4 packet
 
-### `change-only-ip4-packet-identifier-number`
+### `change-only-ipv4-protocol-number`
 
 - does not add an ICMP header and does not prepend a new IPv4 header
 - only swaps the IPv4 protocol number in place
-- requires `swap-identifier`
-- upstream changes packets whose current IPv4 protocol matches `swap-identifier` into `ICMP`
-- downstream changes matching `ICMP` packets back to `swap-identifier`
+- requires `swap-protocol`
+- upstream changes packets whose current IPv4 protocol matches `swap-protocol` into `ICMP`
+- downstream changes matching `ICMP` packets back to `swap-protocol`
 - this mode does not use `identifier`, `sequence-start`, `ipv4-id-start`, `xor-byte`, or `roundup-size`
 
-`swap-identifier` accepts:
+`swap-protocol` accepts:
 
 - `"TCP"`
 - `"UDP"`
@@ -64,7 +65,7 @@ This mode cannot literally reuse the same IPv4 header in place. To restore the o
 
 - `strategy` `(string)`
   Controls packet transformation mode.
-  Default: `warp-in-icmp-header-and-update-ipv4-header`
+  Default: `wrap-in-icmp-header-and-reuse-ipv4-addresses`
 
 - `identifier` `(integer)`
   ICMP echo identifier for the ICMP envelope modes.
@@ -94,15 +95,15 @@ This mode cannot literally reuse the same IPv4 header in place. To restore the o
   Default: `false`
 
 - `source` `(string)`
-  Required only when `strategy` is `warp-in-new-ip-and-icmp-header`.
+  Required only when `strategy` is `wrap-in-new-ip-and-icmp-header`.
   Must be a single IPv4 address.
 
 - `dest` `(string)`
-  Required only when `strategy` is `warp-in-new-ip-and-icmp-header`.
+  Required only when `strategy` is `wrap-in-new-ip-and-icmp-header`.
   Must be a single IPv4 address.
 
-- `swap-identifier` `(string or integer)`
-  Required only when `strategy` is `change-only-ip4-packet-identifier-number`.
+- `swap-protocol` `(string or integer)`
+  Required only when `strategy` is `change-only-ipv4-protocol-number`.
 
 ## Example
 
@@ -111,7 +112,7 @@ This mode cannot literally reuse the same IPv4 header in place. To restore the o
   "name": "icmp-client",
   "type": "PingClient",
   "settings": {
-    "strategy": "warp-in-new-ip-and-icmp-header",
+    "strategy": "wrap-in-new-ip-and-icmp-header",
     "identifier": 4660,
     "source": "198.51.100.10",
     "dest": "203.0.113.20",
@@ -130,3 +131,4 @@ This mode cannot literally reuse the same IPv4 header in place. To restore the o
 - fragmented outer ICMP packets are not decapsulated here
 - unmatched IPv4 traffic is still forwarded unchanged in the same direction
 - only IPv6 is dropped unconditionally
+- legacy aliases such as `warp-*`, `warp-in-icmp-header-and-update-ipv4-header`, `change-only-ip4-packet-identifier-number`, and `swap-identifier` are still accepted for backward compatibility

@@ -15,7 +15,7 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
 
 ## `strategy`
 
-### `warp-in-new-ip-and-icmp-header`
+### `wrap-in-new-ip-and-icmp-header`
 
 - upstream expects:
   `outer IPv4 header -> ICMP echo header -> original IPv4 packet`
@@ -23,8 +23,9 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
 - requires both `source` and `dest` in `settings`
 - verifies the configured outer source and destination before decapsulation
 - if ICMP framing and identifier match but source or destination does not, `PingServer` logs a runtime warning and leaves the packet unchanged for the next node
+- source/destination verification accepts both the configured direction and the reversed direction
 
-### `warp-in-icmp-header-and-update-ipv4-header`
+### `wrap-in-icmp-header-and-reuse-ipv4-addresses`
 
 - still uses a full outer IPv4 packet plus ICMP header
 - does not ask for `source` or `dest`
@@ -35,7 +36,7 @@ It is a pure packet tunnel created with `packettunnelCreate()`, so it runs on th
 Important note:
 This mode still creates a fresh outer IPv4 header. That is necessary because the original IPv4 header must stay inside the ICMP payload so the peer can restore the original packet exactly.
 
-### `warp-in-only-icmp-header`
+### `wrap-in-only-icmp-header`
 
 - still produces an outer IPv4 plus ICMP envelope
 - does not ask for `source` or `dest`
@@ -43,16 +44,16 @@ This mode still creates a fresh outer IPv4 header. That is necessary because the
 - keeps configured `ttl` and `tos` for the new outer IPv4 header
 - treats the recovered ICMP payload as opaque bytes and does not insist it is a valid IPv4 packet before passing it upstream
 
-### `change-only-ip4-packet-identifier-number`
+### `change-only-ipv4-protocol-number`
 
 - does not add an ICMP header and does not prepend a new IPv4 header
 - only swaps the IPv4 protocol number in place
-- requires `swap-identifier`
-- downstream changes packets whose current IPv4 protocol matches `swap-identifier` into `ICMP`
-- upstream changes matching `ICMP` packets back to `swap-identifier`
+- requires `swap-protocol`
+- downstream changes packets whose current IPv4 protocol matches `swap-protocol` into `ICMP`
+- upstream changes matching `ICMP` packets back to `swap-protocol`
 - this mode does not use `identifier`, `sequence-start`, `ipv4-id-start`, `xor-byte`, or `roundup-size`
 
-`swap-identifier` accepts:
+`swap-protocol` accepts:
 
 - `"TCP"`
 - `"UDP"`
@@ -63,7 +64,7 @@ This mode still creates a fresh outer IPv4 header. That is necessary because the
 
 - `strategy` `(string)`
   Controls packet transformation mode.
-  Default: `warp-in-icmp-header-and-update-ipv4-header`
+  Default: `wrap-in-icmp-header-and-reuse-ipv4-addresses`
 
 - `identifier` `(integer)`
   ICMP echo identifier for the ICMP envelope modes.
@@ -93,15 +94,15 @@ This mode still creates a fresh outer IPv4 header. That is necessary because the
   Default: `false`
 
 - `source` `(string)`
-  Required only when `strategy` is `warp-in-new-ip-and-icmp-header`.
+  Required only when `strategy` is `wrap-in-new-ip-and-icmp-header`.
   Must be a single IPv4 address.
 
 - `dest` `(string)`
-  Required only when `strategy` is `warp-in-new-ip-and-icmp-header`.
+  Required only when `strategy` is `wrap-in-new-ip-and-icmp-header`.
   Must be a single IPv4 address.
 
-- `swap-identifier` `(string or integer)`
-  Required only when `strategy` is `change-only-ip4-packet-identifier-number`.
+- `swap-protocol` `(string or integer)`
+  Required only when `strategy` is `change-only-ipv4-protocol-number`.
 
 ## Example
 
@@ -110,7 +111,7 @@ This mode still creates a fresh outer IPv4 header. That is necessary because the
   "name": "icmp-server",
   "type": "PingServer",
   "settings": {
-    "strategy": "warp-in-new-ip-and-icmp-header",
+    "strategy": "wrap-in-new-ip-and-icmp-header",
     "identifier": 4660,
     "source": "203.0.113.20",
     "dest": "198.51.100.10",
@@ -129,3 +130,4 @@ This mode still creates a fresh outer IPv4 header. That is necessary because the
 - fragmented outer ICMP packets are not decapsulated here
 - unmatched IPv4 traffic is still forwarded unchanged in the same direction
 - only IPv6 is dropped unconditionally
+- legacy aliases such as `warp-*`, `warp-in-icmp-header-and-update-ipv4-header`, `change-only-ip4-packet-identifier-number`, and `swap-identifier` are still accepted for backward compatibility

@@ -92,22 +92,32 @@ static bool pingserverLoadStrategy(pingserver_tstate_t *state, const cJSON *sett
 
     bool ok = true;
 
-    if (stringCompare(strategy, "warp-in-new-ip-and-icmp-header") == 0 ||
-        stringCompare(strategy, "wrap-in-new-ip-and-icmp-header") == 0)
+    if (stringCompare(strategy, "wrap-in-new-ip-and-icmp-header") == 0 ||
+        stringCompare(strategy, "warp-in-new-ip-and-icmp-header") == 0 ||
+        stringCompare(strategy, "wrap-in-new-ipv4-and-icmp-header") == 0 ||
+        stringCompare(strategy, "warp-in-new-ipv4-and-icmp-header") == 0)
     {
         state->strategy = kPingServerStrategyWrapNewIpAndIcmpHeader;
     }
-    else if (stringCompare(strategy, "warp-in-icmp-header-and-update-ipv4-header") == 0 ||
-             stringCompare(strategy, "wrap-in-icmp-header-and-update-ipv4-header") == 0)
+    else if (stringCompare(strategy, "wrap-in-icmp-header-and-reuse-ipv4-addresses") == 0 ||
+             stringCompare(strategy, "warp-in-icmp-header-and-reuse-ipv4-addresses") == 0 ||
+             stringCompare(strategy, "wrap-in-icmp-header-and-reuse-ip-addresses") == 0 ||
+             stringCompare(strategy, "warp-in-icmp-header-and-reuse-ip-addresses") == 0 ||
+             stringCompare(strategy, "wrap-in-icmp-header-and-update-ipv4-header") == 0 ||
+             stringCompare(strategy, "warp-in-icmp-header-and-update-ipv4-header") == 0)
     {
         state->strategy = kPingServerStrategyWrapIcmpHeaderAndReuseIpv4Addrs;
     }
-    else if (stringCompare(strategy, "warp-in-only-icmp-header") == 0 ||
-             stringCompare(strategy, "wrap-in-only-icmp-header") == 0)
+    else if (stringCompare(strategy, "wrap-in-only-icmp-header") == 0 ||
+             stringCompare(strategy, "warp-in-only-icmp-header") == 0 ||
+             stringCompare(strategy, "wrap-payload-in-only-icmp-header") == 0 ||
+             stringCompare(strategy, "warp-payload-in-only-icmp-header") == 0)
     {
         state->strategy = kPingServerStrategyWrapOnlyIcmpHeader;
     }
-    else if (stringCompare(strategy, "change-only-ip4-packet-identifier-number") == 0)
+    else if (stringCompare(strategy, "change-only-ipv4-protocol-number") == 0 ||
+             stringCompare(strategy, "change-only-ip4-protocol-number") == 0 ||
+             stringCompare(strategy, "change-only-ip4-packet-identifier-number") == 0)
     {
         state->strategy = kPingServerStrategyChangeOnlyIpv4ProtocolNumber;
     }
@@ -163,6 +173,16 @@ static bool pingserverParseProtocolNumber(uint8_t *dest, const cJSON *settings, 
 
     LOGF("JSON Error: %s (string or int field) : expected TCP, UDP, ICMP, or a protocol number", json_path);
     return false;
+}
+
+static bool pingserverLoadSwapProtocol(uint8_t *dest, const cJSON *settings)
+{
+    if (cJSON_GetObjectItemCaseSensitive(settings, "swap-protocol") != NULL)
+    {
+        return pingserverParseProtocolNumber(dest, settings, "swap-protocol", "PingServer->settings->swap-protocol");
+    }
+
+    return pingserverParseProtocolNumber(dest, settings, "swap-identifier", "PingServer->settings->swap-protocol");
 }
 
 tunnel_t *pingserverCreate(node_t *node)
@@ -230,8 +250,7 @@ tunnel_t *pingserverCreate(node_t *node)
     }
 
     if (state->strategy == kPingServerStrategyChangeOnlyIpv4ProtocolNumber &&
-        ! pingserverParseProtocolNumber(&state->swap_identifier, settings, "swap-identifier",
-                                        "PingServer->settings->swap-identifier"))
+        ! pingserverLoadSwapProtocol(&state->swap_protocol, settings))
     {
         pingserverDestroy(t);
         return NULL;

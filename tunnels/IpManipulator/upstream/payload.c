@@ -18,7 +18,11 @@ void ipmanipulatorUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
     if (state->trick_tcp_bit_changes)
     {
-        tcpbitchangetrickUpStreamPayload(t, l, buf);
+        tcpbitchangetrickUpStreamPayload(t, l, &buf);
+        if (buf == NULL)
+        {
+            return;
+        }
     }
 
     if (state->trick_echo_sni && echosnitrickUpStreamPayload(t, l, buf))
@@ -31,5 +35,5 @@ void ipmanipulatorUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         return;
     }
 
-    tunnelNextUpStreamPayload(t, l, buf);
+    ipmanipulatorSendUpstreamFinal(t, l, buf);
 }

@@ -168,8 +168,18 @@ static void pingserverLogSourceDestMismatch(const pingserver_tstate_t *state, co
     pingserverFormatIpv4(actual_src, sizeof(actual_src), ipheader->src.addr);
     pingserverFormatIpv4(actual_dest, sizeof(actual_dest), ipheader->dest.addr);
 
-    LOGW("PingServer: ICMP tunnel packet failed source/dest verification, expected %s -> %s but got %s -> %s",
-         expected_src, expected_dest, actual_src, actual_dest);
+    LOGW("PingServer: ICMP tunnel packet failed source/dest verification, expected %s -> %s or %s -> %s but got %s -> %s",
+         expected_src, expected_dest, expected_dest, expected_src, actual_src, actual_dest);
+}
+
+static bool pingserverEnvelopeMatchesConfiguredAddrs(const pingserver_tstate_t *state, const struct ip_hdr *ipheader)
+{
+    const bool matches_forward =
+        (ipheader->src.addr == state->source_addr && ipheader->dest.addr == state->dest_addr);
+    const bool matches_reverse =
+        (ipheader->src.addr == state->dest_addr && ipheader->dest.addr == state->source_addr);
+
+    return matches_forward || matches_reverse;
 }
 
 static bool pingserverMatchEnvelope(const pingserver_tstate_t *state, sbuf_t *buf, uint16_t *outer_header_len_out)
@@ -226,7 +236,7 @@ static bool pingserverMatchEnvelope(const pingserver_tstate_t *state, sbuf_t *bu
     }
 
     if (state->strategy == kPingServerStrategyWrapNewIpAndIcmpHeader &&
-        (ipheader->src.addr != state->source_addr || ipheader->dest.addr != state->dest_addr))
+        ! pingserverEnvelopeMatchesConfiguredAddrs(state, ipheader))
     {
         pingserverLogSourceDestMismatch(state, ipheader);
         return false;
@@ -422,7 +432,7 @@ static void pingserverSwapIpv4ProtocolToIcmp(tunnel_t *t, line_t *l, sbuf_t *buf
     }
 
     struct ip_hdr *ipheader = (struct ip_hdr *) sbufGetMutablePtr(buf);
-    if (IPH_PROTO(ipheader) == state->swap_identifier)
+    if (IPH_PROTO(ipheader) == state->swap_protocol)
     {
         IPH_PROTO_SET(ipheader, IP_PROTO_ICMP);
         lineSetRecalculateChecksum(l, true);
@@ -446,7 +456,7 @@ static void pingserverRestoreIpv4ProtocolFromIcmp(tunnel_t *t, line_t *l, sbuf_t
     struct ip_hdr *ipheader = (struct ip_hdr *) sbufGetMutablePtr(buf);
     if (IPH_PROTO(ipheader) == IP_PROTO_ICMP)
     {
-        IPH_PROTO_SET(ipheader, state->swap_identifier);
+        IPH_PROTO_SET(ipheader, state->swap_protocol);
         lineSetRecalculateChecksum(l, true);
     }
 
