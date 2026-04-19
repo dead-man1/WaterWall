@@ -195,6 +195,26 @@ static void startTunnels(tunnel_t **t_array, int tunnels_count)
     }
 }
 
+static void initializeLineOnTargetWorker(void* worker, void *_tunnel, void *_line, void *arg3)
+{
+    discard worker;
+    discard arg3;
+    assert(_tunnel != NULL);
+    assert(_line != NULL);
+
+    tunnel_t *tunnel = (tunnel_t *) _tunnel;
+    line_t *line    = (line_t *) _line;
+
+    assert(lineGetWID(line)  == getWID());
+
+    tunnelNextUpStreamInit(tunnel, line);
+    if(!lineIsAlive(line)){
+        LOGF("NodeManager: node startup failure: line initialization failed for node (\"%s\") on worker %d",
+             tunnel->node->name, getWID());
+        terminateProgram(1);
+    }
+}
+
 /**
  * @brief Send initial line events for packet-layer chain heads.
  *
@@ -216,8 +236,8 @@ static void initializePacketTunnels(tunnel_t **t_array, int tunnels_count)
             for (wid_t wi = 0; wi < getWorkersCount(); wi++)
             {
                 line_t *l = tunnelchainGetWorkerPacketLine(tunnelGetChain(tunnel), wi);
-                tunnelNextUpStreamInit(tunnel, l);
-                assert(lineIsAlive(l));
+                sendWorkerMessageForceQueue(wi, &initializeLineOnTargetWorker, tunnel, l, NULL);
+       
             }
         }
     }
@@ -247,9 +267,10 @@ static void runNodes(node_manager_config_t *cfg)
     assignChainsToTunnels(t_array, tunnels_count);
     finalizeTunnelChains(cfg, t_array, tunnels_count);
     validateTunnelChains(t_array, tunnels_count);
+    initializePacketTunnels(t_array, tunnels_count);
+
     prepareTunnels(cfg);
     startTunnels(t_array, tunnels_count);
-    initializePacketTunnels(t_array, tunnels_count);
 }
 
 /**
