@@ -4,13 +4,18 @@
 
 void streamtopacketsTunnelUpStreamFinish(tunnel_t *t, line_t *l)
 {
-    line_t                 *packet_line = tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l));
-    streamtopackets_lstate_t *ls        = lineGetState(packet_line, t);
+    line_t                   *packet_line = tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l));
+    streamtopackets_lstate_t *packet_ls   = lineGetState(packet_line, t);
+    streamtopackets_lstate_t *line_ls     = lineGetState(l, t);
 
-    if (ls->line != l)
+    if (packet_ls->line == l)
     {
-        return;
+        packet_ls->line   = NULL;
+        packet_ls->paused = false;
     }
 
-    streamtopacketsLinestateReset(ls);
+    if (line_ls->read_stream.pool != NULL)
+    {
+        streamtopacketsLinestateDestroy(line_ls);
+    }
 }

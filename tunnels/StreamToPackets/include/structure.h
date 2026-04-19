@@ -9,9 +9,9 @@ typedef struct streamtopackets_tstate_s
 
 typedef struct streamtopackets_lstate_s
 {
-    line_t         *line;        // Pointer to the line associated with this state
-    buffer_stream_t read_stream; // Stream for reading data packets
-    bool            paused;      // Indicates if the line is paused, dropping packets
+    line_t         *line;        // On packet lines: last stream line used for downstream writes
+    buffer_stream_t read_stream; // On stream lines: per-line framed-packet parser state
+    bool            paused;      // On packet lines: whether writes to the last stream line are paused
 
 } streamtopackets_lstate_t;
 

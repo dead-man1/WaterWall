@@ -4,25 +4,15 @@
 
 void streamtopacketsTunnelUpStreamInit(tunnel_t *t, line_t *l)
 {
-    line_t                 *packet_line = tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l));
-    streamtopackets_lstate_t *ls        = lineGetState(packet_line, t);
+    line_t                   *packet_line = tunnelchainGetWorkerPacketLine(tunnelGetChain(t), lineGetWID(l));
+    streamtopackets_lstate_t *packet_ls   = lineGetState(packet_line, t);
+    streamtopackets_lstate_t *line_ls     = lineGetState(l, t);
 
-    if (ls->read_stream.pool == NULL)
+    if (line_ls->read_stream.pool == NULL)
     {
-        streamtopacketsLinestateInitialize(ls, lineGetBufferPool(l));
+        streamtopacketsLinestateInitialize(line_ls, lineGetBufferPool(l));
     }
 
-    if (ls->line != l)
-    {
-        if (ls->line != NULL)
-        {
-            LOGW("StreamToPackets: replacing active upstream line on worker %u", (unsigned int) lineGetWID(l));
-        }
-
-        // Packet parsing state is worker-local, so partial bytes must not survive a line switch.
-        streamtopacketsLinestateReset(ls);
-    }
-
-    ls->paused = false;
-    ls->line   = l;
+    packet_ls->paused = false;
+    packet_ls->line   = l;
 }
