@@ -209,7 +209,7 @@
 #endif
 
 #ifdef INCLUDE_SOCKS_5_SERVER
-#include "tunnels/server/socks/5/socks5_server.h"
+#include "tunnels/Socks5Server/include/interface.h"
 #endif
 
 #ifdef INCLUDE_REALITY_SERVER
@@ -242,6 +242,10 @@
 
 #ifdef INCLUDE_MUX_CLIENT
 #include "tunnels/MuxClient/include/interface.h"
+#endif
+
+#ifdef INCLUDE_DISTURBER
+#include "tunnels/Disturber/include/interface.h"
 #endif
 
 #ifdef INCLUDE_SPEEDLIMIT
@@ -489,6 +493,10 @@ void loadImportedTunnelsIntoCore(void)
 
 #ifdef INCLUDE_MUX_CLIENT
     USING(MuxClient);
+#endif
+
+#ifdef INCLUDE_DISTURBER
+    USING(Disturber);
 #endif
 
 #ifdef INCLUDE_SPEEDLIMIT
