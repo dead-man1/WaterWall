@@ -170,14 +170,14 @@ The current implementation supports these key prefixes:
 
 Supported suffixes are:
 
-- `"up-tcp-bit-cwr":"off",`
-- `"up-tcp-bit-ece":"off",`
-- `"up-tcp-bit-urg":"off",`
-- `"up-tcp-bit-ack":"off",`
-- `"up-tcp-bit-psh":"off",`
-- `"up-tcp-bit-rst":"off",`
-- `"up-tcp-bit-syn":"on",`
-- `"up-tcp-bit-fin":"off"`
+- `cwr`
+- `ece`
+- `urg`
+- `ack`
+- `psh`
+- `rst`
+- `syn`
+- `fin`
 
 Example keys:
 
