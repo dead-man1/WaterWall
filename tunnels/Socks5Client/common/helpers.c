@@ -173,19 +173,14 @@ bool socks5clientApplyTargetContext(tunnel_t *t, line_t *l)
         addresscontextSetPort(dest_ctx, current.port);
     }
 
-    dest_ctx->proto_tcp    = false;
-    dest_ctx->proto_udp    = false;
-    dest_ctx->proto_icmp   = false;
-    dest_ctx->proto_packet = false;
-
     if (ts->protocol == kSocks5ClientProtocolTcp)
     {
-        addresscontextSetProtocol(dest_ctx, IP_PROTO_TCP);
+        addresscontextSetOnlyProtocol(dest_ctx, IP_PROTO_TCP);
         route->network_type = WIO_TYPE_TCP;
     }
     else
     {
-        addresscontextSetProtocol(dest_ctx, IP_PROTO_UDP);
+        addresscontextSetOnlyProtocol(dest_ctx, IP_PROTO_UDP);
         route->network_type = WIO_TYPE_UDP;
     }
 

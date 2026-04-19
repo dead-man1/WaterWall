@@ -247,10 +247,8 @@ err_t lwipThreadPtcTcpAccptCallback(void *arg, struct tcp_pcb *newpcb, err_t err
     ptcLinestateInitialize(lstate, target_wid, t, l, newpcb);
     lstate->is_tcp = true;
 
-    l->routing_context.src_ctx.type_ip    = true; // we have a client ip
-    l->routing_context.src_ctx.proto_tcp  = true; // tcp client
-    l->routing_context.src_ctx.ip_address = newpcb->remote_ip;
-    addresscontextSetIpPort(&l->routing_context.src_ctx, &newpcb->remote_ip, newpcb->remote_port);
+    addresscontextSetIpPortProtocol(&l->routing_context.src_ctx, &newpcb->remote_ip, newpcb->remote_port,
+                                    IP_PROTO_TCP);
 
     addresscontextSetIpPort(&l->routing_context.dest_ctx, &newpcb->local_ip, newpcb->local_port);
 

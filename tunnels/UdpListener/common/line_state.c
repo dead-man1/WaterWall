@@ -6,9 +6,9 @@ void udplistenerLinestateInitialize(udplistener_lstate_t *ls, line_t *l, tunnel_
                                     uint16_t real_localport)
 {
 
-    addresscontextFromSockAddr(&(l->routing_context.src_ctx), (sockaddr_u *) wioGetPeerAddr(uio->io));
-    l->routing_context.src_ctx.type_ip   = true; // we have a client ip
-    l->routing_context.src_ctx.proto_udp = true; // udp
+    addresscontextFromSockAddrWithProtocol(&(l->routing_context.src_ctx), (sockaddr_u *) wioGetPeerAddr(uio->io),
+                                           IP_PROTO_UDP);
+    l->routing_context.local_listener_port = real_localport;
 
     // sockaddrToIpAddr((const sockaddr_u *) wioGetPeerAddr(uio->io), &(l->routing_context.src_ctx.ip_address));
     // addresscontextSetPort(&(l->routing_context.src_ctx), real_localport);

@@ -80,6 +80,17 @@ static inline void addresscontextReset(address_context_t *ctx)
 }
 
 /**
+ * @brief Clear all transport protocol flags on an address context.
+ */
+static inline void addresscontextClearProtocols(address_context_t *ctx)
+{
+    ctx->proto_tcp    = false;
+    ctx->proto_udp    = false;
+    ctx->proto_icmp   = false;
+    ctx->proto_packet = false;
+}
+
+/**
  * @brief Set protocol flag based on socket address protocol enum.
  * see lwip/prot/iana.h
  */
@@ -104,13 +115,22 @@ static inline void addresscontextSetProtocol(address_context_t *dest, uint8_t pr
     }
 }
 
+/**
+ * @brief Replace protocol flags with a single protocol selection.
+ */
+static inline void addresscontextSetOnlyProtocol(address_context_t *dest, uint8_t protocol)
+{
+    addresscontextClearProtocols(dest);
+    addresscontextSetProtocol(dest, protocol);
+}
+
 // ============================================================================
 // IP Address Management Functions
 // ============================================================================
 /**
  * @brief Set the IP address for an address context.
  */
-static void addresscontextSetIp(address_context_t *ctx, const ip_addr_t *ip)
+static inline void addresscontextSetIp(address_context_t *ctx, const ip_addr_t *ip)
 {
     addresscontextReset(ctx);
     ctx->ip_address = *ip;
@@ -123,7 +143,7 @@ static void addresscontextSetIp(address_context_t *ctx, const ip_addr_t *ip)
  * Parses the string and sets the IP address in the context.
  * Returns true if successful, false if invalid.
  */
-static bool addresscontextSetIpAddress(address_context_t *ctx, const char *ip_str)
+static inline bool addresscontextSetIpAddress(address_context_t *ctx, const char *ip_str)
 {
     addresscontextReset(ctx);
 
@@ -138,7 +158,7 @@ static bool addresscontextSetIpAddress(address_context_t *ctx, const char *ip_st
 /**
  * @brief Set the IP address and port for an address context.
  */
-static void addresscontextSetIpPort(address_context_t *ctx, const ip_addr_t *ip, uint16_t port)
+static inline void addresscontextSetIpPort(address_context_t *ctx, const ip_addr_t *ip, uint16_t port)
 {
     addresscontextReset(ctx);
     ctx->ip_address = *ip;
@@ -147,12 +167,22 @@ static void addresscontextSetIpPort(address_context_t *ctx, const ip_addr_t *ip,
 }
 
 /**
+ * @brief Set the IP address, port, and protocol for an address context.
+ */
+static inline void addresscontextSetIpPortProtocol(address_context_t *ctx, const ip_addr_t *ip, uint16_t port,
+                                                   uint8_t protocol)
+{
+    addresscontextSetIpPort(ctx, ip, port);
+    addresscontextSetOnlyProtocol(ctx, protocol);
+}
+
+/**
  * @brief Set the IP address and port from a string.
  *
  * Parses the string and sets the IP address and port in the context.
  * Returns true if successful, false if invalid.
  */
-static bool addresscontextSetIpAddressPort(address_context_t *ctx, const char *ip_str, uint16_t port)
+static inline bool addresscontextSetIpAddressPort(address_context_t *ctx, const char *ip_str, uint16_t port)
 {
     addresscontextReset(ctx);
 
@@ -163,6 +193,21 @@ static bool addresscontextSetIpAddressPort(address_context_t *ctx, const char *i
         return true; // Successfully parsed IP address
     }
     return false; // Invalid IP string
+}
+
+/**
+ * @brief Set the IP address, port, and protocol from a string.
+ */
+static inline bool addresscontextSetIpAddressPortProtocol(address_context_t *ctx, const char *ip_str, uint16_t port,
+                                                          uint8_t protocol)
+{
+    if (! addresscontextSetIpAddressPort(ctx, ip_str, port))
+    {
+        return false;
+    }
+
+    addresscontextSetOnlyProtocol(ctx, protocol);
+    return true;
 }
 
 /**
@@ -179,6 +224,22 @@ static inline void addresscontextCopyPort(address_context_t *dest, address_conte
 static inline void addresscontextSetPort(address_context_t *dest, uint16_t port)
 {
     dest->port = port;
+}
+
+/**
+ * @brief Set the domain resolution strategy for an address context.
+ */
+static inline void addresscontextSetDomainStrategy(address_context_t *ctx, enum domain_strategy strategy)
+{
+    ctx->domain_strategy = strategy;
+}
+
+/**
+ * @brief Check whether the address context has a non-zero port.
+ */
+static inline bool addresscontextHasPort(const address_context_t *ctx)
+{
+    return ctx->port != 0;
 }
 
 /**
@@ -202,14 +263,25 @@ static inline void addresscontextClearIp(address_context_t *ctx)
 static inline void addresscontextDomainSet(address_context_t *ctx, const char *domain, uint8_t len)
 {
     addresscontextReset(ctx);
+    assert(len <= UINT8_MAX);
 
-    ctx->domain = memoryAllocate(256);
+    ctx->domain = memoryAllocate((size_t) len + 1U);
     memoryCopy(ctx->domain, domain, len);
     ctx->domain[len]     = '\0';
     ctx->domain_len      = len;
     ctx->domain_constant = false;
     ctx->domain_resolved = false;
     ctx->type_ip         = kCCTypeDomain;
+}
+
+/**
+ * @brief Set a domain from a null-terminated C string (dynamic memory).
+ */
+static inline void addresscontextDomainSetByString(address_context_t *ctx, const char *domain)
+{
+    size_t len = stringLength(domain);
+    assert(len <= UINT8_MAX);
+    addresscontextDomainSet(ctx, domain, (uint8_t) len);
 }
 
 /**
@@ -241,6 +313,38 @@ static inline void addresscontextDomainSetConstMem(address_context_t *ctx, const
 static inline bool addresscontextIsIp(const address_context_t *context)
 {
     return context->type_ip == kCCTypeIp && ! ipAddrIsAny(&context->ip_address);
+}
+
+/**
+ * @brief Check if the context is IP-typed, even if the IP is an any/wildcard address.
+ */
+static inline bool addresscontextIsIpType(const address_context_t *context)
+{
+    return context->type_ip == kCCTypeIp;
+}
+
+/**
+ * @brief Check if the context carries an any/wildcard IP.
+ */
+static inline bool addresscontextIsAnyIp(const address_context_t *context)
+{
+    return addresscontextIsIpType(context) && ipAddrIsAny(&context->ip_address);
+}
+
+/**
+ * @brief Check if the context currently uses IPv4.
+ */
+static inline bool addresscontextIsIpv4(const address_context_t *context)
+{
+    return addresscontextIsIpType(context) && context->ip_address.type == IPADDR_TYPE_V4;
+}
+
+/**
+ * @brief Check if the context currently uses IPv6.
+ */
+static inline bool addresscontextIsIpv6(const address_context_t *context)
+{
+    return addresscontextIsIpType(context) && context->ip_address.type == IPADDR_TYPE_V6;
 }
 
 /**
@@ -278,6 +382,35 @@ static inline bool addresscontextIsDomainResolved(const address_context_t *conte
 }
 
 /**
+ * @brief Check whether the context can be converted to a sockaddr right now.
+ */
+static inline bool addresscontextCanConvertToSockAddr(const address_context_t *context)
+{
+    return addresscontextIsIpType(context) || (addresscontextIsDomain(context) && context->domain_resolved);
+}
+
+/**
+ * @brief Get socket address family for the current resolved/IP address.
+ */
+static inline int addresscontextGetSockAddrFamily(const address_context_t *context)
+{
+    if (! addresscontextCanConvertToSockAddr(context))
+    {
+        return AF_UNSPEC;
+    }
+
+    switch (context->ip_address.type)
+    {
+    case IPADDR_TYPE_V4:
+        return AF_INET;
+    case IPADDR_TYPE_V6:
+        return AF_INET6;
+    default:
+        return AF_UNSPEC;
+    }
+}
+
+/**
  * @brief Copy an address context.
  *
  * Copies flags, port, and either IP address or domain.
@@ -287,6 +420,7 @@ static inline void addresscontextAddrCopy(address_context_t *dest, const address
     addresscontextReset(dest);
 
     // Copy flags
+    dest->domain_strategy = source->domain_strategy;
     dest->domain_constant = source->domain_constant;
     dest->type_ip         = source->type_ip;
     dest->proto_tcp       = source->proto_tcp;
@@ -356,13 +490,23 @@ static inline void addresscontextFromSockAddr(address_context_t *dest, const soc
 }
 
 /**
+ * @brief Populate an address context from a sockaddr and set a single protocol.
+ */
+static inline void addresscontextFromSockAddrWithProtocol(address_context_t *dest, const sockaddr_u *src,
+                                                          uint8_t protocol)
+{
+    addresscontextFromSockAddr(dest, src);
+    addresscontextSetOnlyProtocol(dest, protocol);
+}
+
+/**
  * @brief Convert an address context with IP to a sockaddr structure.
  */
 static inline sockaddr_u addresscontextToSockAddr(const address_context_t *context)
 {
     sockaddr_u addr;
-    assert(context->type_ip || context->domain_resolved);
-    if (context->ip_address.type == IPADDR_TYPE_V4)
+    assert(addresscontextCanConvertToSockAddr(context));
+    if (addresscontextIsIpv4(context))
     {
         struct sockaddr_in *addr_in = (struct sockaddr_in *) &addr;
         addr_in->sin_family         = AF_INET;
@@ -370,7 +514,7 @@ static inline sockaddr_u addresscontextToSockAddr(const address_context_t *conte
         addr_in->sin_addr.s_addr    = context->ip_address.u_addr.ip4.addr;
         return addr;
     }
-    if (context->ip_address.type == IPADDR_TYPE_V6)
+    if (addresscontextIsIpv6(context))
     {
         struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *) &addr;
         addr_in6->sin6_family         = AF_INET6;

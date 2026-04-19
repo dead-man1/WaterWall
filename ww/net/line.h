@@ -35,6 +35,7 @@ typedef struct routing_context_s
     address_context_t src_ctx;
     address_context_t dest_ctx;
     wio_type_e        network_type;
+    uint16_t          local_listener_port;
     const char       *user_name;
     uint8_t           user_name_len;
 
@@ -81,6 +82,7 @@ static inline line_t *lineCreateForWorker(wid_t current, generic_pool_t **pools,
                        (routing_context_t) {.network_type  = WIO_TYPE_UNKNOWN,
                                             .dest_ctx      = (address_context_t) {.ip_address.type = IPADDR_TYPE_V4},
                                             .src_ctx       = (address_context_t) {.ip_address.type = IPADDR_TYPE_V4},
+                                            .local_listener_port = 0,
                                             .user_name     = NULL,
                                             .user_name_len = 0}};
 

@@ -29,7 +29,8 @@ void udpstatelesssocketOnRecvFrom(wio_t *io, sbuf_t *buf)
     LOGD("UdpStatelessSocket: received %u bytes from [%s] <= [%s]", sbufGetLength(buf),
          SOCKADDR_STR(wioGetLocaladdrU(io), localaddrstr), SOCKADDR_STR(wioGetPeerAddrU(io), peeraddrstr));
 
-    addresscontextFromSockAddr(&l->routing_context.src_ctx, wioGetPeerAddrU(io));
+    addresscontextFromSockAddrWithProtocol(&l->routing_context.src_ctx, wioGetPeerAddrU(io), IP_PROTO_UDP);
+    l->routing_context.local_listener_port = sockaddrPort(wioGetLocaladdrU(io));
 
 #ifdef DEBUG
     lineLock(l);

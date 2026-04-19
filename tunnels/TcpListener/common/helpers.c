@@ -69,6 +69,7 @@ void tcplistenerOnInboundConnected(wevent_t *ev)
     l->routing_context.src_ctx.proto_tcp = true; // tcp client
     sockaddrToIpAddr((const sockaddr_u *) wioGetPeerAddr(io), &(l->routing_context.src_ctx.ip_address));
     l->routing_context.src_ctx.port = data->real_localport;
+    l->routing_context.local_listener_port = data->real_localport;
 
     weventSetUserData(io, ls);
 
