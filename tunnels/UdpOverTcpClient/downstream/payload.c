@@ -12,7 +12,9 @@ static sbuf_t *tryReadCompletePacket(buffer_stream_t *stream)
     uint8_t packet_first_bytes[kHeaderSize];
     bufferstreamViewBytesAt(stream, 0, packet_first_bytes, kHeaderSize);
 
-    uint16_t total_packet_size = ntohs(*(uint16_t *) packet_first_bytes);
+    uint16_t total_packet_size_network;
+    sbufByteCopy(&total_packet_size_network, packet_first_bytes, (uint32_t) sizeof(total_packet_size_network));
+    uint16_t total_packet_size = ntohs(total_packet_size_network);
 
     if (total_packet_size < 1 || ((uint32_t) (total_packet_size  + kHeaderSize)) > (uint32_t) bufferstreamGetBufLen(stream))
     {
