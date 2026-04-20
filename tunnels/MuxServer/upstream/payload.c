@@ -63,11 +63,7 @@ static bool handleOpenFrame(tunnel_t *t, line_t *parent_l, muxserver_lstate_t *p
     muxserverJoinConnection(parent_ls, new_child_ls);
 
 
-    if (! withLineLocked(child_l, tunnelNextUpStreamInit, t))
-    {
-        LOGD("MuxServer: UpStreamPayload: child line is closed when opening line %u", frame->cid);
-        return false;
-    }
+    tunnelNextUpStreamInit(t, child_l);
     return true;
 }
 

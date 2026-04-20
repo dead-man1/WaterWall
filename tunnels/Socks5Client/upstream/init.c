@@ -22,8 +22,5 @@ void socks5clientTunnelUpStreamInit(tunnel_t *t, line_t *l)
              (unsigned int) target->port, ts->username != NULL ? "username/password" : "none");
     }
 
-    if (! withLineLocked(l, tunnelNextUpStreamInit, t))
-    {
-        return;
-    }
+    tunnelNextUpStreamInit(t, l);
 }

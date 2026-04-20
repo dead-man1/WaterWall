@@ -46,10 +46,7 @@ void socks5serverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         return;
 
     case kSocks5ServerLineKindUdpRemote:
-        if (! withLineLockedWithBuf(l, tunnelNextUpStreamPayload, t, buf))
-        {
-            return;
-        }
+        tunnelNextUpStreamPayload(t, l, buf);
         return;
 
     case kSocks5ServerLineKindNone:

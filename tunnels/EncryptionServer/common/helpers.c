@@ -273,7 +273,6 @@ void encryptionserverCloseLineBidirectional(tunnel_t *t, line_t *l)
     if (! ls->prev_finished)
     {
         ls->prev_finished = true;
-        withLineLocked(l, tunnelPrevDownStreamFinish, t);
+        tunnelPrevDownStreamFinish(t, l);
     }
 }
-

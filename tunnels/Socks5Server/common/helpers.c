@@ -612,7 +612,7 @@ void socks5serverCloseUdpClientLine(tunnel_t *t, line_t *client_l)
             if (! remote_ls->next_finished)
             {
                 remote_ls->next_finished = true;
-                withLineLocked(remote_l, tunnelNextUpStreamFinish, t);
+                tunnelNextUpStreamFinish(t, remote_l);
             }
         }
 
@@ -634,7 +634,7 @@ void socks5serverCloseUdpRemoteLine(tunnel_t *t, line_t *remote_l)
     {
         remote_ls->next_finished = true;
         socks5serverDetachRemoteFromClient(remote_ls);
-        withLineLocked(remote_l, tunnelNextUpStreamFinish, t);
+        tunnelNextUpStreamFinish(t, remote_l);
     }
 }
 

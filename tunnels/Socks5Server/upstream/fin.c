@@ -23,10 +23,7 @@ void socks5serverTunnelUpStreamFinish(tunnel_t *t, line_t *l)
     case kSocks5ServerLineKindNone:
     default:
         socks5serverLinestateDestroy(ls);
-        if (! withLineLocked(l, tunnelNextUpStreamFinish, t))
-        {
-            return;
-        }
+        tunnelNextUpStreamFinish(t, l);
         return;
     }
 }

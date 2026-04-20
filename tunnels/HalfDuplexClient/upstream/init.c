@@ -27,8 +27,5 @@ void halfduplexclientTunnelUpStreamInit(tunnel_t *t, line_t *l)
     ls_dwline->upload_line   = ls->upload_line;
     ls_dwline->download_line = ls->download_line;
 
-    if (! withLineLocked(ls->download_line, tunnelNextUpStreamInit, t))
-    {
-        return;
-    }
+    tunnelNextUpStreamInit(t, ls->download_line);
 }

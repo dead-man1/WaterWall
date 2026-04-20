@@ -215,13 +215,7 @@ static void localThreadPtcAcceptCallBack(struct worker_s *worker, void *arg1, vo
              newpcb->remote_port);
     }
 
-    if (! withLineLocked(l, tunnelNextUpStreamInit, t))
-    {
-#if SHOW_ALL_LOGS
-        LOGD("PacketToConnection: tcp socket just got closed by upstream before anything happend");
-#endif
-        return;
-    }
+    tunnelNextUpStreamInit(t, l);
 }
 
 err_t lwipThreadPtcTcpAccptCallback(void *arg, struct tcp_pcb *newpcb, err_t err)

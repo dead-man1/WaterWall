@@ -46,8 +46,5 @@ void socks5serverTunnelDownStreamFinish(tunnel_t *t, line_t *l)
     }
 
     socks5serverLinestateDestroy(ls);
-    if (! withLineLocked(l, tunnelPrevDownStreamFinish, t))
-    {
-        return;
-    }
+    tunnelPrevDownStreamFinish(t, l);
 }

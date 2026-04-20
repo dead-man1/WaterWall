@@ -23,8 +23,5 @@ void socks5serverTunnelUpStreamInit(tunnel_t *t, line_t *l)
     }
 
     socks5serverLinestateInitialize(lineGetState(l, t), t, l, kSocks5ServerLineKindNone);
-    if (! withLineLocked(l, tunnelNextUpStreamInit, t))
-    {
-        return;
-    }
+    tunnelNextUpStreamInit(t, l);
 }
