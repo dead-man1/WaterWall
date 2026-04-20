@@ -234,6 +234,9 @@ jobs:
           -DCPM_SOURCE_CACHE="${{ env.cpm-path }}"
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
+      - name: Test
+        if: matrix.preset == 'linux-gcc-x64'
+        run: ctest --preset linux-gcc -C Release --output-on-failure
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -479,6 +482,4 @@ jobs:
             tag_name: v${{ env.VERSION }}
             files: |
               zipped_artifacts/*.zip
-
-
 

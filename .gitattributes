@@ -1,4 +1,5 @@
 *.h linguist-language=C
+tests/** linguist-vendored
 ww/lwip/** linguist-vendored
 ww/vendor/** linguist-vendored
 ww/utils/freeres_wrap.cc linguist-vendored

@@ -1,0 +1,36 @@
+{
+  "name": "encryption-roundtrip",
+  "nodes": [
+    {
+      "name": "tester-client",
+      "type": "TesterClient",
+      "next": "enc-client"
+    },
+    {
+      "name": "enc-client",
+      "type": "EncryptionClient",
+      "settings": {
+        "algorithm": "chacha20-poly1305",
+        "password": "integration-secret",
+        "salt": "integration-suite",
+        "kdf-iterations": 12000
+      },
+      "next": "enc-server"
+    },
+    {
+      "name": "enc-server",
+      "type": "EncryptionServer",
+      "settings": {
+        "algorithm": "chacha20-poly1305",
+        "password": "integration-secret",
+        "salt": "integration-suite",
+        "kdf-iterations": 12000
+      },
+      "next": "tester-server"
+    },
+    {
+      "name": "tester-server",
+      "type": "TesterServer"
+    }
+  ]
+}

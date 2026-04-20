@@ -1,0 +1,231 @@
++# Waterwall Integration Tests
+
+These tests run the real `Waterwall` binary with synthetic chains built from:
+
+- `TesterClient`
+- the tunnel or tunnel-pair under test
+- optional `Disturber`
+- `TesterServer`
+
+## Which runner should I use?
+
+There are two valid ways to run these integration tests:
+
+- `ctest`
+  This is the normal, recommended entry point.
+  Use it when you want to run registered tests by name, by pattern, or all at once.
+- `tests/run_waterwall_case.sh`
+  This is the low-level single-case runner.
+  `ctest` calls this script underneath for each registered case.
+
+Practical rule:
+
+- most users should start with `ctest`
+- use `run_waterwall_case.sh` directly when debugging one case or when you want to control the timeout and paths manually
+
+## Current layout
+
+- `cases/<name>/config.json`
+  One Waterwall config file for a test case.
+- `run_waterwall_case.sh`
+  The low-level single-case runner.
+  It creates a temporary `core.json`, launches `Waterwall`, watches the tester log, and fails on crash or timeout.
+  The generated `core.json` uses a single worker so each registered case stays lightweight and deterministic.
+  The generated `core.json` uses the `client` RAM profile so stream cases are not bottlenecked by the minimal 4 KB
+  large-buffer size.
+- `CMakeLists.txt`
+  Registers each case with CTest.
+
+## Current cases
+
+- `disturber_passthrough`
+  Verifies that `Disturber` with default zero-probability settings behaves like a transparent middle tunnel.
+- `obfuscator_roundtrip`
+  Verifies that `ObfuscatorClient` and `ObfuscatorServer` preserve payload and finish ordering when paired directly.
+- `obfuscator_tls_record_roundtrip`
+  Verifies the same obfuscation pair while also exercising TLS-like record wrapping and stripping.
+- `encryption_roundtrip`
+  Verifies the default `EncryptionClient` and `EncryptionServer` framing pair across the full tester payload sequence.
+- `encryption_small_frame_roundtrip`
+  Verifies the encryption pair with `max-frame-size=4096`, so the framing logic is exercised even when the harness uses
+  larger stream buffers.
+- `udp_over_tcp_roundtrip`
+  Verifies that `UdpOverTcpClient` and `UdpOverTcpServer` preserve end-to-end byte stream integrity through their
+  length-prefixed framing.
+- `halfduplex_roundtrip`
+  Verifies that `HalfDuplexClient` and `HalfDuplexServer` split and reconstruct one logical line correctly.
+- `mux_counter_roundtrip`
+  Verifies basic `MuxClient` and `MuxServer` framing in counter mode.
+- `mux_timer_roundtrip`
+  Verifies the same MUX pair in timer mode.
+
+## Case selection notes
+
+The current tester sends very large stream chunks up to `2 MB`, so not every tunnel is a valid fit for this harness.
+Now that `TesterClient` and `TesterServer` split oversized logical chunks into `LargeBuffer`-sized payload buffers,
+several framed tunnels are testable directly even when the logical end-to-end chunk is much larger than one physical
+buffer.
+
+Some scenarios are still better treated as future work:
+
+- local `TcpConnector -> TcpListener` loopback chains currently interact with the tester's worker-derived byte pattern
+  assumptions, so they need a small tester semantic change before they become stable positive tests
+- `TlsClient` and `TlsServer` need a certificate arrangement that matches `TlsClient`'s real verification behavior
+  before they can be added as portable integration tests
+
+## Adding a new tunnel test
+
+1. Create `tests/cases/<name>/config.json`.
+2. Use `TesterClient` as the chain head and `TesterServer` as the chain end.
+3. Insert the tunnel pair you want to validate between them.
+4. Add the case to [tests/CMakeLists.txt](/root/WaterWall/tests/CMakeLists.txt).
+
+Example shape:
+
+```json
+{
+  "name": "encryption-roundtrip",
+  "nodes": [
+    { "name": "tester-client", "type": "TesterClient", "next": "enc-client" },
+    { "name": "enc-client", "type": "EncryptionClient", "next": "disturber" },
+    { "name": "disturber", "type": "Disturber", "next": "enc-server" },
+    { "name": "enc-server", "type": "EncryptionServer", "next": "tester-server" },
+    { "name": "tester-server", "type": "TesterServer" }
+  ]
+}
+```
+
+## Running locally
+
+```sh
+cmake --preset linux-gcc-x64
+cmake --build --preset linux-gcc-x64 --target Waterwall test
+ctest --preset linux-gcc -C Release --output-on-failure
+```
+
+Important:
+
+- use `-C Release` with the current Linux CTest preset in this repo, otherwise CTest may look for a `Debug` binary
+- run commands from the repo root
+
+## What `run_waterwall_case.sh` does
+
+When you run the helper script directly, it:
+
+1. copies the selected case directory into a temporary run directory
+2. writes a temporary `core.json`
+3. launches the real `Waterwall` binary
+4. waits for the built-in tester success log line
+5. fails if `Waterwall` crashes, exits early, or times out
+6. prints logs on failure to help debugging
+
+So `run_waterwall_case.sh` is not a second testing system.
+It is the small runner that powers each integration test invocation.
+
+Success and failure are decided inside Waterwall:
+
+- `TesterClient` / `TesterServer` detect mismatches and terminate the program on failure
+- `TesterClient` logs the success marker on a passing run, and the helper accepts any worker count in that message
+- `run_waterwall_case.sh` only watches for that success marker so it knows when the test is finished and can stop the
+  still-running Waterwall process
+
+## Listing available cases
+
+Show every registered integration test:
+
+```sh
+ctest --preset linux-gcc -C Release -N
+```
+
+That prints names like:
+
+- `waterwall.disturber_passthrough`
+- `waterwall.obfuscator_roundtrip`
+- `waterwall.encryption_roundtrip`
+
+## Running one case
+
+Recommended way with `ctest`:
+
+```sh
+ctest --preset linux-gcc -C Release --output-on-failure -R '^waterwall\.disturber_passthrough$'
+```
+
+Equivalent low-level way with the helper script:
+
+```sh
+tests/run_waterwall_case.sh \
+  build/linux-gcc-x64/Release/Waterwall \
+  tests/cases/disturber_passthrough \
+  60
+```
+
+## Running two specific cases
+
+Run only `disturber_passthrough` and `obfuscator_roundtrip`:
+
+```sh
+ctest --preset linux-gcc -C Release --output-on-failure -R '^waterwall\.(disturber_passthrough|obfuscator_roundtrip)$'
+```
+
+Another example for two encryption cases:
+
+```sh
+ctest --preset linux-gcc -C Release --output-on-failure -R '^waterwall\.(encryption_roundtrip|encryption_small_frame_roundtrip)$'
+```
+
+`run_waterwall_case.sh` runs only one case at a time.
+If you want two or more cases in one command, use `ctest`.
+
+## Running a group by pattern
+
+Run every encryption-related case:
+
+```sh
+ctest --preset linux-gcc -C Release --output-on-failure -R '^waterwall\.encryption_'
+```
+
+Run every MUX case:
+
+```sh
+ctest --preset linux-gcc -C Release --output-on-failure -R '^waterwall\.mux_'
+```
+
+## When to use the helper script directly
+
+Use `run_waterwall_case.sh` directly when:
+
+- you want to debug one case in isolation
+- you want to change the timeout for one run
+- you want to point at a specific `Waterwall` binary manually
+- you are experimenting with a case before registering it in `tests/CMakeLists.txt`
+
+Example:
+
+```sh
+tests/run_waterwall_case.sh \
+  build/linux-gcc-x64/Release/Waterwall \
+  tests/cases/disturber_passthrough \
+  60
+```
+
+## Quick workflow
+
+Typical loop for editing one case:
+
+```sh
+cmake --preset linux-gcc-x64
+cmake --build --preset linux-gcc-x64 --target Waterwall test
+ctest --preset linux-gcc -C Release --output-on-failure -R '^waterwall\.disturber_passthrough$'
+```
+
+Typical loop for debugging one case manually:
+
+```sh
+cmake --preset linux-gcc-x64
+cmake --build --preset linux-gcc-x64 --target Waterwall
+tests/run_waterwall_case.sh \
+  build/linux-gcc-x64/Release/Waterwall \
+  tests/cases/disturber_passthrough \
+  60
+```

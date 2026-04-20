@@ -12,8 +12,8 @@ static const uint32_t kTesterServerChunkSizes[kTesterServerChunkCount] = {
     4096U,
     32768U,
     32769U,
-    16U * 1024U * 1024U,
-    32U * 1024U * 1024U,
+    1 * 1024U * 1024U,
+    2 * 1024U * 1024U,
 };
 
 static const uint32_t kTesterServerPacketChunkSizes[kTesterServerChunkCount] = {
@@ -50,7 +50,8 @@ static uint8_t testerserverPatternByte(uint32_t offset, uint8_t chunk_index, wid
     return (uint8_t) value;
 }
 
-static void testerserverFillPayload(line_t *l, sbuf_t *buf, uint8_t chunk_index, testerserver_direction_e direction)
+static void testerserverFillPayload(line_t *l, sbuf_t *buf, uint8_t chunk_index, uint32_t chunk_offset,
+                                    testerserver_direction_e direction)
 {
     uint32_t payload_len = sbufGetLength(buf);
     uint8_t *ptr         = sbufGetMutablePtr(buf);
@@ -58,7 +59,7 @@ static void testerserverFillPayload(line_t *l, sbuf_t *buf, uint8_t chunk_index,
 
     for (uint32_t i = 0; i < payload_len; ++i)
     {
-        ptr[i] = testerserverPatternByte(i, chunk_index, wid, direction);
+        ptr[i] = testerserverPatternByte(chunk_offset + i, chunk_index, wid, direction);
     }
 }
 
@@ -88,13 +89,32 @@ uint64_t testerserverGetRemainingBytes(tunnel_t *t, uint8_t index)
     return remaining;
 }
 
-sbuf_t *testerserverCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, testerserver_direction_e direction)
+sbuf_t *testerserverCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, uint32_t chunk_offset,
+                                  uint32_t payload_len, testerserver_direction_e direction)
 {
     buffer_pool_t *pool        = lineGetBufferPool(l);
-    uint32_t       payload_len = testerserverGetChunkSize(t, chunk_index);
+    testerserver_tstate_t *ts  = tunnelGetState(t);
     sbuf_t        *buf         = NULL;
 
-    if (payload_len <= bufferpoolGetSmallBufferSize(pool))
+    if (ts->packet_mode)
+    {
+        if (payload_len != testerserverGetChunkSize(t, chunk_index))
+        {
+            testerserverFail(t, l, "packet-mode payload generation attempted to split a packet chunk");
+            return NULL;
+        }
+
+        if (payload_len <= bufferpoolGetSmallBufferSize(pool))
+        {
+            buf = bufferpoolGetSmallBuffer(pool);
+        }
+        else
+        {
+            testerserverFail(t, l, "packet-mode response exceeded small buffer size");
+            return NULL;
+        }
+    }
+    else if (payload_len <= bufferpoolGetSmallBufferSize(pool))
     {
         buf = bufferpoolGetSmallBuffer(pool);
     }
@@ -104,12 +124,12 @@ sbuf_t *testerserverCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, t
     }
     else
     {
-        buf = sbufCreate(payload_len);
+        testerserverFail(t, l, "stream-mode payload generation exceeded large buffer size");
+        return NULL;
     }
 
-    buf = sbufReserveSpace(buf, payload_len);
     sbufSetLength(buf, payload_len);
-    testerserverFillPayload(l, buf, chunk_index, direction);
+    testerserverFillPayload(l, buf, chunk_index, chunk_offset, direction);
 
     return buf;
 }
@@ -183,6 +203,7 @@ void testerserverResponseSendTask(tunnel_t *t, line_t *l)
 {
     testerserver_lstate_t *ls = lineGetState(l, t);
     testerserver_tstate_t *ts = tunnelGetState(t);
+    buffer_pool_t         *pool = lineGetBufferPool(l);
 
     ls->response_send_scheduled = false;
 
@@ -212,12 +233,33 @@ void testerserverResponseSendTask(tunnel_t *t, line_t *l)
 
     while (! ls->response_paused && ls->response_tx_index < kTesterServerChunkCount)
     {
-        sbuf_t *buf = testerserverCreatePayload(t, l, ls->response_tx_index, kTesterServerDirectionResponse);
+        uint32_t chunk_size = testerserverGetChunkSize(t, ls->response_tx_index);
+        uint32_t remaining  = chunk_size - ls->response_tx_offset;
+        uint32_t max_len    = bufferpoolGetLargeBufferSize(pool);
 
-        ls->response_tx_index += 1;
-        tunnelPrevDownStreamPayload(t, l, buf);
+        if (max_len == 0)
+        {
+            testerserverFail(t, l, "large buffer pool reports zero writable payload capacity");
+            return;
+        }
 
-        if (! lineIsAlive(l))
+        uint32_t payload_len = (remaining < max_len) ? remaining : max_len;
+        sbuf_t *buf = testerserverCreatePayload(t, l, ls->response_tx_index, ls->response_tx_offset, payload_len,
+                                                kTesterServerDirectionResponse);
+
+        if (buf == NULL)
+        {
+            return;
+        }
+
+        ls->response_tx_offset += payload_len;
+        if (ls->response_tx_offset == chunk_size)
+        {
+            ls->response_tx_index += 1;
+            ls->response_tx_offset = 0;
+        }
+
+        if (! withLineLockedWithBuf(l, tunnelPrevDownStreamPayload, t, buf))
         {
             return;
         }

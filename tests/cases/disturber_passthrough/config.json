@@ -1,0 +1,19 @@
+{
+  "name": "disturber-passthrough",
+  "nodes": [
+    {
+      "name": "tester-client",
+      "type": "TesterClient",
+      "next": "disturber"
+    },
+    {
+      "name": "disturber",
+      "type": "Disturber",
+      "next": "tester-server"
+    },
+    {
+      "name": "tester-server",
+      "type": "TesterServer"
+    }
+  ]
+}

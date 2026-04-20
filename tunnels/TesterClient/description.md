@@ -14,7 +14,7 @@ It is meant for validating tunnel composition and payload integrity, not for pro
 - sends `11` fixed-size request chunks upstream
 - verifies `11` fixed-size response chunks coming back downstream
 - fails fast on any size, order, byte-pattern, or timeout mismatch
-- in normal stream mode, finishes the upstream side after the full response is verified
+- in normal stream mode, logs success after the full response is verified and exits the program once all workers complete
 - in `packet-mode`, reuses the worker packet line and never expects normal runtime `Finish`
 
 ## Request And Response Pattern
@@ -150,7 +150,7 @@ In stream mode:
 - buffers are staged in a `buffer_stream_t`
 - each complete expected chunk is read and verified in order
 - trailing bytes after the expected sequence are treated as failure
-- once verification completes, upstream `Finish` is scheduled
+- once verification completes, that worker is marked successful
 
 In packet mode:
 
@@ -160,16 +160,12 @@ In packet mode:
 
 ### Finish behavior
 
-In stream mode, after the full response is verified, `TesterClient` sends upstream `Finish` and then expects the
-peer side to close back downstream. On downstream `Finish`, it:
+In stream mode, normal success does not depend on a FIN exchange. `TesterClient` succeeds as soon as it has verified the
+full response sequence for every worker and then terminates the program with exit code `0`.
 
-- verifies that the full response was already received
-- destroys its per-line state
-- marks the worker as complete
-- destroys the line
-
-In packet mode, downstream `Finish` is considered a bug because worker packet lines are runtime-persistent helper
-lines, not closable connection lines.
+If downstream `Finish` does arrive before full response verification, it is treated as a failure. In packet mode,
+downstream `Finish` is also considered a bug because worker packet lines are runtime-persistent helper lines, not
+closable connection lines.
 
 ## Notes And Caveats
 

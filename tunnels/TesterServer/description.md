@@ -148,15 +148,12 @@ In packet mode:
 
 ### Finish behavior
 
-In stream mode, `TesterServer` expects upstream `Finish` only after the full response sequence has already been sent.
-When that happens, it:
+In stream mode, normal success does not require `TesterServer` to send any `Finish` back toward the previous tunnel.
+If an upstream `Finish` does arrive after full request verification and after the full response sequence has already been
+sent, `TesterServer` only destroys its own per-line state locally.
 
-- verifies that response transmission already completed
-- destroys its per-line state
-- forwards downstream `Finish`
-
-In packet mode, upstream `Finish` is treated as a bug because packet lines are shared worker state, not per-connection
-lines.
+If upstream `Finish` arrives too early, it is treated as a failure. In packet mode, upstream `Finish` is treated as a
+bug because packet lines are shared worker state, not per-connection lines.
 
 ## Notes And Caveats
 

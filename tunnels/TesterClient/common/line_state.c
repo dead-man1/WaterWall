@@ -12,8 +12,7 @@ void testerclientLinestateInitialize(testerclient_lstate_t *ls, buffer_pool_t *p
         .request_paused         = false,
         .request_send_scheduled = false,
         .request_complete       = false,
-        .response_complete      = false,
-        .closing_requested      = false
+        .response_complete      = false
     };
 }
 

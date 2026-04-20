@@ -1,0 +1,24 @@
+{
+  "name": "halfduplex-roundtrip",
+  "nodes": [
+    {
+      "name": "tester-client",
+      "type": "TesterClient",
+      "next": "halfduplex-client"
+    },
+    {
+      "name": "halfduplex-client",
+      "type": "HalfDuplexClient",
+      "next": "halfduplex-server"
+    },
+    {
+      "name": "halfduplex-server",
+      "type": "HalfDuplexServer",
+      "next": "tester-server"
+    },
+    {
+      "name": "tester-server",
+      "type": "TesterServer"
+    }
+  ]
+}

@@ -35,13 +35,13 @@ typedef struct testerclient_lstate_s
 
     uint8_t request_tx_index;
     uint8_t response_rx_index;
+    uint32_t request_tx_offset;
 
     bool    est_received;
     bool    request_paused;
     bool    request_send_scheduled;
     bool    request_complete;
     bool    response_complete;
-    bool    closing_requested;
 } testerclient_lstate_t;
 
 enum
@@ -76,11 +76,11 @@ void     testerclientLinestateDestroy(testerclient_lstate_t *ls);
 void     testerclientFail(tunnel_t *t, line_t *l, const char *reason);
 uint32_t testerclientGetChunkSize(tunnel_t *t, uint8_t index);
 uint64_t testerclientGetRemainingBytes(tunnel_t *t, uint8_t index);
-sbuf_t  *testerclientCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, testerclient_direction_e direction);
+sbuf_t  *testerclientCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, uint32_t chunk_offset,
+                                   uint32_t payload_len, testerclient_direction_e direction);
 bool     testerclientVerifyChunk(tunnel_t *t, line_t *l, sbuf_t *buf, uint8_t chunk_index, testerclient_direction_e direction,
                                  uint32_t *bad_offset, uint8_t *expected, uint8_t *actual);
 void     testerclientRequestSendTask(tunnel_t *t, line_t *l);
-void     testerclientCompleteTask(tunnel_t *t, line_t *l);
 void     testerclientWatchdogTask(tunnel_t *t, line_t *l);
 void     testerclientScheduleRequestSend(tunnel_t *t, line_t *l, testerclient_lstate_t *ls);
 void     testerclientMarkWorkerComplete(tunnel_t *t, line_t *l);

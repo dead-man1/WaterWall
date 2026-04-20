@@ -72,6 +72,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
+include(CTest)
+
 #--------------------------------------------------------------------------------
 # Interprocedural Optimization (IPO)
 #--------------------------------------------------------------------------------
@@ -178,7 +180,7 @@ option(INCLUDE_ENCRYPTION_CLIENT        "link EncryptionClient staticly to the c
 option(INCLUDE_ENCRYPTION_SERVER        "link EncryptionServer staticly to the core"     TRUE)
 option(INCLUDE_PRECONNECT_SERVER        "link PreConnectServer staticly to the core"     FALSE)
 option(INCLUDE_PRECONNECT_CLIENT        "link PreConnectClient staticly to the core"     FALSE)
-option(INCLUDE_SOCKS_5_SERVER           "link Socks5Server staticly to the core"         FALSE)
+option(INCLUDE_SOCKS_5_SERVER           "link Socks5Server staticly to the core"         TRUE)
 option(INCLUDE_REALITY_SERVER           "link RealityServer staticly to the core"        FALSE)
 option(INCLUDE_REALITY_CLIENT           "link RealityClient staticly to the core"        FALSE)
 option(INCLUDE_HALFDUPLEX_SERVER        "link HalfDuplexServer staticly to the core"     TRUE)
@@ -652,8 +654,8 @@ endif()
 #socks5 server
 if(INCLUDE_SOCKS_5_SERVER)
   target_compile_definitions(Waterwall PUBLIC INCLUDE_SOCKS_5_SERVER=1)
-  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/server/socks/5)
-  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/server/socks/5)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tunnels/Socks5Server)
+  target_link_directories(Waterwall PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tunnels/Socks5Server)
   target_link_libraries(Waterwall Socks5Server)
 endif()
 
@@ -772,5 +774,9 @@ endif()
 # Final Configuration
 #------------------------------------------------------------------------------------------
 target_compile_definitions(Waterwall PUBLIC WATERWALL_VERSION=${Waterwall_VERSION})
+
+if(BUILD_TESTING AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CROSSCOMPILING)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tests)
+endif()
 
 message(STATUS "Waterwall version: ${Waterwall_VERSION}")

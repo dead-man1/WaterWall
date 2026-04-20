@@ -1,0 +1,36 @@
+{
+  "name": "obfuscator-tls-record-roundtrip",
+  "nodes": [
+    {
+      "name": "tester-client",
+      "type": "TesterClient",
+      "next": "obfuscator-client"
+    },
+    {
+      "name": "obfuscator-client",
+      "type": "ObfuscatorClient",
+      "settings": {
+        "method": "xor",
+        "xor_key": 60,
+        "skip": "none",
+        "tls_record_header": true
+      },
+      "next": "obfuscator-server"
+    },
+    {
+      "name": "obfuscator-server",
+      "type": "ObfuscatorServer",
+      "settings": {
+        "method": "xor",
+        "xor_key": 60,
+        "skip": "none",
+        "tls_record_header": true
+      },
+      "next": "tester-server"
+    },
+    {
+      "name": "tester-server",
+      "type": "TesterServer"
+    }
+  ]
+}

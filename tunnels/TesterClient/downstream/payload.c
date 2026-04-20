@@ -112,11 +112,6 @@ void testerclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
         }
 
         ls->response_complete = true;
-
-        if (! ls->closing_requested)
-        {
-            ls->closing_requested = true;
-            lineScheduleTask(l, testerclientCompleteTask, t);
-        }
+        testerclientMarkWorkerComplete(t, l);
     }
 }

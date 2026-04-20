@@ -13,6 +13,12 @@ void testerserverTunnelUpStreamFinish(tunnel_t *t, line_t *l)
         return;
     }
 
+    if (ls->request_rx_index != kTesterServerChunkCount || ! ls->response_ready)
+    {
+        testerserverFail(t, l, "received finish before full request verification");
+        return;
+    }
+
     if (! ls->response_sent)
     {
         testerserverFail(t, l, "received finish before sending the full response sequence");
@@ -20,5 +26,4 @@ void testerserverTunnelUpStreamFinish(tunnel_t *t, line_t *l)
     }
 
     testerserverLinestateDestroy(ls);
-    tunnelPrevDownStreamFinish(t, l);
 }

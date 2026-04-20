@@ -1,0 +1,24 @@
+{
+  "name": "udp-over-tcp-roundtrip",
+  "nodes": [
+    {
+      "name": "tester-client",
+      "type": "TesterClient",
+      "next": "uot-client"
+    },
+    {
+      "name": "uot-client",
+      "type": "UdpOverTcpClient",
+      "next": "uot-server"
+    },
+    {
+      "name": "uot-server",
+      "type": "UdpOverTcpServer",
+      "next": "tester-server"
+    },
+    {
+      "name": "tester-server",
+      "type": "TesterServer"
+    }
+  ]
+}

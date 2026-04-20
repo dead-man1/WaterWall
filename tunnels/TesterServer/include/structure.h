@@ -25,6 +25,7 @@ typedef struct testerserver_lstate_s
 
     uint8_t request_rx_index;
     uint8_t response_tx_index;
+    uint32_t response_tx_offset;
 
     bool    response_ready;
     bool    response_paused;
@@ -64,7 +65,8 @@ void     testerserverLinestateDestroy(testerserver_lstate_t *ls);
 void     testerserverFail(tunnel_t *t, line_t *l, const char *reason);
 uint32_t testerserverGetChunkSize(tunnel_t *t, uint8_t index);
 uint64_t testerserverGetRemainingBytes(tunnel_t *t, uint8_t index);
-sbuf_t  *testerserverCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, testerserver_direction_e direction);
+sbuf_t  *testerserverCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, uint32_t chunk_offset,
+                                   uint32_t payload_len, testerserver_direction_e direction);
 bool     testerserverVerifyChunk(tunnel_t *t, line_t *l, sbuf_t *buf, uint8_t chunk_index, testerserver_direction_e direction,
                                  uint32_t *bad_offset, uint8_t *expected, uint8_t *actual);
 void     testerserverResponseSendTask(tunnel_t *t, line_t *l);

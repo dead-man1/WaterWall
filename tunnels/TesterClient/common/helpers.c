@@ -12,8 +12,8 @@ static const uint32_t kTesterClientChunkSizes[kTesterClientChunkCount] = {
     4096U,
     32768U,
     32769U,
-    16U * 1024U * 1024U,
-    32U * 1024U * 1024U,
+    1 * 1024U * 1024U,
+    2 * 1024U * 1024U,
 };
 
 static const uint32_t kTesterClientPacketChunkSizes[kTesterClientChunkCount] = {
@@ -52,7 +52,8 @@ static uint8_t testerclientPatternByte(uint32_t offset, uint8_t chunk_index, wid
     return (uint8_t) value;
 }
 
-static void testerclientFillPayload(line_t *l, sbuf_t *buf, uint8_t chunk_index, testerclient_direction_e direction)
+static void testerclientFillPayload(line_t *l, sbuf_t *buf, uint8_t chunk_index, uint32_t chunk_offset,
+                                    testerclient_direction_e direction)
 {
     uint32_t payload_len = sbufGetLength(buf);
     uint8_t *ptr         = sbufGetMutablePtr(buf);
@@ -60,7 +61,7 @@ static void testerclientFillPayload(line_t *l, sbuf_t *buf, uint8_t chunk_index,
 
     for (uint32_t i = 0; i < payload_len; ++i)
     {
-        ptr[i] = testerclientPatternByte(i, chunk_index, wid, direction);
+        ptr[i] = testerclientPatternByte(chunk_offset + i, chunk_index, wid, direction);
     }
 }
 
@@ -90,15 +91,21 @@ uint64_t testerclientGetRemainingBytes(tunnel_t *t, uint8_t index)
     return remaining;
 }
 
-sbuf_t *testerclientCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, testerclient_direction_e direction)
+sbuf_t *testerclientCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, uint32_t chunk_offset,
+                                  uint32_t payload_len, testerclient_direction_e direction)
 {
     buffer_pool_t *pool        = lineGetBufferPool(l);
     testerclient_tstate_t *ts  = tunnelGetState(t);
-    uint32_t       payload_len = testerclientGetChunkSize(t, chunk_index);
     sbuf_t        *buf         = NULL;
 
     if (ts->packet_mode)
     {
+        if (payload_len != testerclientGetChunkSize(t, chunk_index))
+        {
+            testerclientFail(t, l, "packet-mode payload generation attempted to split a packet chunk");
+            return NULL;
+        }
+
         if (bufferpoolGetSmallBufferSize(pool) < kTesterClientPacketChunkSizeMax)
         {
             testerclientFail(t, l, "packet-mode requires small buffers with at least 1500 bytes write capacity");
@@ -117,12 +124,12 @@ sbuf_t *testerclientCreatePayload(tunnel_t *t, line_t *l, uint8_t chunk_index, t
     }
     else
     {
-        buf = sbufCreate(payload_len);
+        testerclientFail(t, l, "stream-mode payload generation exceeded large buffer size");
+        return NULL;
     }
 
-    buf = sbufReserveSpace(buf, payload_len);
     sbufSetLength(buf, payload_len);
-    testerclientFillPayload(l, buf, chunk_index, direction);
+    testerclientFillPayload(l, buf, chunk_index, chunk_offset, direction);
 
     return buf;
 }
@@ -181,22 +188,39 @@ void testerclientScheduleRequestSend(tunnel_t *t, line_t *l, testerclient_lstate
 void testerclientRequestSendTask(tunnel_t *t, line_t *l)
 {
     testerclient_lstate_t *ls = lineGetState(l, t);
+    buffer_pool_t         *pool = lineGetBufferPool(l);
 
     ls->request_send_scheduled = false;
 
     while (! ls->request_paused && ls->request_tx_index < kTesterClientChunkCount)
     {
-        sbuf_t *buf = testerclientCreatePayload(t, l, ls->request_tx_index, kTesterClientDirectionRequest);
+        uint32_t chunk_size = testerclientGetChunkSize(t, ls->request_tx_index);
+        uint32_t remaining  = chunk_size - ls->request_tx_offset;
+        uint32_t max_len    = bufferpoolGetLargeBufferSize(pool);
+
+        if (max_len == 0)
+        {
+            testerclientFail(t, l, "large buffer pool reports zero writable payload capacity");
+            return;
+        }
+
+        uint32_t payload_len = (remaining < max_len) ? remaining : max_len;
+        sbuf_t *buf = testerclientCreatePayload(t, l, ls->request_tx_index, ls->request_tx_offset, payload_len,
+                                                kTesterClientDirectionRequest);
 
         if (buf == NULL)
         {
             return;
         }
 
-        ls->request_tx_index += 1;
-        tunnelNextUpStreamPayload(t, l, buf);
+        ls->request_tx_offset += payload_len;
+        if (ls->request_tx_offset == chunk_size)
+        {
+            ls->request_tx_index += 1;
+            ls->request_tx_offset = 0;
+        }
 
-        if (! lineIsAlive(l))
+        if (! withLineLockedWithBuf(l, tunnelNextUpStreamPayload, t, buf))
         {
             return;
         }
@@ -206,18 +230,6 @@ void testerclientRequestSendTask(tunnel_t *t, line_t *l)
     {
         ls->request_complete = true;
     }
-}
-
-void testerclientCompleteTask(tunnel_t *t, line_t *l)
-{
-    testerclient_tstate_t *ts = tunnelGetState(t);
-
-    if (ts->packet_mode)
-    {
-        return;
-    }
-
-    tunnelNextUpStreamFinish(t, l);
 }
 
 void testerclientWatchdogTask(tunnel_t *t, line_t *l)
@@ -257,5 +269,6 @@ void testerclientMarkWorkerComplete(tunnel_t *t, line_t *l)
     if (done == (unsigned int) tc->workers_count)
     {
         LOGI("TesterClient: all %u worker lines completed successfully", (unsigned int) tc->workers_count);
+        terminateProgram(0);
     }
 }
