@@ -115,7 +115,6 @@ void encryptionclientTunnelDownStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf
 
         if (! withLineLockedWithBuf(l, tunnelPrevDownStreamPayload, t, frame_buffer))
         {
-            ls->prev_finished = true;
             return;
         }
     }

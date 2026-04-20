@@ -102,7 +102,7 @@ static bool deriveKeyFromPassword(const char *password, const char *salt, uint32
         iterations = 1;
     }
 
-    if (0 == blake2s(out_key, 32, (const unsigned char *) salt, salt_len, (const unsigned char *) password, password_len))
+    if (-1 == blake2s(out_key, 32, (const unsigned char *) salt, salt_len, (const unsigned char *) password, password_len))
     {
         return false;
     }
@@ -115,7 +115,7 @@ static bool deriveKeyFromPassword(const char *password, const char *salt, uint32
         memoryCopy(iter_block, out_key, 32);
         memoryCopy(iter_block + 32, &iter_be, sizeof(iter_be));
 
-        if (0 == blake2s(out_key, 32, (const unsigned char *) password, password_len, iter_block, sizeof(iter_block)))
+        if (-1 == blake2s(out_key, 32, (const unsigned char *) password, password_len, iter_block, sizeof(iter_block)))
         {
             wCryptoZero(iter_block, sizeof(iter_block));
             return false;

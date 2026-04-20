@@ -116,7 +116,6 @@ void encryptionserverTunnelUpStreamPayload(tunnel_t *t, line_t *l, sbuf_t *buf)
 
         if (! withLineLockedWithBuf(l, tunnelNextUpStreamPayload, t, frame_buffer))
         {
-            ls->next_finished = true;
             return;
         }
     }
