@@ -47,10 +47,7 @@ void tunnelchainFinalize(tunnel_chain_t *tc)
 {
     tc->masterpool_line_pool = masterpoolCreateWithCapacity(2 * ((8) + GSTATE.ram_profile));
 
-    if (tc->contains_packet_node)
-    {
-        tc->packet_lines = memoryAllocate(sizeof(line_t) * tc->workers_count);
-    }
+    tc->packet_lines = (line_t **) memoryAllocate(sizeof(line_t) * tc->workers_count);
 
     for (wid_t i = 0; i < tc->workers_count; i++)
     {
@@ -59,7 +56,9 @@ void tunnelchainFinalize(tunnel_chain_t *tc)
 
         if (tc->contains_packet_node)
         {
-            tc->packet_lines[i] = lineCreateForWorker(0,tc->line_pools, i);
+            tc->packet_lines[i] = lineCreateForWorker(0, tc->line_pools, i);
+        }else {
+            tc->packet_lines[i] = NULL;
         }
     }
 
@@ -71,7 +70,7 @@ void tunnelchainDestroy(tunnel_chain_t *tc)
 {
     for (uint32_t i = 0; i < tc->workers_count; i++)
     {
-        if (tc->packet_lines)
+        if (tc->packet_lines && tc->packet_lines[i])
         {
             lineDestroy(tc->packet_lines[i]);
         }
