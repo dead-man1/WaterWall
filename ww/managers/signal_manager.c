@@ -440,8 +440,15 @@ _Noreturn void terminateProgram(int exit_code)
 
     if (signalmanager_gstate)
     {
-        printError("SignalManager: Terminating program with exit-code %d, please read above logs to understand why\n",
-                   exit_code);
+        if (exit_code == 0)
+        {
+            printError("SignalManager: Terminating program with exit-code 0 after successful completion\n");
+        }
+        else
+        {
+            printError("SignalManager: Terminating program with exit-code %d, please read above logs to understand why\n",
+                       exit_code);
+        }
 
         if (signalmanager_gstate->double_terminated)
         {
@@ -458,9 +465,20 @@ _Noreturn void terminateProgram(int exit_code)
     }
     else
     {
-        printError("SignalManager: Terminating program with exit-code %d, please read above logs to understand why\n"
-                   "Since signal manager is not initialized, we cannot run exit handlers, so just exiting now",
-                   exit_code);
+        // i dont like messy output when the program just exits because a file does not exists
+        exit(exit_code);
+
+        if (exit_code == 0)
+        {
+            printError("SignalManager: Terminating program with exit-code 0 after successful completion\n"
+                       "Since signal manager is not initialized, we cannot run exit handlers, so just exiting now\n");
+        }
+        else
+        {
+            printError("SignalManager: Terminating program with exit-code %d, please read above logs to understand why\n"
+                       "Since signal manager is not initialized, we cannot run exit handlers, so just exiting now\n",
+                       exit_code);
+        }
     }
     exit(exit_code);
 }
