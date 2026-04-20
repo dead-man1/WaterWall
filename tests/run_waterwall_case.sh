@@ -24,7 +24,7 @@ set -euo pipefail
 shopt -s nullglob
 
 readonly TESTER_SUCCESS_REGEX='TesterClient: all [0-9]+ worker lines completed successfully'
-readonly TEST_WORKERS=1
+readonly TEST_WORKERS=4
 readonly TEST_RAM_PROFILE='client'
 
 if [[ $# -lt 3 ]]; then

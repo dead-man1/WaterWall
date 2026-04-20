@@ -60,6 +60,14 @@
 #include "tunnels/PingServer/include/interface.h"
 #endif
 
+#ifdef INCLUDE_KEEPALIVE_CLIENT
+#include "tunnels/KeepAliveClient/include/interface.h"
+#endif
+
+#ifdef INCLUDE_KEEPALIVE_SERVER
+#include "tunnels/KeepAliveServer/include/interface.h"
+#endif
+
 #ifdef INCLUDE_LAYER3_TCP_MANIPULATOR
 #include "tunnels/layer3/tcp/manipulator/tcp_manipulator.h"
 #endif
@@ -309,6 +317,14 @@ void loadImportedTunnelsIntoCore(void)
 
 #ifdef INCLUDE_PING_SERVER
     USING(PingServer);
+#endif
+
+#ifdef INCLUDE_KEEPALIVE_CLIENT
+    USING(KeepAliveClient);
+#endif
+
+#ifdef INCLUDE_KEEPALIVE_SERVER
+    USING(KeepAliveServer);
 #endif
 
 #ifdef INCLUDE_LAYER3_TCP_MANIPULATOR

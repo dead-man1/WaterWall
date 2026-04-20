@@ -1,0 +1,24 @@
+{
+  "name": "keepalive-roundtrip",
+  "nodes": [
+    {
+      "name": "tester-client",
+      "type": "TesterClient",
+      "next": "keepalive-client"
+    },
+    {
+      "name": "keepalive-client",
+      "type": "KeepAliveClient",
+      "next": "keepalive-server"
+    },
+    {
+      "name": "keepalive-server",
+      "type": "KeepAliveServer",
+      "next": "tester-server"
+    },
+    {
+      "name": "tester-server",
+      "type": "TesterServer"
+    }
+  ]
+}
