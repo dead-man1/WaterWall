@@ -413,6 +413,12 @@ void sendWorkerMessageTimed(wid_t wid, WorkerMessageCalback cb, uint32_t delay_m
     masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(msg), 1, NULL);
     *msg = (worker_msg_t) {.callback = cb, .arg1 = arg1, .arg2 = arg2, .arg3 = arg3};
 
+    if (getWID() == wid)
+    {
+        setupTimedTask(getWorker(wid), (void *) delay_ms_uiptr, msg, NULL);
+        return;
+    }
+
     // queue setupTimedTask manually so both wrapper and payload are reclaimed on post failure
     worker_msg_t *queue_msg;
     masterpoolGetItems(GSTATE.masterpool_messages, (const void **) &(queue_msg), 1, NULL);
