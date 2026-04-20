@@ -65,7 +65,6 @@ void encryptionserverTunnelDownStreamResume(tunnel_t *t, line_t *l);
 void encryptionserverLinestateInitialize(encryptionserver_lstate_t *ls, buffer_pool_t *pool);
 void encryptionserverLinestateDestroy(encryptionserver_lstate_t *ls);
 
-bool encryptionserverTunnelstateInitialize(encryptionserver_tstate_t *ts, const cJSON *settings);
 void encryptionserverTunnelstateDestroy(encryptionserver_tstate_t *ts);
 
 int encryptionserverEncryptAead(uint32_t algorithm, unsigned char *dst, const unsigned char *src, size_t src_len,
