@@ -1339,6 +1339,7 @@ if(BUILD_TESTING)
         instance/global_state.c
         managers/socket_manager_iptables_recovery.c
         objects/user.c
+        objects/users.c
         PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
     )
 endif()
