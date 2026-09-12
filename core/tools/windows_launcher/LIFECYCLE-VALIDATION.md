@@ -13,14 +13,16 @@ artifact is `build/windows-cross-mingw-x64/Release/Waterwall.exe`.
 
 | Component | Bytes | SHA-256 |
 | --- | ---: | --- |
-| Public packed EXE | 3,743,744 | `c571a5a83229cdfe19523542111888ac23f2c922d191ae26967f4e62cb76dd08` |
-| Exact embedded, finalized runtime PE | 11,938,816 | `418b87e3384e77d5a9db08bbb4105938540949e246e5d79a2b83859123b59a86` |
-| Unstripped comparison runtime EXE | 11,942,400 | `65fc49c2f1ccf837c7ee70f32820b4e2d652d34da355bb3c160448413b154e0e` |
+| Public packed EXE | 3,748,352 | `be574e55ce0a8b2a3984e8cdc3db145cf4d56f9c3efaabf904b7c9a2e6d5ec2d` |
+| Exact embedded, finalized runtime PE | 11,943,936 | `acddeaa5af9502f26066c18f092229361bc15641eb8104991006e60cacfaafed` |
+| Unstripped comparison runtime EXE | 11,947,520 | `c2c9c3e6988663c62019bb605dccb039ccec8b905ee94f9fed0161730d0f03a8` |
 | Embedded Wintun AMD64 DLL | 427,552 | `e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce` |
 | Embedded WinDivert x64 DLL | 47,616 | `c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2` |
 | Embedded WinDivert x64 SYS | 94,144 | `8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2` |
 
-These identities describe the build after correcting recovery certification.
+These identities describe the build with restart ownership and device preparation.
+The preceding recovery-certification packed EXE was
+`c571a5a83229cdfe19523542111888ac23f2c922d191ae26967f4e62cb76dd08`.
 The packed EXE after removing the unused loop guard was
 `67976ada06bc54031250dcaaf50f300d9ca43ed5011cbef00994f0d96c6a4194`.
 The earlier reviewed packed EXE was
@@ -28,7 +30,7 @@ The earlier reviewed packed EXE was
 the initial implementation's packed EXE was
 `00df3b3ed02e02b55dc268653cd992aaa96a7bd411a8f136b8ec00b3b0fbd6b6`.
 Their historical checks below are retained separately. Driver byte identities
-and the exact embedded runtime are unchanged by the recovery correction.
+are unchanged; the runtime now includes the ownership and preparation code.
 
 The embedded runtime hash was calculated from decompressed payload bytes, with
 XZ integrity checking, rather than assuming that the comparison EXE is byte
@@ -42,8 +44,8 @@ Driver signatures, trust chains, and native crash behavior were not qualified he
 
 The launcher directly imports IPHLPAPI, KERNEL32 and MSVCRT. Its existing lazy
 Windows API resolution also uses system libraries, and capability checking
-resolves `ntdll!NtQueryObject`. The runtime imports ADVAPI32, CRYPT32, IPHLPAPI,
-KERNEL32, MSVCRT, NTDLL, USER32 and WS2_32. Compiler libraries are linked statically.
+resolves `ntdll!NtQueryObject`. The runtime imports ADVAPI32, BCRYPT, CRYPT32, IPHLPAPI,
+KERNEL32, MSVCRT, NTDLL, SETUPAPI, USER32 and WS2_32. Compiler libraries are linked statically.
 Both manifests retain `requireAdministrator`; the runtime remains fixed-base
 while the launcher retains ASLR/DEP. The launcher's PE subsystem version is 5.2;
 that field is not a claim that its APIs run on that OS. API targeting remains
@@ -56,6 +58,53 @@ and desktop rights remain native qualification items. In particular, current
 10/11/Server; it does not establish support of these embedded bytes on the legacy
 rows. The [Wintun distribution](https://www.wintun.net/) likewise does not replace
 qualification of the specific embedded DLL and each OS/update baseline.
+
+## Restart ownership and preparation
+
+Historical `--recover` status is no longer a client restart gate. The example
+can request bounded recovery of a previous journal, retain an unverified result,
+and launch with a fresh record. The public lifecycle fixture keeps an unverified
+crash journal while successfully starting a replacement instance.
+
+Windows TunDevice constructors reserve the logical device name before egress
+selection. A protected, exclusive named-pipe server handle supplies ownership
+without persistent lock files; DNS helpers inherit a reduced duplicate. The
+runtime transfers constructor ownership into the device, including rollback
+cleanup. While holding it, startup reconciles only its tagged present Wintun
+devices and creation stubs, preserves foreign devices, and attempts normal
+initialization. The backend checks current interface-name conflicts and retries
+selected temporary creation failures. Windows removal that requires a reboot,
+or a native-architecture executable, produces an explicit current error.
+
+The ownership fixture uses real kernel handles and helper processes with mocked
+PnP enumeration/removal. It covers same-name/case exclusion, independent names,
+helper retention after runtime-handle close, forced helper death followed by
+reacquisition, idempotent removal, foreign-device preservation, interrupted
+creation stubs, query failure, wrong removal bitness, and reboot requirements.
+No host adapter, route, or DNS setting is modified by that fixture. The existing
+DNS and TunDevice cleanup fixtures were adapted to the ownership handoff; their
+mutable test strings and standalone compiler-library linkage were corrected for
+the strict MinGW unit configuration.
+
+| Restart check | Result |
+| --- | --- |
+| Windows packed production Release build | Passed |
+| Windows launcher fixture CTest under Wine, Debug / Release | Passed: 6 / 6 tests; final ownership changes checked in both configurations |
+| Public lifecycle cases under Wine, Debug / Release | Passed: 15 / 15 selected cases, including replacement with the old unverified journal retained |
+| Runtime DNS, DNS identity, and TunDevice policy cleanup under Wine | Passed: 3 tests in each of Debug and Release |
+| Production packed public lifecycle client under Wine | Passed: graceful stop, controller loss, already-dead controller |
+| Linux production support / functional / external / speed / privileged lanes | Passed: 13 / 154 / 1 / 16 / 6 tests |
+| Complete Linux Debug / Release units | Passed: 215 / 217 tests |
+| Python client recovery/restart behavior | Passed with mocked process boundaries: unverified recovery continues, existing journal preserved, timeout diagnostic bounded |
+| Changed C formatting and diff whitespace | Passed |
+
+Logs are outside source history under `/tmp/ww-restart-*`. Native qualification
+must still exercise the actual netsh helper retaining ownership, Wintun creation
+tags across interrupted installation, PnP removal and its delays/failures, and
+unrelated-interface preservation. Use the executable matching the Windows
+architecture for class-installer device removal. Wine and mocked PnP results do
+not establish those native behaviors. The absent-stdio console and earlier full
+application/TLS comparison limitations below remain open.
 
 ## Recovery certification correction
 
@@ -301,5 +350,8 @@ OS. No client watchdog, service, or descendant inventory is assumed to fill the
 remaining process-evidence gap.
 
 See [the interface contract](LIFECYCLE.md) for exact arguments, deadlines, result
-fields, permissions and examples. Unverified results do not authorize resource
-retirement, conflicting replacement, or removal of client firewall policy.
+fields, permissions and examples. An unverified result does not certify old
+resource retirement or authorize removal of client firewall policy. It does not
+block an attempt to start a new session. New startup obtains current kernel
+ownership and prepares its tagged devices; an actual ownership or Windows
+operation failure can still prevent readiness.
